@@ -1,0 +1,796 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                                                    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName                                              String                @map("full_name") @db.VarChar(150)
+  email                                                 String                @unique @db.VarChar(255)
+  phone                                                 String?               @db.VarChar(30)
+  passwordHash                                          String                @map("password_hash")
+  role                                                  Role                  @default(USER)
+  avatarUrl                                             String?               @map("avatar_url")
+  isActive                                              Boolean               @default(true) @map("is_active")
+  emailVerifiedAt                                       DateTime?             @map("email_verified_at") @db.Timestamptz(6)
+  lastLoginAt                                           DateTime?             @map("last_login_at") @db.Timestamptz(6)
+  createdAt                                             DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                             DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                                             DateTime?             @map("deleted_at") @db.Timestamptz(6)
+  admin_audit_logs                                      admin_audit_logs[]
+  ai_prompt_templates                                   ai_prompt_templates[]
+  ai_usage_logs                                         ai_usage_logs[]
+  authSessions                                          AuthSession[]
+  interviewAnswers                                      InterviewAnswer[]
+  interview_reports                                     interview_reports[]
+  interviewSessions                                     InterviewSession[]
+  payments                                              payments[]
+  question_audios                                       question_audios[]
+  study_plan_analyses                                   study_plan_analyses[]
+  system_settings                                       system_settings[]
+  uploaded_files_uploaded_files_owner_user_idTousers    uploaded_files[]      @relation("uploaded_files_owner_user_idTousers")
+  uploaded_files_uploaded_files_uploader_user_idTousers uploaded_files[]      @relation("uploaded_files_uploader_user_idTousers")
+  user_activity_logs                                    user_activity_logs[]
+  user_badges                                           user_badges[]
+  user_preferences                                      user_preferences?
+  profile                                               UserProfile?
+  user_subscriptions                                    user_subscriptions[]
+  user_weekly_goals                                     user_weekly_goals[]
+  voice_recordings                                      voice_recordings[]
+
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([createdAt], map: "idx_users_created_at")
+  @@index([isActive], map: "idx_users_is_active")
+  @@index([role], map: "idx_users_role")
+  @@map("users")
+}
+
+model AuthSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address") @db.Inet
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([expiresAt], map: "idx_auth_sessions_expires_at")
+  @@index([userId], map: "idx_auth_sessions_user_id")
+  @@map("auth_sessions")
+}
+
+model UserProfile {
+  id                        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                    String                @unique @map("user_id") @db.Uuid
+  age                       Int?
+  degreeLevel               DegreeLevel           @map("degree_level")
+  targetSchool              String                @map("target_school") @db.VarChar(255)
+  targetMajor               String                @map("target_major") @db.VarChar(255)
+  scholarshipType           String                @map("scholarship_type") @db.VarChar(255)
+  hskLevel                  String?               @map("hsk_level") @db.VarChar(50)
+  hskkLevel                 String?               @map("hskk_level") @db.VarChar(50)
+  ieltsScore                String?               @map("ielts_score") @db.VarChar(50)
+  toeflScore                String?               @map("toefl_score") @db.VarChar(50)
+  gpa                       String?               @db.VarChar(50)
+  awards                    String?
+  researchExperience        String?               @map("research_experience")
+  extracurricularActivities String?               @map("extracurricular_activities")
+  workExperience            String?               @map("work_experience")
+  studyPlan                 String                @map("study_plan")
+  careerPlan                String?               @map("career_plan")
+  strengths                 String?
+  weaknesses                String?
+  additionalNotes           String?               @map("additional_notes")
+  createdAt                 DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  interviewSessions         InterviewSession[]
+  study_plan_analyses       study_plan_analyses[]
+  user                      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([degreeLevel])
+  @@index([targetSchool])
+  @@index([targetMajor])
+  @@index([degreeLevel], map: "idx_user_profiles_degree_level")
+  @@index([targetMajor], map: "idx_user_profiles_target_major")
+  @@index([targetSchool], map: "idx_user_profiles_target_school")
+  @@map("user_profiles")
+}
+
+model School {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String                @unique @db.VarChar(255)
+  nameZh              String?               @map("name_zh") @db.VarChar(255)
+  nameEn              String?               @map("name_en") @db.VarChar(255)
+  city                String?               @db.VarChar(120)
+  province            String?               @db.VarChar(120)
+  websiteUrl          String?               @map("website_url")
+  description         String?
+  isActive            Boolean               @default(true) @map("is_active")
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questions           Question[]
+  school_majors       school_majors[]
+  school_scholarships school_scholarships[]
+
+  @@index([city])
+  @@index([province])
+  @@index([isActive])
+  @@index([city], map: "idx_schools_city")
+  @@index([isActive], map: "idx_schools_is_active")
+  @@index([province], map: "idx_schools_province")
+  @@map("schools")
+}
+
+model Major {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String          @db.VarChar(255)
+  nameZh        String?         @map("name_zh") @db.VarChar(255)
+  nameEn        String?         @map("name_en") @db.VarChar(255)
+  degreeLevel   DegreeLevel     @map("degree_level")
+  description   String?
+  isActive      Boolean         @default(true) @map("is_active")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questions     Question[]
+  school_majors school_majors[]
+
+  @@unique([name, degreeLevel])
+  @@index([degreeLevel])
+  @@index([isActive])
+  @@index([degreeLevel], map: "idx_majors_degree_level")
+  @@index([isActive], map: "idx_majors_is_active")
+  @@map("majors")
+}
+
+model Scholarship {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String                @unique @db.VarChar(255)
+  code                String?               @db.VarChar(80)
+  description         String?
+  isActive            Boolean               @default(true) @map("is_active")
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questions           Question[]
+  school_scholarships school_scholarships[]
+
+  @@index([isActive])
+  @@index([isActive], map: "idx_scholarships_is_active")
+  @@map("scholarships")
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model Question {
+  id                   String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  degreeLevel          DegreeLevel?               @map("degree_level")
+  schoolId             String?                    @map("school_id") @db.Uuid
+  majorId              String?                    @map("major_id") @db.Uuid
+  scholarshipId        String?                    @map("scholarship_id") @db.Uuid
+  admissionSeasonId    String?                    @map("admission_season_id") @db.Uuid
+  category             QuestionCategory           @default(OTHER)
+  difficulty           DifficultyLevel            @default(MEDIUM)
+  language             LanguageCode               @default(VI)
+  questionText         String                     @map("question_text")
+  suggestedAnswerLogic String?                    @map("suggested_answer_logic")
+  sampleAnswer         String?                    @map("sample_answer")
+  keywords             String?
+  commonMistakes       String?                    @map("common_mistakes")
+  scoringRubric        Json?                      @map("scoring_rubric")
+  isActive             Boolean                    @default(true) @map("is_active")
+  createdBy            String?                    @map("created_by") @db.Uuid
+  updatedBy            String?                    @map("updated_by") @db.Uuid
+  createdAt            DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?                  @map("deleted_at") @db.Timestamptz(6)
+  sessionQuestions     InterviewSessionQuestion[]
+  question_audios      question_audios[]
+  question_tag_links   question_tag_links[]
+  major                Major?                     @relation(fields: [majorId], references: [id])
+  scholarship          Scholarship?               @relation(fields: [scholarshipId], references: [id])
+  school               School?                    @relation(fields: [schoolId], references: [id])
+
+  @@index([degreeLevel])
+  @@index([schoolId])
+  @@index([majorId])
+  @@index([scholarshipId])
+  @@index([category])
+  @@index([difficulty])
+  @@index([language])
+  @@index([isActive])
+  @@index([category], map: "idx_questions_category")
+  @@index([degreeLevel], map: "idx_questions_degree_level")
+  @@index([difficulty], map: "idx_questions_difficulty")
+  @@index([isActive], map: "idx_questions_is_active")
+  @@index([language], map: "idx_questions_language")
+  @@index([majorId], map: "idx_questions_major_id")
+  @@index([scholarshipId], map: "idx_questions_scholarship_id")
+  @@index([schoolId], map: "idx_questions_school_id")
+  @@map("questions")
+}
+
+model InterviewSession {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String                     @map("user_id") @db.Uuid
+  profileId         String?                    @map("profile_id") @db.Uuid
+  mode              InterviewMode              @default(PRACTICE)
+  language          LanguageCode               @default(VI)
+  status            InterviewStatus            @default(DRAFT)
+  degreeLevel       DegreeLevel?               @map("degree_level")
+  targetSchool      String?                    @map("target_school") @db.VarChar(255)
+  targetMajor       String?                    @map("target_major") @db.VarChar(255)
+  scholarshipType   String?                    @map("scholarship_type") @db.VarChar(255)
+  totalQuestions    Int                        @default(0) @map("total_questions")
+  answeredQuestions Int                        @default(0) @map("answered_questions")
+  totalScore        Decimal?                   @map("total_score") @db.Decimal(5, 2)
+  summaryFeedback   String?                    @map("summary_feedback")
+  startedAt         DateTime?                  @map("started_at") @db.Timestamptz(6)
+  endedAt           DateTime?                  @map("ended_at") @db.Timestamptz(6)
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  answers           InterviewAnswer[]
+  interview_reports interview_reports?
+  sessionQuestions  InterviewSessionQuestion[]
+  profile           UserProfile?               @relation(fields: [profileId], references: [id])
+  user              User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voice_recordings  voice_recordings[]
+
+  @@index([userId])
+  @@index([profileId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([createdAt], map: "idx_interview_sessions_created_at")
+  @@index([profileId], map: "idx_interview_sessions_profile_id")
+  @@index([status], map: "idx_interview_sessions_status")
+  @@index([userId], map: "idx_interview_sessions_user_id")
+  @@map("interview_sessions")
+}
+
+model InterviewSessionQuestion {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId           String            @map("session_id") @db.Uuid
+  questionId          String?           @map("question_id") @db.Uuid
+  source              QuestionSource
+  orderIndex          Int               @map("order_index")
+  questionText        String            @map("question_text")
+  category            QuestionCategory  @default(OTHER)
+  difficulty          DifficultyLevel   @default(MEDIUM)
+  language            LanguageCode      @default(VI)
+  aiReason            String?           @map("ai_reason")
+  expectedAnswerLogic String?           @map("expected_answer_logic")
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  answers             InterviewAnswer[]
+  question            Question?         @relation(fields: [questionId], references: [id])
+  session             InterviewSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, orderIndex])
+  @@index([sessionId])
+  @@index([questionId])
+  @@index([questionId], map: "idx_interview_session_questions_question_id")
+  @@index([sessionId], map: "idx_interview_session_questions_session_id")
+  @@map("interview_session_questions")
+}
+
+model InterviewAnswer {
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId         String                   @map("session_id") @db.Uuid
+  sessionQuestionId String                   @map("session_question_id") @db.Uuid
+  userId            String                   @map("user_id") @db.Uuid
+  answerText        String?                  @map("answer_text")
+  answerAudioUrl    String?                  @map("answer_audio_url")
+  speechToTextRaw   String?                  @map("speech_to_text_raw")
+  scoreTotal        Decimal?                 @map("score_total") @db.Decimal(5, 2)
+  scoreRelevance    Decimal?                 @map("score_relevance") @db.Decimal(5, 2)
+  scoreLogic        Decimal?                 @map("score_logic") @db.Decimal(5, 2)
+  scoreSpecificity  Decimal?                 @map("score_specificity") @db.Decimal(5, 2)
+  scoreLanguage     Decimal?                 @map("score_language") @db.Decimal(5, 2)
+  feedback          String?
+  strengths         String?
+  weaknesses        String?
+  improvedAnswer    String?                  @map("improved_answer")
+  aiUsageLogId      String?                  @map("ai_usage_log_id") @db.Uuid
+  answeredAt        DateTime                 @default(now()) @map("answered_at") @db.Timestamptz(6)
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  session           InterviewSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionQuestion   InterviewSessionQuestion @relation(fields: [sessionQuestionId], references: [id], onDelete: Cascade)
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voice_recordings  voice_recordings[]
+
+  @@unique([sessionId, sessionQuestionId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([scoreTotal])
+  @@index([scoreTotal], map: "idx_interview_answers_score_total")
+  @@index([sessionId], map: "idx_interview_answers_session_id")
+  @@index([userId], map: "idx_interview_answers_user_id")
+  @@map("interview_answers")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model admin_audit_logs {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  admin_user_id String?  @db.Uuid
+  action        String   @db.VarChar(120)
+  entity_type   String   @db.VarChar(120)
+  entity_id     String?  @db.Uuid
+  before_data   Json?
+  after_data    Json?
+  ip_address    String?  @db.Inet
+  user_agent    String?
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  users         User?    @relation(fields: [admin_user_id], references: [id], onUpdate: NoAction)
+
+  @@index([admin_user_id], map: "idx_admin_audit_logs_admin_user_id")
+  @@index([created_at], map: "idx_admin_audit_logs_created_at")
+  @@index([entity_type, entity_id], map: "idx_admin_audit_logs_entity")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model admission_seasons {
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String                  @db.VarChar(150)
+  admission_year      Int
+  status              admission_season_status @default(DRAFT)
+  starts_at           DateTime?               @db.Date
+  ends_at             DateTime?               @db.Date
+  note                String?
+  created_at          DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                @default(now()) @db.Timestamptz(6)
+  school_majors       school_majors[]
+  school_scholarships school_scholarships[]
+
+  @@unique([name, admission_year])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model ai_prompt_templates {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  task_type            ai_task_type
+  name                 String          @db.VarChar(150)
+  version              Int             @default(1)
+  system_prompt        String
+  user_prompt_template String
+  output_schema        Json?
+  is_active            Boolean         @default(true)
+  created_by           String?         @db.Uuid
+  created_at           DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime        @default(now()) @db.Timestamptz(6)
+  users                User?           @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  ai_usage_logs        ai_usage_logs[]
+
+  @@unique([task_type, name, version])
+  @@index([is_active], map: "idx_ai_prompt_templates_is_active")
+  @@index([task_type], map: "idx_ai_prompt_templates_task_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model ai_usage_logs {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String?               @db.Uuid
+  task_type           ai_task_type
+  provider            String                @db.VarChar(80)
+  model               String?               @db.VarChar(120)
+  prompt_template_id  String?               @db.Uuid
+  request_payload     Json?
+  response_payload    Json?
+  input_tokens        Int?
+  output_tokens       Int?
+  total_tokens        Int?
+  cost_usd            Decimal?              @db.Decimal(12, 6)
+  latency_ms          Int?
+  error_message       String?
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  ai_prompt_templates ai_prompt_templates?  @relation(fields: [prompt_template_id], references: [id], onUpdate: NoAction)
+  users               User?                 @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+  interview_reports   interview_reports[]
+  study_plan_analyses study_plan_analyses[]
+
+  @@index([created_at], map: "idx_ai_usage_logs_created_at")
+  @@index([task_type], map: "idx_ai_usage_logs_task_type")
+  @@index([user_id], map: "idx_ai_usage_logs_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model interview_reports {
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id           String           @unique @db.Uuid
+  user_id              String           @db.Uuid
+  overall_score        Decimal?         @db.Decimal(5, 2)
+  summary              String?
+  repeated_mistakes    String?
+  recommended_practice String?
+  language_feedback    String?
+  logic_feedback       String?
+  next_steps           String?
+  ai_usage_log_id      String?          @db.Uuid
+  created_at           DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime         @default(now()) @db.Timestamptz(6)
+  ai_usage_logs        ai_usage_logs?   @relation(fields: [ai_usage_log_id], references: [id], onUpdate: NoAction)
+  interview_sessions   InterviewSession @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                User             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_interview_reports_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model payments {
+  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                 String              @db.Uuid
+  subscription_id         String?             @db.Uuid
+  amount                  Decimal             @db.Decimal(12, 2)
+  currency                String              @default("VND") @db.VarChar(10)
+  status                  payment_status      @default(PENDING)
+  provider                String?             @db.VarChar(80)
+  provider_transaction_id String?             @db.VarChar(255)
+  note                    String?
+  paid_at                 DateTime?           @db.Timestamptz(6)
+  created_at              DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime            @default(now()) @db.Timestamptz(6)
+  user_subscriptions      user_subscriptions? @relation(fields: [subscription_id], references: [id], onUpdate: NoAction)
+  users                   User                @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_payments_created_at")
+  @@index([status], map: "idx_payments_status")
+  @@index([user_id], map: "idx_payments_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model question_audios {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  question_id      String       @db.Uuid
+  language         LanguageCode
+  source           audio_source
+  voice_name       String?      @db.VarChar(120)
+  file_url         String
+  duration_seconds Decimal?     @db.Decimal(10, 2)
+  transcript       String?
+  created_by       String?      @db.Uuid
+  created_at       DateTime     @default(now()) @db.Timestamptz(6)
+  users            User?        @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  questions        Question     @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([language], map: "idx_question_audios_language")
+  @@index([question_id], map: "idx_question_audios_question_id")
+}
+
+model question_tag_links {
+  question_id   String        @db.Uuid
+  tag_id        String        @db.Uuid
+  questions     Question      @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  question_tags question_tags @relation(fields: [tag_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([question_id, tag_id])
+  @@index([tag_id], map: "idx_question_tag_links_tag_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model question_tags {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String               @unique @db.VarChar(100)
+  description        String?
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  question_tag_links question_tag_links[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model school_majors {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  school_id           String             @db.Uuid
+  major_id            String             @db.Uuid
+  admission_season_id String?            @db.Uuid
+  note                String?
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  admission_seasons   admission_seasons? @relation(fields: [admission_season_id], references: [id], onUpdate: NoAction)
+  majors              Major              @relation(fields: [major_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  schools             School             @relation(fields: [school_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([school_id, major_id, admission_season_id])
+  @@index([major_id], map: "idx_school_majors_major_id")
+  @@index([school_id], map: "idx_school_majors_school_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model school_scholarships {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  school_id           String             @db.Uuid
+  scholarship_id      String             @db.Uuid
+  admission_season_id String?            @db.Uuid
+  note                String?
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  admission_seasons   admission_seasons? @relation(fields: [admission_season_id], references: [id], onUpdate: NoAction)
+  scholarships        Scholarship        @relation(fields: [scholarship_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  schools             School             @relation(fields: [school_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([school_id, scholarship_id, admission_season_id])
+  @@index([scholarship_id], map: "idx_school_scholarships_scholarship_id")
+  @@index([school_id], map: "idx_school_scholarships_school_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model study_plan_analyses {
+  id                     String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String         @db.Uuid
+  profile_id             String         @db.Uuid
+  ai_usage_log_id        String?        @db.Uuid
+  strengths              String?
+  weaknesses             String?
+  missing_points         String?
+  suggested_improvements String?
+  generated_questions    Json?
+  created_at             DateTime       @default(now()) @db.Timestamptz(6)
+  ai_usage_logs          ai_usage_logs? @relation(fields: [ai_usage_log_id], references: [id], onUpdate: NoAction)
+  user_profiles          UserProfile    @relation(fields: [profile_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                  User           @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([profile_id], map: "idx_study_plan_analyses_profile_id")
+  @@index([user_id], map: "idx_study_plan_analyses_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model system_settings {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  setting_key   String   @unique @db.VarChar(150)
+  setting_value Json
+  description   String?
+  updated_by    String?  @db.Uuid
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+  users         User?    @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model uploaded_files {
+  id                                           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_user_id                                String?            @db.Uuid
+  uploader_user_id                             String?            @db.Uuid
+  file_name                                    String             @db.VarChar(255)
+  file_url                                     String
+  mime_type                                    String?            @db.VarChar(150)
+  file_size_bytes                              BigInt?
+  storage_provider                             String             @default("LOCAL") @db.VarChar(80)
+  metadata                                     Json?
+  created_at                                   DateTime           @default(now()) @db.Timestamptz(6)
+  users_uploaded_files_owner_user_idTousers    User?              @relation("uploaded_files_owner_user_idTousers", fields: [owner_user_id], references: [id], onUpdate: NoAction)
+  users_uploaded_files_uploader_user_idTousers User?              @relation("uploaded_files_uploader_user_idTousers", fields: [uploader_user_id], references: [id], onUpdate: NoAction)
+  voice_recordings                             voice_recordings[]
+
+  @@index([created_at], map: "idx_uploaded_files_created_at")
+  @@index([owner_user_id], map: "idx_uploaded_files_owner_user_id")
+  @@index([uploader_user_id], map: "idx_uploaded_files_uploader_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model user_activity_logs {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String?  @db.Uuid
+  action     String   @db.VarChar(120)
+  metadata   Json?
+  ip_address String?  @db.Inet
+  user_agent String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  users      User?    @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([action], map: "idx_user_activity_logs_action")
+  @@index([created_at], map: "idx_user_activity_logs_created_at")
+  @@index([user_id], map: "idx_user_activity_logs_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model user_subscriptions {
+  id                          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                     String            @db.Uuid
+  plan                        subscription_plan @default(FREE)
+  interview_limit_per_month   Int               @default(3)
+  ai_question_limit_per_month Int               @default(20)
+  starts_at                   DateTime          @default(now()) @db.Timestamptz(6)
+  ends_at                     DateTime?         @db.Timestamptz(6)
+  is_active                   Boolean           @default(true)
+  created_at                  DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime          @default(now()) @db.Timestamptz(6)
+  payments                    payments[]
+  users                       User              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([is_active], map: "idx_user_subscriptions_is_active")
+  @@index([plan], map: "idx_user_subscriptions_plan")
+  @@index([user_id], map: "idx_user_subscriptions_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model voice_recordings {
+  id                     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String            @db.Uuid
+  session_id             String?           @db.Uuid
+  answer_id              String?           @db.Uuid
+  source                 audio_source      @default(USER_RECORDING)
+  language               LanguageCode      @default(ZH)
+  file_id                String?           @db.Uuid
+  transcript             String?
+  pronunciation_score    Decimal?          @db.Decimal(5, 2)
+  fluency_score          Decimal?          @db.Decimal(5, 2)
+  speed_words_per_minute Decimal?          @db.Decimal(8, 2)
+  feedback               String?
+  created_at             DateTime          @default(now()) @db.Timestamptz(6)
+  interview_answers      InterviewAnswer?  @relation(fields: [answer_id], references: [id], onUpdate: NoAction)
+  uploaded_files         uploaded_files?   @relation(fields: [file_id], references: [id], onUpdate: NoAction)
+  interview_sessions     InterviewSession? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                  User              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([answer_id], map: "idx_voice_recordings_answer_id")
+  @@index([session_id], map: "idx_voice_recordings_session_id")
+  @@index([user_id], map: "idx_voice_recordings_user_id")
+}
+
+model gamification_badges {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code              String        @unique @db.VarChar(80)
+  label             String        @db.VarChar(150)
+  description       String
+  icon              String        @default("*") @db.VarChar(16)
+  requirement_type  String        @db.VarChar(80)
+  requirement_value Int
+  created_at        DateTime      @default(now()) @db.Timestamptz(6)
+  user_badges       user_badges[]
+}
+
+model user_badges {
+  user_id             String              @db.Uuid
+  badge_id            String              @db.Uuid
+  earned_at           DateTime            @default(now()) @db.Timestamptz(6)
+  metadata            Json?
+  gamification_badges gamification_badges @relation(fields: [badge_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users               User                @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([user_id, badge_id])
+  @@index([earned_at], map: "idx_user_badges_earned_at")
+  @@index([user_id], map: "idx_user_badges_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_preferences {
+  user_id                       String       @id @db.Uuid
+  onboarding_completed          Boolean      @default(false)
+  preferred_language            LanguageCode @default(VI)
+  weekly_goal_target            Int          @default(3)
+  browser_notifications_enabled Boolean      @default(false)
+  theme                         String       @default("system") @db.VarChar(20)
+  created_at                    DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime     @default(now()) @db.Timestamptz(6)
+  users                         User         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_weekly_goals {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String   @db.Uuid
+  week_start         DateTime @db.Date
+  target_sessions    Int      @default(3)
+  completed_sessions Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime @default(now()) @db.Timestamptz(6)
+  users              User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, week_start])
+  @@index([user_id], map: "idx_user_weekly_goals_user_id")
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+
+  @@map("user_role")
+}
+
+enum DegreeLevel {
+  BACHELOR
+  MASTER
+
+  @@map("degree_level")
+}
+
+enum InterviewStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  PAUSED
+
+  @@map("interview_status")
+}
+
+enum QuestionCategory {
+  PERSONAL
+  ACADEMIC
+  STUDY_PLAN
+  SCHOLARSHIP
+  CAREER_PLAN
+  LANGUAGE
+  SITUATION
+  RESEARCH
+  SCHOOL_MAJOR
+  OTHER
+
+  @@map("question_category")
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+
+  @@map("difficulty_level")
+}
+
+enum LanguageCode {
+  VI
+  ZH
+  EN
+
+  @@map("language_code")
+}
+
+enum InterviewMode {
+  PRACTICE
+  MOCK_TEST
+  SCORING
+
+  @@map("interview_mode")
+}
+
+enum QuestionSource {
+  ADMIN_BANK
+  AI_GENERATED
+
+  @@map("question_source")
+}
+
+enum admission_season_status {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ai_task_type {
+  GENERATE_QUESTIONS
+  ANALYZE_STUDY_PLAN
+  EXPLAIN_QUESTION
+  SCORE_ANSWER
+  GENERATE_REPORT
+  IMPROVE_ANSWER
+}
+
+enum audio_source {
+  AI_TTS
+  HUMAN_RECORDED
+  USER_RECORDING
+}
+
+enum payment_status {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum subscription_plan {
+  FREE
+  STANDARD
+  PREMIUM
+  CENTER
+}

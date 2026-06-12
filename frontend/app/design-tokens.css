@@ -1,0 +1,63 @@
+:root {
+  --color-education-50: #eff6ff;
+  --color-education-100: #dbeafe;
+  --color-education-600: #2563eb;
+  --color-education-700: #1d4ed8;
+  --color-scholarship-50: #fffbeb;
+  --color-scholarship-500: #f59e0b;
+  --color-success-50: #ecfdf5;
+  --color-success-500: #10b981;
+  --color-danger-50: #fef2f2;
+  --color-danger-500: #ef4444;
+  --radius-ui: 8px;
+  --shadow-ui: 0 14px 40px rgba(15, 23, 42, 0.08);
+}
+
+.dark {
+  --shadow-ui: 0 18px 52px rgba(0, 0, 0, 0.28);
+}
+
+.type-display {
+  font-size: 2.25rem;
+  line-height: 1.08;
+  font-weight: 900;
+}
+
+.type-title {
+  font-size: 1.5rem;
+  line-height: 1.18;
+  font-weight: 900;
+}
+
+.type-section {
+  font-size: 1.125rem;
+  line-height: 1.25;
+  font-weight: 900;
+}
+
+.type-body {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.type-caption {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.page-band {
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.08), transparent 34rem),
+    hsl(var(--background));
+}
+
+.focus-ring {
+  outline: none;
+}
+
+.focus-ring:focus-visible {
+  outline: 3px solid hsl(var(--accent));
+  outline-offset: 3px;
+}

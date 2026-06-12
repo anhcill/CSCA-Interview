@@ -1,0 +1,21 @@
+{
+  "name": "ai-phongvan-monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build",
+    "lint": "npm --prefix frontend run lint && npm --prefix backend run lint"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express-rate-limit": "^8.5.2",
+    "lucide-react": "^1.17.0",
+    "recharts": "^3.8.1"
+  }
+}
