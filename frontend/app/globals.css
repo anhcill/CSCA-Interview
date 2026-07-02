@@ -232,6 +232,24 @@ textarea:focus-visible {
   color: rgb(71 85 105) !important;
 }
 
+:root:not(.dark) .admin-theme :is(input, select, textarea) {
+  border-color: rgb(203 213 225) !important;
+  background-color: rgb(255 255 255) !important;
+  color: rgb(15 23 42) !important;
+}
+
+:root:not(.dark) .admin-theme :is(input, select, textarea)::placeholder {
+  color: rgb(100 116 139) !important;
+}
+
+:root:not(.dark) .admin-theme :is(tbody, td, th, label, p, h1, h2, h3, span) {
+  color: inherit;
+}
+
+:root:not(.dark) .admin-theme :is(td, th) {
+  color: rgb(15 23 42);
+}
+
 :root:not(.dark) .admin-theme :is(.text-red-300, .text-red-200) {
   color: rgb(220 38 38) !important;
 }
@@ -245,6 +263,10 @@ textarea:focus-visible {
 }
 
 :root:not(.dark) .admin-theme :is(.bg-red-600, .bg-red-700, .bg-indigo-600, .bg-indigo-700, .bg-sky-700, .bg-sky-800).text-white {
+  color: white !important;
+}
+
+:root:not(.dark) .admin-theme :is(button.bg-red-600, button.bg-red-700, button.bg-indigo-600, button.bg-indigo-700, button.bg-sky-700, button.bg-sky-800, a.bg-red-600, a.bg-red-700, a.bg-indigo-600, a.bg-indigo-700, a.bg-sky-700, a.bg-sky-800) :is(span, svg) {
   color: white !important;
 }
 
@@ -284,6 +306,14 @@ textarea:focus-visible {
 
 .dark .admin-theme :is(input, select, textarea)::placeholder {
   color: rgb(148 163 184);
+}
+
+.dark .admin-theme :is(td, th, label, h1, h2, h3) {
+  color: rgb(226 232 240);
+}
+
+.dark .admin-theme :is(td, th) {
+  border-color: rgb(51 65 85);
 }
 
 .dark .admin-theme :is(.hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, tr.hover\:bg-slate-50:hover) {

@@ -70,14 +70,14 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 text-foreground backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/dashboard" className="focus-ring flex min-w-0 items-center gap-3 rounded-lg" aria-label={t.app.name}>
+        <Link href="/dashboard" className="focus-ring flex min-w-0 max-w-[11rem] items-center gap-3 rounded-lg sm:max-w-[12rem] lg:max-w-none" aria-label={t.app.name}>
           <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(184,29,36,0.22)]">
             <GraduationCap size={21} />
             <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-background bg-accent" />
           </span>
-          <span className="hidden min-w-0 sm:block">
-            <span className="block text-sm font-black leading-4 text-primary">{t.app.name}</span>
-            <span className="block text-xs font-bold text-muted-foreground">China interview studio</span>
+          <span className="hidden min-w-0 overflow-hidden sm:block">
+            <span className="block truncate whitespace-nowrap text-sm font-black leading-4 text-primary">{t.app.name}</span>
+            <span className="block truncate whitespace-nowrap text-xs font-bold text-muted-foreground">China interview studio</span>
           </span>
         </Link>
 
