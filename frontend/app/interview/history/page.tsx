@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Clock, GraduationCap, Plus, School, Trash2, type LucideIcon } from "lucide-react";
+// @ts-expect-error - Framer Motion v12 type resolution workaround
 import { AnimatePresence, motion } from "motion/react";
 import { apiDelete, apiGet } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
