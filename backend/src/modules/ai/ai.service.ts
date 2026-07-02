@@ -14,6 +14,16 @@ const openai = env.openAiApiKey
 export type InterviewQuestionInput = {
   degreeLevel: string;
   language?: "VI" | "ZH" | "EN";
+  questionBankContext?: Array<{
+    category?: string | null;
+    commonMistakes?: string | null;
+    expectedAnswerLogic?: string | null;
+    keywords?: string | null;
+    questionText: string;
+    sampleAnswer?: string | null;
+    scoringRubric?: unknown;
+  }>;
+  ragContext?: string | null;
   scholarshipType: string;
   studyPlan: string;
   targetMajor: string;
@@ -42,6 +52,7 @@ export type FollowUpInput = {
   conversationHistory: ConversationEntry[];
   difficulty: "EASY" | "MEDIUM" | "HARD";
   language: "VI" | "ZH" | "EN";
+  ragContext?: string | null;
   targetMajor: string;
   targetSchool: string;
   scholarshipType: string;
@@ -50,10 +61,15 @@ export type FollowUpInput = {
 
 export type AiScoreInput = {
   answerText: string;
+  commonMistakes?: string | null;
   expectedAnswerLogic?: string | null;
+  keywords?: string | null;
   language?: "VI" | "ZH" | "EN";
   questionText?: string | null;
+  ragContext?: string | null;
+  sampleAnswer?: string | null;
   scholarshipType?: string | null;
+  scoringRubric?: unknown;
   targetMajor?: string | null;
   targetSchool?: string | null;
   userId?: string | null;
@@ -69,6 +85,7 @@ export function buildSystemPrompt(input: {
   targetMajor: string;
   scholarshipType: string;
   degreeLevel: string;
+  ragContext?: string | null;
 }): string {
   const base = [
     "You are Professor Wang (王教授), a scholarship interview examiner at a top Chinese university.",
@@ -78,6 +95,7 @@ export function buildSystemPrompt(input: {
     "",
     `Context: Candidate applies for ${input.scholarshipType} scholarship.`,
     `School: ${input.targetSchool}, Major: ${input.targetMajor}, Degree: ${input.degreeLevel}.`,
+    input.ragContext ? `Database context:\n${input.ragContext}` : "",
     "",
     "Rules:",
     "- If score < 6.5 on last answer → ask easier, more guiding question.",
@@ -414,6 +432,16 @@ export async function generateInterviewQuestions(
       degreeLevel: input.degreeLevel,
       language,
       languageInstruction: languageInstruction(language),
+      questionBankContext: (input.questionBankContext ?? []).map((question) => ({
+        category: question.category ?? null,
+        commonMistakes: question.commonMistakes?.slice(0, 500) ?? null,
+        expectedAnswerLogic: question.expectedAnswerLogic?.slice(0, 700) ?? null,
+        keywords: question.keywords?.slice(0, 500) ?? null,
+        questionText: question.questionText.slice(0, 500),
+        sampleAnswer: question.sampleAnswer?.slice(0, 900) ?? null,
+        scoringRubric: question.scoringRubric ?? null
+      })),
+      ragContext: input.ragContext?.slice(0, 6000) ?? null,
       scholarshipType,
       studyPlan: input.studyPlan?.slice(0, 1800) ?? "",
       targetMajor,
@@ -594,6 +622,7 @@ export async function generateAdaptiveFollowUpQuestion(input: FollowUpInput & {
     difficulty: input.difficulty,
     followUpDepth,
     languageInstruction: languageInstruction(input.language),
+    ragContext: input.ragContext?.slice(0, 6000) ?? null,
     scholarshipType: input.scholarshipType,
     targetMajor: input.targetMajor,
     targetSchool: input.targetSchool
@@ -940,12 +969,17 @@ export async function scoreInterviewAnswerWithAi(input: AiScoreInput): Promise<D
   const promptTemplate = await resolvePromptTemplate(ai_task_type.SCORE_ANSWER, promptTemplateNames.scoreAnswer);
   const requestPayload = {
     answerText: input.answerText.slice(0, 5000),
+    commonMistakes: input.commonMistakes ?? null,
     expectedAnswerLogic: input.expectedAnswerLogic ?? null,
     fallbackHeuristicScore: fallback,
+    keywords: input.keywords ?? null,
     language,
     languageInstruction: languageInstruction(language),
     questionText: input.questionText ?? null,
+    ragContext: input.ragContext?.slice(0, 6000) ?? null,
+    sampleAnswer: input.sampleAnswer ?? null,
     scholarshipType: input.scholarshipType ?? null,
+    scoringRubric: input.scoringRubric ?? null,
     targetMajor: input.targetMajor ?? null,
     targetSchool: input.targetSchool ?? null
   };
@@ -1178,3 +1212,109 @@ function buildImprovedAnswer(
 
   return parts.join("\n");
 }
+
+export type StudyPlanAnalysisInput = {
+  studyPlan: string;
+  degreeLevel: string;
+  targetSchool: string;
+  targetMajor: string;
+  scholarshipType: string;
+  ragContext?: string | null;
+  userId?: string | null;
+};
+
+export type StudyPlanAnalysisAiResult = {
+  strengths: string[];
+  weaknesses: string[];
+  missingPoints: string[];
+  suggestions: string[];
+  alignmentScore: number;
+  generatedQuestions: string[];
+};
+
+export async function analyzeStudyPlanWithAi(
+  input: StudyPlanAnalysisInput
+): Promise<StudyPlanAnalysisAiResult> {
+  const targetSchool = input.targetSchool || "trường bạn apply";
+  const targetMajor = input.targetMajor || "ngành bạn apply";
+  const scholarshipType = input.scholarshipType || "học bổng mục tiêu";
+  const degreeLevel = input.degreeLevel || "BACHELOR";
+
+  if (openai) {
+    const requestPayload = {
+      studyPlan: input.studyPlan,
+      degreeLevel,
+      targetSchool,
+      targetMajor,
+      scholarshipType,
+      ragContext: input.ragContext?.slice(0, 6000) ?? null
+    };
+
+    const payload = await completeJson<StudyPlanAnalysisAiResult>({
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are Professor Wang (王教授), an expert academic evaluator analyzing a student's Study Plan for scholarship application in China.",
+            `School: ${targetSchool}, Major: ${targetMajor}, Degree: ${degreeLevel}, Scholarship: ${scholarshipType}.`,
+            input.ragContext ? `Database context/requirements:\n${input.ragContext}` : "",
+            "",
+            "Rules:",
+            "- Analyze the study plan's content, logic, and grammar.",
+            "- Determine a quantitative alignment score (0 to 100) based on how well it fits the targeted school/major requirements.",
+            "- Extract strengths (what is good), weaknesses (what is poor), missing points (what is required but omitted), and suggestions (actionable tips for improvement).",
+            "- Generate 3-5 specific, high-fidelity interview questions that a professor might ask based on this study plan.",
+            "- Feedback and output MUST be in Vietnamese.",
+            "- Return strict JSON matching the schema below.",
+            "",
+            "Schema:",
+            "{",
+            '  "strengths": ["điểm mạnh 1", "điểm mạnh 2"],',
+            '  "weaknesses": ["điểm yếu 1", "điểm yếu 2"],',
+            '  "missingPoints": ["điểm thiếu 1", "điểm thiếu 2"],',
+            '  "suggestions": ["gợi ý 1", "gợi ý 2"],',
+            '  "alignmentScore": 85,',
+            '  "generatedQuestions": ["câu hỏi 1", "câu hỏi 2"]',
+            "}"
+          ].join("\n")
+        },
+        {
+          role: "user",
+          content: `Hãy phân tích kế hoạch học tập dưới đây:\n\n${input.studyPlan}`
+        }
+      ],
+      operation: "analyzeStudyPlan",
+      promptTemplateId: null,
+      requestPayload,
+      taskType: ai_task_type.ANALYZE_STUDY_PLAN,
+      temperature: 0.3,
+      userId: input.userId ?? null
+    });
+
+    if (payload) {
+      return {
+        strengths: Array.isArray(payload.strengths) ? payload.strengths.map(String) : [],
+        weaknesses: Array.isArray(payload.weaknesses) ? payload.weaknesses.map(String) : [],
+        missingPoints: Array.isArray(payload.missingPoints) ? payload.missingPoints.map(String) : [],
+        suggestions: Array.isArray(payload.suggestions) ? payload.suggestions.map(String) : [],
+        alignmentScore: typeof payload.alignmentScore === "number" ? Math.min(100, Math.max(0, payload.alignmentScore)) : 70,
+        generatedQuestions: Array.isArray(payload.generatedQuestions) ? payload.generatedQuestions.map(String) : []
+      };
+    }
+  }
+
+  // Fallback
+  return {
+    strengths: ["Kế hoạch học tập có cấu trúc rõ ràng.", "Thể hiện động lực học tập tốt."],
+    weaknesses: ["Các mục tiêu nghiên cứu còn hơi chung chung.", "Chưa nêu rõ vì sao chọn trường này."],
+    missingPoints: ["Thiếu chi tiết về kế hoạch nghiên cứu cụ thể.", "Thiếu thông tin kết nối giữa quá khứ và tương lai."],
+    suggestions: ["Cần mô tả chi tiết hơn về đề tài/hướng nghiên cứu mong muốn.", "Nên tìm hiểu kỹ hơn về thế mạnh giảng dạy của trường apply."],
+    alignmentScore: 70,
+    generatedQuestions: [
+      `Kế hoạch cụ thể của bạn để hoàn thành mục tiêu nghiên cứu tại ${targetSchool} là gì?`,
+      `Tại sao bạn lại chọn ngành ${targetMajor} mà không phải ngành khác?`,
+      `Học bổng ${scholarshipType} sẽ giúp ích gì cho định hướng nghề nghiệp tương lai của bạn?`
+    ]
+  };
+}
+

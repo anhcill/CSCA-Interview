@@ -7,7 +7,9 @@ import {
   ai_task_type
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedRagKnowledge } from "./rag-rich-seed-data.js";
 import { defaultPromptTemplates } from "../src/modules/ai/prompt-templates.js";
+import { passwordHashRounds } from "../src/modules/auth/auth.utils.js";
 
 const prisma = new PrismaClient();
 
@@ -28,8 +30,8 @@ const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "Admin@123456";
 const userPassword = process.env.SEED_USER_PASSWORD ?? "User@123456";
 
 async function main() {
-  const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
-  const userPasswordHash = await bcrypt.hash(userPassword, 12);
+  const adminPasswordHash = await bcrypt.hash(adminPassword, passwordHashRounds);
+  const userPasswordHash = await bcrypt.hash(userPassword, passwordHashRounds);
 
   const admin = await prisma.user.upsert({
     create: {
@@ -173,9 +175,12 @@ async function main() {
     questionCount += 1;
   }
 
+  const ragStats = await seedRagKnowledge(prisma);
+
   console.log(`[seed] admin=${adminEmail} password=${adminPassword}`);
   console.log(`[seed] user=${userEmail} password=${userPassword}`);
   console.log(`[seed] promptTemplates=${defaultPromptTemplates.length} questions=${questionCount}`);
+  console.log(`[seed] ragSchools=${ragStats.schools} ragMajors=${ragStats.majors} ragScholarships=${ragStats.scholarships}`);
 }
 
 async function upsertQuestion(

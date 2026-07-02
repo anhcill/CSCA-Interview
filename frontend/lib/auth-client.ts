@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPost } from "./api";
+import { ApiError, apiGet, apiPost, clearApiCache } from "./api";
 
 export const authSessionChangedEvent = "ai-phongvan-auth-session-changed";
 
@@ -56,6 +56,7 @@ export function clearAuthSession() {
   refreshTimer = null;
   accessToken = null;
   currentUser = null;
+  clearApiCache();
   notifyAuthSessionChanged();
 }
 

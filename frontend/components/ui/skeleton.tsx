@@ -4,7 +4,7 @@ export function Skeleton({ className = "" }: { className?: string }) {
 
 export function ListSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="space-y-3" aria-label="Dang tai du lieu">
+    <div className="space-y-3" aria-label="Đang tải dữ liệu">
       {Array.from({ length: rows }).map((_, index) => (
         <div key={index} className="rounded border bg-white p-4">
           <Skeleton className="h-5 w-3/4" />

@@ -5,6 +5,15 @@ import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 
 const isProduction = process.env.NODE_ENV === "production";
+const configuredPasswordHashRounds = Number(process.env.PASSWORD_HASH_ROUNDS);
+export const passwordHashRounds =
+  Number.isInteger(configuredPasswordHashRounds) &&
+  configuredPasswordHashRounds >= 8 &&
+  configuredPasswordHashRounds <= 14
+    ? configuredPasswordHashRounds
+    : isProduction
+      ? 12
+      : 10;
 export const refreshTokenCookieName = "ai_phongvan_refresh";
 export const refreshTokenTtlMs = 1000 * 60 * 60 * 24 * 30;
 
@@ -72,6 +81,12 @@ export function sanitizeUser(user: AuthUser) {
     role: user.role,
     avatarUrl: user.avatarUrl ?? null
   };
+}
+
+export function passwordHashNeedsRefresh(passwordHash: string) {
+  const match = /^\$2[aby]\$(\d{2})\$/.exec(passwordHash);
+  if (!match) return false;
+  return Number(match[1]) !== passwordHashRounds;
 }
 
 export function getBearerToken(authorization?: string): string | null {

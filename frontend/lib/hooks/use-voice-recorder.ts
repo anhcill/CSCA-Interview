@@ -1,16 +1,23 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { blobToBase64, transcribeAudio } from "../speech-client";
+import { blobToBase64, transcribeAudio, type TranscribeResponse } from "../speech-client";
 
 export type VoiceRecorderState = "idle" | "recording" | "transcribing";
+
+export type VoiceRecorderResult = TranscribeResponse & {
+  audioBase64?: string;
+  mimeType?: string;
+  source: "browser" | "server";
+};
 
 type UseVoiceRecorderOptions = {
   language?: "vi" | "zh" | "en";
   onAutoSubmitCountdown?: (seconds: number | null) => void;
   onError?: (error: string) => void;
   onInterimTranscript?: (text: string) => void;
-  onTranscript?: (text: string) => void;
+  onTranscript?: (text: string, result?: VoiceRecorderResult) => void;
+  onTranscriptionResult?: (result: VoiceRecorderResult) => void;
 };
 
 type SpeechRecognitionEventLike = Event & {
@@ -58,7 +65,7 @@ function toSpeechRecognitionLang(language?: "vi" | "zh" | "en") {
 }
 
 export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
-  const { language, onAutoSubmitCountdown, onError, onInterimTranscript, onTranscript } = options;
+  const { language, onAutoSubmitCountdown, onError, onInterimTranscript, onTranscript, onTranscriptionResult } = options;
   const [state, setState] = useState<VoiceRecorderState>("idle");
   const [transcript, setTranscript] = useState("");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -151,7 +158,11 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     shouldKeepListeningRef.current = true;
     clearFinalizeTimer();
 
-    const SpeechRecognition = getSpeechRecognitionConstructor();
+    const canRecordServerAudio =
+      typeof navigator !== "undefined" &&
+      Boolean(navigator.mediaDevices?.getUserMedia) &&
+      typeof MediaRecorder !== "undefined";
+    const SpeechRecognition = canRecordServerAudio ? null : getSpeechRecognitionConstructor();
     if (SpeechRecognition) {
       const finalizeTranscript = () => {
         const text = recognitionTranscriptRef.current.trim();
@@ -163,7 +174,13 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
         recognitionRef.current = null;
         setState("idle");
         setTranscript(text);
-        onTranscript?.(text);
+        const result: VoiceRecorderResult = {
+          language: language ?? "vi",
+          source: "browser",
+          text
+        };
+        onTranscriptionResult?.(result);
+        onTranscript?.(text, result);
       };
 
       const scheduleFinalize = () => {
@@ -302,9 +319,17 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
 
         try {
           const base64 = await blobToBase64(blob);
-          const result = await transcribeAudio(base64, mimeType.split(";")[0], language);
+          const cleanMimeType = mimeType.split(";")[0] ?? mimeType;
+          const result = await transcribeAudio(base64, cleanMimeType, language);
+          const payload: VoiceRecorderResult = {
+            ...result,
+            audioBase64: base64,
+            mimeType: cleanMimeType,
+            source: "server"
+          };
           setTranscript(result.text);
-          onTranscript?.(result.text);
+          onTranscriptionResult?.(payload);
+          onTranscript?.(result.text, payload);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Lỗi nhận dạng giọng nói";
           onError?.(message);
@@ -322,7 +347,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       onError?.(message);
       setState("idle");
     }
-  }, [cleanupAudioMonitor, clearFinalizeTimer, clearRestartTimer, language, onAutoSubmitCountdown, onError, onInterimTranscript, onTranscript, startSilenceMonitor]);
+  }, [cleanupAudioMonitor, clearFinalizeTimer, clearRestartTimer, language, onAutoSubmitCountdown, onError, onInterimTranscript, onTranscript, onTranscriptionResult, startSilenceMonitor]);
 
   const stopRecording = useCallback(() => {
     shouldKeepListeningRef.current = false;

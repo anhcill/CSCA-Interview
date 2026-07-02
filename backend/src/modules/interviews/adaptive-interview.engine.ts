@@ -1,5 +1,6 @@
 import { DifficultyLevel, LanguageCode, QuestionCategory, QuestionSource, type InterviewAnswer, type InterviewSession, type InterviewSessionQuestion } from "@prisma/client";
 import { generateAdaptiveFollowUpQuestion, generateFollowUpQuestion, type ConversationEntry } from "../ai/ai.service.js";
+import { buildInterviewRagContext } from "./rag-context.service.js";
 
 type SessionWithContext = InterviewSession & {
   answers: InterviewAnswer[];
@@ -70,6 +71,14 @@ export async function createAdaptiveQuestion(session: SessionWithContext): Promi
   const difficulty = pickDifficulty(avgScore);
   const category = pickCategory(lastQuestion?.category, lastAnswer?.answerText ?? "", conversationHistory);
   const askedTexts = new Set(session.sessionQuestions.map((q) => normalize(q.questionText)));
+  const ragContext = await buildInterviewRagContext({
+    majorId: session.majorId,
+    schoolId: session.schoolId,
+    scholarshipId: session.scholarshipId,
+    scholarshipType: session.scholarshipType,
+    targetMajor: session.targetMajor,
+    targetSchool: session.targetSchool
+  });
 
   const followUpInput = {
     answerText: lastAnswer?.answerText ?? "",
@@ -77,6 +86,7 @@ export async function createAdaptiveQuestion(session: SessionWithContext): Promi
     conversationHistory,
     difficulty: difficulty as "EASY" | "MEDIUM" | "HARD",
     language: session.language as "VI" | "ZH" | "EN",
+    ragContext: ragContext.contextText,
     scholarshipType: session.scholarshipType ?? "học bổng mục tiêu",
     targetMajor: session.targetMajor ?? "ngành bạn apply",
     targetSchool: session.targetSchool ?? "trường bạn apply",

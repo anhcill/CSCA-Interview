@@ -1,12 +1,17 @@
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import helmet from "helmet";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import rateLimit from "express-rate-limit";
-import { WebSocketServer } from "ws";
-import { createBrotliCompress, createGzip } from "zlib";
-import { getCachedJson, getCacheStatus, setCachedJson } from "./cache/cache.service.js";
+import { WebSocketServer, type WebSocket } from "ws";
+import { errorHandler } from "./middleware/error-handler.js";
+import { requestIdMiddleware } from "./middleware/request-id.js";
+import { uploadSecurityMiddleware } from "./middleware/upload-security.js";
+import { logger } from "./config/logger.js";
+import { clearMemoryCache, getCachedJson, getCacheStatus, setCachedJson } from "./cache/cache.service.js";
 import { prisma } from "./db/prisma.js";
 import { env } from "./config/env.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
@@ -19,6 +24,8 @@ import { scholarshipsRouter } from "./modules/scholarships/scholarships.routes.j
 import { schoolsRouter } from "./modules/schools/schools.routes.js";
 import { speechRouter } from "./modules/speech/speech.routes.js";
 import { gamificationRouter } from "./modules/gamification/gamification.routes.js";
+import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
+import { wsInterviewHandler } from "./modules/realtime/ws-interview.handler.js";
 
 const app = express();
 
@@ -139,86 +146,30 @@ async function logStartupStatus() {
   const health = await collectHealthStatus();
   const baseUrl = `http://localhost:${env.port}`;
 
-  console.log(`[STARTUP] Service: ${health.service}`);
-  console.log(`[STARTUP] URL: ${baseUrl}`);
-  console.log(`[STARTUP] Health: ${baseUrl}/health`);
-  console.log(`[STATUS] Database: ${health.database.status}`);
-  console.log(`[STATUS] Realtime SSE: ${health.realtime.sse.status} (${health.realtime.sse.endpoint})`);
-  console.log(`[STATUS] WebSocket: ${health.realtime.websocket.status} (${health.realtime.websocket.endpoint})`);
-  console.log(`[STATUS] AI: ${health.ai.status} (${health.ai.mode})`);
-  console.log(`[STATUS] Cache: ${health.cache.status} redis=${health.cache.redis} (${health.cache.entries} memory entries)`);
-  console.log(`[STATUS] Security: helmet/cors/rate-limit/compression enabled`);
-  console.log(`[STATUS] Memory: heap ${health.memory.heapUsedMb}MB, rss ${health.memory.rssMb}MB`);
+  logger.info({ url: baseUrl, health: baseUrl + "/health" }, "Startup: %s", health.service);
+  logger.info({ db: health.database.status, ai: health.ai.mode, cache: health.cache.status, memory: health.memory }, "Status");
 
   if (health.database.status !== "ok") {
-    console.warn("[STATUS] Database check failed. Server running in degraded mode.");
+    logger.warn("Database check failed — degraded mode");
   }
   if (health.ai.status === "fallback") {
-    console.warn("[STATUS] OPENAI_API_KEY missing. Interview text fallback enabled; speech endpoints disabled.");
+    logger.warn("OPENAI_API_KEY missing — fallback mode");
   }
 }
 
 function requestLogger(req: Request, res: Response, next: NextFunction) {
   const startedAt = Date.now();
   res.on("finish", () => {
-    console.log(`[HTTP] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`);
+    logger.info({ method: req.method, url: req.originalUrl, status: res.statusCode, ms: Date.now() - startedAt, reqId: req.requestId }, "HTTP");
   });
   next();
 }
 
-function compressionLike(_req: Request, res: Response, next: NextFunction) {
-  res.setHeader("Vary", "Accept-Encoding");
-  next();
-}
-
-function responseCompression(req: Request, res: Response, next: NextFunction) {
-  const acceptEncoding = String(req.headers["accept-encoding"] ?? "");
-  const wantsBrotli = acceptEncoding.includes("br");
-  const wantsGzip = acceptEncoding.includes("gzip");
-
-  if ((!wantsBrotli && !wantsGzip) || req.method === "HEAD") {
-    next();
-    return;
-  }
-
-  const encoding: "br" | "gzip" = wantsBrotli ? "br" : "gzip";
-
-  const originalWrite = res.write.bind(res);
-  const originalEnd = res.end.bind(res);
-  let compressor: ReturnType<typeof createBrotliCompress> | ReturnType<typeof createGzip> | null = null;
-
-  function startCompression() {
-    if (compressor || res.headersSent) return;
-    const contentType = String(res.getHeader("Content-Type") ?? "");
-    if (contentType.includes("text/event-stream") || res.statusCode < 200 || res.statusCode >= 300) return;
-
-    compressor = encoding === "br" ? createBrotliCompress() : createGzip();
-    res.setHeader("Content-Encoding", encoding);
-    res.removeHeader("Content-Length");
-    compressor.on("data", (chunk) => originalWrite(chunk));
-    compressor.on("end", () => originalEnd());
-  }
-
-  res.write = ((chunk: unknown, encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void), callback?: (error?: Error | null) => void) => {
-    startCompression();
-    if (!compressor) return originalWrite(chunk as never, encodingOrCallback as never, callback as never);
-    return compressor.write(chunk as never, encodingOrCallback as never, callback as never);
-  }) as typeof res.write;
-
-  res.end = ((chunk?: unknown, encodingOrCallback?: BufferEncoding | (() => void), callback?: () => void) => {
-    startCompression();
-    if (!compressor) return originalEnd(chunk as never, encodingOrCallback as never, callback as never);
-    if (chunk) compressor.end(chunk as never, encodingOrCallback as never, callback as never);
-    else compressor.end(callback);
-    return res;
-  }) as typeof res.end;
-
-  next();
-}
 
 function cachePublic(ttlMs: number) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET") return next();
+    if (req.headers.authorization) return next();
     const key = req.originalUrl;
     try {
       const cached = await getCachedJson(key);
@@ -229,14 +180,14 @@ function cachePublic(ttlMs: number) {
         return;
       }
     } catch (error) {
-      console.warn("[CACHE] read failed", error instanceof Error ? error.message : error);
+      logger.warn({ err: error instanceof Error ? error.message : error }, "Cache read failed");
     }
 
     const originalJson = res.json.bind(res);
     res.json = (body: unknown) => {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         void setCachedJson(key, body, ttlMs).catch((error) => {
-          console.warn("[CACHE] write failed", error instanceof Error ? error.message : error);
+          logger.warn({ err: error instanceof Error ? error.message : error }, "Cache write failed");
         });
       }
       res.setHeader("Cache-Control", `public, max-age=${Math.floor(ttlMs / 1000)}, stale-while-revalidate=${Math.floor(ttlMs / 500)}`);
@@ -245,6 +196,49 @@ function cachePublic(ttlMs: number) {
     };
     next();
   };
+}
+
+function cachePrivate(ttlMs: number) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET") return next();
+
+    const authHash = req.headers.authorization
+      ? createHash("sha256").update(req.headers.authorization).digest("hex").slice(0, 18)
+      : "anon";
+    const key = `private:${authHash}:${req.originalUrl}`;
+
+    try {
+      const cached = await getCachedJson(key);
+      if (cached) {
+        res.setHeader("X-Cache", "HIT");
+        res.setHeader("Cache-Control", `private, max-age=${Math.floor(ttlMs / 1000)}, stale-while-revalidate=${Math.floor(ttlMs / 500)}`);
+        res.json(cached);
+        return;
+      }
+    } catch (error) {
+      logger.warn({ err: error instanceof Error ? error.message : error }, "Private cache read failed");
+    }
+
+    const originalJson = res.json.bind(res);
+    res.json = (body: unknown) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        void setCachedJson(key, body, ttlMs).catch((error) => {
+          logger.warn({ err: error instanceof Error ? error.message : error }, "Private cache write failed");
+        });
+      }
+      res.setHeader("Cache-Control", `private, max-age=${Math.floor(ttlMs / 1000)}, stale-while-revalidate=${Math.floor(ttlMs / 500)}`);
+      res.setHeader("X-Cache", "MISS");
+      return originalJson(body);
+    };
+    next();
+  };
+}
+
+function clearCacheOnMutation(req: Request, _res: Response, next: NextFunction) {
+  if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+    clearMemoryCache();
+  }
+  next();
 }
 
 // --- Security ---
@@ -260,12 +254,16 @@ app.use(cors({
     callback(new Error(`CORS origin not allowed: ${origin}`));
   }
 }));
+app.use(requestIdMiddleware);
 app.use(requestLogger);
-app.use(compressionLike);
-app.use(responseCompression);
+app.use(compression({ filter: (req, res) => {
+  if (String(res.getHeader("Content-Type") ?? "").includes("text/event-stream")) return false;
+  return compression.filter(req, res);
+}}) as unknown as RequestHandler);
 app.use(express.json({ limit: "2mb" }));
-app.use(cookieParser());
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use(cookieParser() as unknown as RequestHandler);
+app.use("/uploads", uploadSecurityMiddleware, express.static(path.join(process.cwd(), "uploads")));
+app.use(clearCacheOnMutation);
 
 // Global rate limit: 100 req/min per IP
 const globalLimiter = rateLimit({
@@ -275,7 +273,8 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Quá nhiều yêu cầu, vui lòng thử lại sau." }
 });
-app.use(globalLimiter);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use(globalLimiter as any);
 
 // Auth rate limit: 10 req/min per IP (login/register brute-force protection)
 const authLimiter = rateLimit({
@@ -324,16 +323,22 @@ app.get("/api/realtime/stream", (req, res) => {
 });
 
 // --- Routes ---
-app.use("/api/auth", authLimiter, wrapAsyncRouter(authRouter));
-app.use("/api/admin", wrapAsyncRouter(adminRouter));
-app.use("/api/profiles", wrapAsyncRouter(profilesRouter));
-app.use("/api/questions", wrapAsyncRouter(questionsRouter));
-app.use("/api/schools", cachePublic(5 * 60_000), wrapAsyncRouter(schoolsRouter));
-app.use("/api/majors", cachePublic(5 * 60_000), wrapAsyncRouter(majorsRouter));
-app.use("/api/scholarships", cachePublic(5 * 60_000), wrapAsyncRouter(scholarshipsRouter));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use("/api/auth", authLimiter as any, cachePrivate(30_000) as any, wrapAsyncRouter(authRouter));
+app.use("/api/admin", cachePrivate(30_000) as any, wrapAsyncRouter(adminRouter));
+app.use("/api/profiles", cachePrivate(30_000) as any, wrapAsyncRouter(profilesRouter));
+app.use("/api/questions", cachePrivate(30_000) as any, wrapAsyncRouter(questionsRouter));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use("/api/schools", cachePublic(5 * 60_000) as any, cachePrivate(30_000) as any, wrapAsyncRouter(schoolsRouter));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use("/api/majors", cachePublic(5 * 60_000) as any, cachePrivate(30_000) as any, wrapAsyncRouter(majorsRouter));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use("/api/scholarships", cachePublic(5 * 60_000) as any, cachePrivate(30_000) as any, wrapAsyncRouter(scholarshipsRouter));
 app.use("/api/gamification", wrapAsyncRouter(gamificationRouter));
-app.use("/api/interviews", wrapAsyncRouter(interviewsRouter));
-app.use("/api/speech", speechLimiter, wrapAsyncRouter(speechRouter));
+app.use("/api/interviews", cachePrivate(30_000) as any, wrapAsyncRouter(interviewsRouter));
+app.use("/api/notifications", wrapAsyncRouter(notificationsRouter));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use("/api/speech", speechLimiter as any, wrapAsyncRouter(speechRouter));
 
 // --- 404 ---
 app.use((_req, res) => {
@@ -341,53 +346,46 @@ app.use((_req, res) => {
 });
 
 // --- Global error handler ---
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("[SERVER ERROR]", err);
-
-  // Don't leak error details in production
-  const isDev = process.env.NODE_ENV !== "production";
-  const errorCode = typeof err === "object" && err !== null && "code" in err ? String(err.code) : null;
-  const statusCode = errorCode === "P1001" ? 503 : 500;
-  res.status(statusCode).json({
-    message: "Lỗi server nội bộ",
-    ...(isDev && { error: err.message })
-  });
-});
+app.use(errorHandler as any);
 
 const server = app.listen(env.port, () => {
   void logStartupStatus();
-  console.log(`Backend đang chạy tại http://localhost:${env.port}`);
+  logger.info("Backend running at http://localhost:%d", env.port);
 });
 
 const wss = new WebSocketServer({ path: "/ws/realtime", server });
 realtimeState.websocketReady = true;
 
-wss.on("connection", (socket) => {
+wss.on("connection", (socket, req) => {
   realtimeState.websocketClients += 1;
-  socket.send(JSON.stringify({
-    event: "status",
-    payload: {
-      service: "ai-phongvan-backend",
-      status: "ok",
-      timestamp: new Date().toISOString()
-    }
-  }));
-
-  socket.on("message", (message) => {
-    socket.send(JSON.stringify({
-      event: "echo",
-      payload: {
-        message: message.toString(),
-        timestamp: new Date().toISOString()
-      }
-    }));
-  });
 
   socket.on("close", () => {
     realtimeState.websocketClients = Math.max(0, realtimeState.websocketClients - 1);
   });
+
+  void wsInterviewHandler(socket, req);
 });
 
 server.on("error", (error) => {
-  console.error("[STARTUP] Server failed", error);
+  logger.fatal({ err: error }, "Server failed to start");
 });
+
+// --- Graceful shutdown ---
+function gracefulShutdown(signal: string) {
+  logger.info("Shutdown: %s received", signal);
+  wss.clients.forEach((ws) => {
+    ws.close(1001, "Server shutting down");
+  });
+  server.close(async () => {
+    logger.info("HTTP server closed");
+    await prisma.$disconnect();
+    logger.info("Database disconnected. Bye.");
+    process.exit(0);
+  });
+  setTimeout(() => {
+    logger.fatal("Forced exit after timeout");
+    process.exit(1);
+  }, 10_000);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

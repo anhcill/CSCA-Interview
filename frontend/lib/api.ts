@@ -1,5 +1,6 @@
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const requestTimeoutMs = 15_000;
+const defaultGetCacheMs = 30_000;
 
 type ApiOptions = {
   cacheMs?: number;
@@ -28,12 +29,30 @@ export function buildApiUrl(path: string, query?: Record<string, string | null |
 }
 const pendingGets = new Map<string, Promise<unknown>>();
 
+export function clearApiCache() {
+  memoryCache.clear();
+  pendingGets.clear();
+}
+
 async function parseApiError(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as { message?: string };
+    const rawData = await response.text();
+    if (!rawData.trim()) return "Máy chủ trả về lỗi không xác định";
+    const data = JSON.parse(rawData) as { message?: string };
     return data.message ?? "Máy chủ trả về lỗi không xác định";
   } catch {
     return "Máy chủ trả về lỗi không xác định";
+  }
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const rawData = await response.text();
+  if (!rawData.trim()) return undefined as T;
+
+  try {
+    return JSON.parse(rawData) as T;
+  } catch {
+    throw new ApiError("Máy chủ trả về dữ liệu không hợp lệ", response.status || 500);
   }
 }
 
@@ -45,7 +64,7 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs
     return await fetch(input, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new ApiError("May chu phan hoi qua lau. Vui long thu lai.", 408);
+      throw new ApiError("Máy chủ phản hồi quá lâu. Vui lòng thử lại.", 408);
     }
 
     throw error;
@@ -55,8 +74,9 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs
 }
 
 export async function apiGet<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const cacheMs = options.cacheMs ?? defaultGetCacheMs;
   const cacheKey = `${path}:${options.token ?? "public"}`;
-  if (options.cacheMs) {
+  if (cacheMs > 0) {
     const cached = memoryCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value as T;
     if (cached) memoryCache.delete(cacheKey);
@@ -74,14 +94,14 @@ export async function apiGet<T>(path: string, options: ApiOptions = {}): Promise
       throw new ApiError(await parseApiError(response), response.status);
     }
 
-    const data = (await response.json()) as T;
-    if (options.cacheMs) memoryCache.set(cacheKey, { expiresAt: Date.now() + options.cacheMs, value: data });
+    const data = await parseJsonResponse<T>(response);
+    if (cacheMs > 0) memoryCache.set(cacheKey, { expiresAt: Date.now() + cacheMs, value: data });
     return data;
   }).finally(() => {
     pendingGets.delete(cacheKey);
   });
 
-  if (options.cacheMs) pendingGets.set(cacheKey, request);
+  if (cacheMs > 0) pendingGets.set(cacheKey, request);
   return request;
 }
 
@@ -270,7 +290,9 @@ export async function apiDelete<T>(
     throw new ApiError(await parseApiError(response), response.status);
   }
 
-  return response.json() as Promise<T>;
+  const data = await parseJsonResponse<T>(response);
+  clearApiCache();
+  return data;
 }
 
 export async function apiPost<T>(
@@ -292,7 +314,9 @@ export async function apiPost<T>(
     throw new ApiError(await parseApiError(response), response.status);
   }
 
-  return response.json() as Promise<T>;
+  const data = await parseJsonResponse<T>(response);
+  clearApiCache();
+  return data;
 }
 
 export async function apiPut<T>(
@@ -314,5 +338,7 @@ export async function apiPut<T>(
     throw new ApiError(await parseApiError(response), response.status);
   }
 
-  return response.json() as Promise<T>;
+  const data = await parseJsonResponse<T>(response);
+  clearApiCache();
+  return data;
 }

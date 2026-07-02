@@ -13,6 +13,7 @@ import { prisma } from "../../db/prisma.js";
 import { generateInterviewQuestions } from "../ai/ai.service.js";
 import { buildSessionAnalysis } from "./detailed-scoring.service.js";
 import { awardBadgesForUser } from "../gamification/gamification.service.js";
+import { normalizeSearchText, rankSearchCandidate } from "../../utils/search-normalize.js";
 
 // ── Constants ──────────────────────────────────────────────────────────
 export const maxSessionQuestions = 10;
@@ -175,7 +176,11 @@ export function delay(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-export async function checkAiCallBudget(userId: string) {
+export async function checkAiCallBudget(userId: string, requestedCalls = 1) {
+  if (requestedCalls <= 0) {
+    return { ok: true as const };
+  }
+
   if (!Number.isFinite(maxAiCallsPerUserPerDay) || maxAiCallsPerUserPerDay <= 0) {
     return { ok: true as const };
   }
@@ -191,7 +196,7 @@ export async function checkAiCallBudget(userId: string) {
     }
   });
 
-  if (used >= maxAiCallsPerUserPerDay) {
+  if (used + requestedCalls > maxAiCallsPerUserPerDay) {
     return {
       ok: false as const,
       message: `Bạn đã đạt giới hạn ${maxAiCallsPerUserPerDay} lượt AI hôm nay. Vui lòng thử lại ngày mai.`
@@ -201,21 +206,199 @@ export async function checkAiCallBudget(userId: string) {
   return { ok: true as const };
 }
 
-export async function findBankQuestions(language: LanguageCode, degreeLevel?: DegreeLevel | null) {
+type BankQuestionLookupInput = {
+  degreeLevel?: DegreeLevel | null;
+  language: LanguageCode;
+  majorId?: string | null;
+  schoolId?: string | null;
+  scholarshipId?: string | null;
+  scholarshipType?: string | null;
+  targetMajor?: string | null;
+  targetSchool?: string | null;
+};
+
+export async function findBankQuestions(input: BankQuestionLookupInput | LanguageCode, degreeLevel?: DegreeLevel | null) {
+  const lookup = typeof input === "string" ? { degreeLevel, language: input } : input;
+  const [school, major, scholarship] = await Promise.all([
+    findSchoolTarget(lookup.schoolId, lookup.targetSchool),
+    findMajorTarget(lookup.majorId, lookup.targetMajor),
+    findScholarshipTarget(lookup.scholarshipId, lookup.scholarshipType)
+  ]);
   const where: Prisma.QuestionWhereInput = {
     deletedAt: null,
     isActive: true,
-    language
+    language: lookup.language
   };
 
-  if (degreeLevel) {
-    where.OR = [{ degreeLevel }, { degreeLevel: null }];
+  if (lookup.degreeLevel) {
+    where.OR = [{ degreeLevel: lookup.degreeLevel }, { degreeLevel: null }];
   }
 
-  return prisma.question.findMany({
+  where.AND = [
+    scopeQuestionField("schoolId", school?.id ?? null),
+    scopeQuestionField("majorId", major?.id ?? null),
+    scopeQuestionField("scholarshipId", scholarship?.id ?? null)
+  ];
+
+  const questions = await prisma.question.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    take: 7
+    take: 50
+  });
+
+  return questions
+    .sort((left, right) => questionTargetScore(right, { majorId: major?.id, scholarshipId: scholarship?.id, schoolId: school?.id })
+      - questionTargetScore(left, { majorId: major?.id, scholarshipId: scholarship?.id, schoolId: school?.id }))
+    .slice(0, 7);
+}
+
+function scopeQuestionField(field: "majorId" | "scholarshipId" | "schoolId", id: string | null): Prisma.QuestionWhereInput {
+  return id
+    ? { OR: [{ [field]: null }, { [field]: id }] }
+    : { [field]: null };
+}
+
+function questionTargetScore(
+  question: { majorId: string | null; scholarshipId: string | null; schoolId: string | null },
+  target: { majorId?: string; scholarshipId?: string; schoolId?: string }
+) {
+  let score = 0;
+  if (target.schoolId && question.schoolId === target.schoolId) score += 5;
+  if (target.majorId && question.majorId === target.majorId) score += 3;
+  if (target.scholarshipId && question.scholarshipId === target.scholarshipId) score += 2;
+  return score;
+}
+
+function cleanTargetName(value?: string | null) {
+  const cleaned = value?.trim();
+  const normalized = normalizeSearchText(cleaned ?? "");
+  if (!cleaned || ["truong ban apply", "nganh ban apply", "hoc bong muc tieu"].includes(normalized)) return null;
+  return cleaned;
+}
+
+function cleanTargetId(value?: string | null) {
+  const cleaned = value?.trim();
+  return cleaned && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cleaned)
+    ? cleaned
+    : null;
+}
+
+async function findSchoolTarget(id?: string | null, name?: string | null) {
+  const targetId = cleanTargetId(id);
+  if (targetId) {
+    const school = await prisma.school.findFirst({
+      where: { id: targetId, isActive: true },
+      select: { id: true }
+    });
+    if (school) return school;
+  }
+
+  const target = cleanTargetName(name);
+  if (!target) return null;
+
+  const exact = await prisma.school.findFirst({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { equals: target, mode: "insensitive" } },
+        { nameEn: { equals: target, mode: "insensitive" } },
+        { nameZh: { equals: target, mode: "insensitive" } }
+      ]
+    },
+    select: { city: true, id: true, name: true, nameEn: true, nameZh: true, province: true }
+  });
+
+  if (exact) return { id: exact.id };
+
+  const candidates = await prisma.school.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    select: { city: true, id: true, name: true, nameEn: true, nameZh: true, province: true },
+    take: 2000
+  });
+  const best = candidates
+    .map((school) => ({
+      id: school.id,
+      rank: rankSearchCandidate(target, [school.name, school.nameEn, school.nameZh, school.city, school.province])
+    }))
+    .filter((school) => school.rank > 0)
+    .sort((left, right) => right.rank - left.rank)[0];
+
+  return best ? { id: best.id } : null;
+}
+
+async function findMajorTarget(id?: string | null, name?: string | null) {
+  const targetId = cleanTargetId(id);
+  if (targetId) {
+    const major = await prisma.major.findFirst({
+      where: { id: targetId, isActive: true },
+      select: { id: true }
+    });
+    if (major) return major;
+  }
+
+  const target = cleanTargetName(name);
+  if (!target) return null;
+
+  return prisma.major.findFirst({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { equals: target, mode: "insensitive" } },
+        { nameEn: { equals: target, mode: "insensitive" } },
+        { nameZh: { equals: target, mode: "insensitive" } }
+      ]
+    },
+    select: { id: true }
+  });
+}
+
+async function findScholarshipTarget(id?: string | null, name?: string | null) {
+  const targetId = cleanTargetId(id);
+  if (targetId) {
+    const scholarship = await prisma.scholarship.findFirst({
+      where: { id: targetId, isActive: true },
+      select: { id: true }
+    });
+    if (scholarship) return scholarship;
+  }
+
+  const target = cleanTargetName(name);
+  if (!target) return null;
+
+  return prisma.scholarship.findFirst({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { equals: target, mode: "insensitive" } },
+        { code: { equals: target, mode: "insensitive" } }
+      ]
+    },
+    select: { id: true }
+  });
+}
+
+export async function getUserInterviewSessionsList(userId: string, limit = 10, skip = 0) {
+  return prisma.interviewSession.findMany({
+    where: { userId },
+    take: limit,
+    skip,
+    select: {
+      answeredQuestions: true,
+      createdAt: true,
+      endedAt: true,
+      id: true,
+      language: true,
+      mode: true,
+      plannedDurationMinutes: true,
+      startedAt: true,
+      status: true,
+      targetMajor: true,
+      targetSchool: true,
+      totalQuestions: true,
+      totalScore: true
+    },
+    orderBy: { createdAt: "desc" }
   });
 }
 

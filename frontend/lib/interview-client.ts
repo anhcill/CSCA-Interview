@@ -1,5 +1,6 @@
 import { createAuthorizedJsonEventStream, apiGet, apiPost } from "./api";
 import { getAuthToken } from "./auth-client";
+import type { PronunciationResult, SpeechMetrics } from "./speech-client";
 
 export type InterviewQuestionDto = {
   aiReason?: string | null;
@@ -33,7 +34,19 @@ export type InterviewAnswerDto = {
   scoreTotal: string | null;
   sessionQuestionId: string;
   strengths?: string | null;
+  voiceRecording?: VoiceRecordingDto | null;
   weaknesses?: string | null;
+};
+
+export type VoiceRecordingDto = {
+  createdAt: string;
+  feedback: unknown;
+  fluencyScore: string | null;
+  id: string;
+  language: "VI" | "ZH" | "EN";
+  pronunciationScore: string | null;
+  speedWordsPerMinute: string | null;
+  transcript: string | null;
 };
 
 export type AnswerDetailedAnalysisDto = {
@@ -55,6 +68,15 @@ export type AnswerDetailedAnalysisDto = {
   feedback: string;
   improvedAnswer: string;
   academicKeywords: string[];
+  speech?: {
+    confidenceScore: number | null;
+    fillerWordTotal: number | null;
+    fluencyScore: number | null;
+    pauseCount: number | null;
+    pronunciationScore: number | null;
+    tips: string[];
+    wpm: number | null;
+  } | null;
   sampleComparison: {
     coveragePercent: number;
     matchedKeywords: string[];
@@ -76,6 +98,7 @@ export type InterviewAnalysisDto = {
   improvementTips: string[];
   overallScore: number;
   progressHint: string;
+  speechSummary?: string | null;
   sessionSummary: string;
   strengths: string[];
   weaknesses: string[];
@@ -99,8 +122,14 @@ export type InterviewSessionDto = {
   degreeLevel: "BACHELOR" | "MASTER" | null;
   id: string;
   language: "VI" | "ZH" | "EN";
+  majorId: string | null;
   mode: "PRACTICE" | "MOCK_TEST" | "SCORING";
+  plannedDurationMinutes: number | null;
   questions: InterviewQuestionDto[];
+  schoolId: string | null;
+  scholarshipId: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
   status: "DRAFT" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "CANCELLED";
   targetMajor: string | null;
   targetSchool: string | null;
@@ -119,6 +148,7 @@ export type SubmitInterviewAnswerResponse = {
     improvedAnswer: string | null;
     scoreTotal: string | null;
     sessionQuestionId: string;
+    voiceRecording?: VoiceRecordingDto | null;
   };
   session: {
     answeredQuestions: number;
@@ -148,7 +178,11 @@ export async function createInterviewSession(input: {
   degreeLevel?: "BACHELOR" | "MASTER";
   fullName?: string;
   language?: "VI" | "ZH" | "EN";
+  majorId?: string | null;
   mode?: "PRACTICE" | "MOCK_TEST" | "SCORING";
+  plannedDurationMinutes?: number;
+  schoolId?: string | null;
+  scholarshipId?: string | null;
   scholarshipType?: string;
   studyPlan?: string;
   targetMajor?: string;
@@ -161,7 +195,11 @@ export async function createInterviewSession(input: {
       degreeLevel: input.degreeLevel,
       fullName: input.fullName,
       language: input.language ?? "ZH",
+      majorId: input.majorId,
       mode: input.mode ?? "PRACTICE",
+      plannedDurationMinutes: input.plannedDurationMinutes,
+      schoolId: input.schoolId,
+      scholarshipId: input.scholarshipId,
       scholarshipType: input.scholarshipType,
       studyPlan: input.studyPlan,
       targetMajor: input.targetMajor,
@@ -185,14 +223,26 @@ export async function fetchInterviewAnalysis(sessionId: string) {
 
 export async function submitInterviewAnswer(input: {
   answerText: string;
+  pronunciation?: PronunciationResult | null;
   sessionId: string;
   sessionQuestionId: string;
+  speechDurationSec?: number | null;
+  speechLanguage?: string | null;
+  speechMetrics?: SpeechMetrics | null;
+  speechMimeType?: string | null;
+  speechTranscript?: string | null;
 }) {
   return apiPost<SubmitInterviewAnswerResponse>(
     `/api/interviews/${input.sessionId}/answers`,
     {
       answerText: input.answerText,
-      sessionQuestionId: input.sessionQuestionId
+      pronunciation: input.pronunciation,
+      sessionQuestionId: input.sessionQuestionId,
+      speechDurationSec: input.speechDurationSec,
+      speechLanguage: input.speechLanguage,
+      speechMetrics: input.speechMetrics,
+      speechMimeType: input.speechMimeType,
+      speechTranscript: input.speechTranscript
     },
     { token: getRequiredToken() }
   );

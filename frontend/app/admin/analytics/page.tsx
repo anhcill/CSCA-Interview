@@ -21,6 +21,8 @@ type AdminStats = {
   activeUsers: number;
   adminUsers: number;
   aiCallsToday: number;
+  aiCostUsd: number;
+  aiTokens: number;
   avgScore: number;
   completedSessions: number;
   inactiveUsers: number;
@@ -34,31 +36,38 @@ export default function AdminAnalyticsPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const token = getAuthToken();
 
   const loadStats = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await apiGet<AdminStats>("/api/admin/stats", { token });
+      const query = new URLSearchParams();
+      if (from) query.set("from", from);
+      if (to) query.set("to", to);
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      const response = await apiGet<AdminStats>(`/api/admin/stats${suffix}`, { token });
       setStats(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Khong the tai analytics");
+      setError(err instanceof Error ? err.message : "Không thể tải analytics");
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [from, to, token]);
 
   useEffect(() => {
     void loadStats();
   }, [loadStats]);
 
   const cards = stats ? [
-    { icon: User, label: "Tong user", value: stats.totalUsers, detail: `${stats.activeUsers} active, ${stats.inactiveUsers} khoa` },
-    { icon: ClipboardList, label: "Tong session", value: stats.totalSessions, detail: `${stats.completedSessions} da hoan thanh` },
-    { icon: Target, label: "Diem trung binh", value: formatScore(stats.avgScore), detail: "Session completed" },
-    { icon: Brain, label: "Ngan hang cau hoi", value: stats.totalQuestions, detail: `${stats.activeQuestions} dang bat` },
-    { icon: Activity, label: "AI call hom nay", value: stats.aiCallsToday, detail: "Request thanh cong" },
+    { icon: User, label: "Tổng user", value: stats.totalUsers, detail: `${stats.activeUsers} active, ${stats.inactiveUsers} khóa` },
+    { icon: ClipboardList, label: "Tổng session", value: stats.totalSessions, detail: `${stats.completedSessions} đã hoàn thành` },
+    { icon: Target, label: "Điểm trung bình", value: formatScore(stats.avgScore), detail: "Session completed" },
+    { icon: Brain, label: "Ngân hàng câu hỏi", value: stats.totalQuestions, detail: `${stats.activeQuestions} đang bật` },
+    { icon: Activity, label: "AI calls", value: stats.aiCallsToday, detail: "Request thành cong" },
+    { icon: BarChart3, label: "AI tokens", value: stats.aiTokens, detail: `$${stats.aiCostUsd.toFixed(4)}` },
     { icon: BarChart3, label: "Admin accounts", value: stats.adminUsers, detail: "ADMIN va SUPER_ADMIN" }
   ] : [];
 
@@ -68,11 +77,15 @@ export default function AdminAnalyticsPage() {
         <div>
           <Link href="/admin" className="text-sm font-semibold text-indigo-600 hover:underline">&larr; Admin</Link>
           <h1 className="mt-1 text-2xl font-bold">Admin analytics</h1>
-          <p className="mt-1 text-sm text-slate-500">Tong quan user, session, diem va cau hoi yeu.</p>
+          <p className="mt-1 text-sm text-slate-500">Tổng quan user, session, điểm và câu hỏi yếu.</p>
         </div>
-        <button type="button" onClick={() => void loadStats()} disabled={loading} className="rounded-lg border px-4 py-2 text-sm font-bold hover:bg-slate-50 disabled:opacity-50">
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <input className="min-h-10 rounded-lg border px-3 text-sm" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+          <input className="min-h-10 rounded-lg border px-3 text-sm" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+          <button type="button" onClick={() => void loadStats()} disabled={loading} className="rounded-lg border px-4 py-2 text-sm font-bold hover:bg-slate-50 disabled:opacity-50">
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
@@ -104,8 +117,8 @@ export default function AdminAnalyticsPage() {
           <section className="mt-6 rounded-lg border bg-white">
             <div className="flex flex-col justify-between gap-2 border-b bg-slate-50 px-4 py-3 md:flex-row md:items-center">
               <div>
-                <h2 className="text-sm font-bold">Cau hoi yeu</h2>
-                <p className="text-xs text-slate-500">Sap xep theo diem trung binh thap nhat.</p>
+                <h2 className="text-sm font-bold">Câu hỏi yếu</h2>
+                <p className="text-xs text-slate-500">Sắp xếp theo điểm trung bình thấp nhất.</p>
               </div>
             </div>
             {stats.weakQuestions.length ? (
@@ -113,10 +126,10 @@ export default function AdminAnalyticsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                     <tr>
-                      <th className="px-4 py-3">Cau hoi</th>
-                      <th className="px-4 py-3">Danh muc</th>
-                      <th className="px-4 py-3">So lan tra loi</th>
-                      <th className="px-4 py-3">Diem TB</th>
+                      <th className="px-4 py-3">Câu hỏi</th>
+                      <th className="px-4 py-3">Danh mục</th>
+                      <th className="px-4 py-3">Số lần trả lời</th>
+                      <th className="px-4 py-3">Điểm TB</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -133,13 +146,13 @@ export default function AdminAnalyticsPage() {
               </div>
             ) : (
               <div className="p-6">
-                <EmptyState title="Chua co du lieu yeu" description="Can co cau tra loi da cham diem de xep hang cau hoi yeu." />
+                <EmptyState title="Chưa có dữ liệu yếu" description="Cần có câu trả lời đã chấm điểm để xếp hạng câu hỏi yếu." />
               </div>
             )}
           </section>
         </>
       ) : (
-        <EmptyState title="Khong co du lieu" description="Analytics chua tra ve du lieu." />
+        <EmptyState title="Không có dữ liệu" description="Analytics chưa trả về dữ liệu." />
       )}
     </main>
   );

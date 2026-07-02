@@ -1,0 +1,27 @@
+ALTER TABLE schools
+  ADD COLUMN IF NOT EXISTS ranking INTEGER,
+  ADD COLUMN IF NOT EXISTS ranking_type VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS strong_majors TEXT,
+  ADD COLUMN IF NOT EXISTS research_areas TEXT,
+  ADD COLUMN IF NOT EXISTS admission_requirements TEXT,
+  ADD COLUMN IF NOT EXISTS interview_tips TEXT,
+  ADD COLUMN IF NOT EXISTS program_language VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS campus_info TEXT,
+  ADD COLUMN IF NOT EXISTS notable_alumni TEXT,
+  ADD COLUMN IF NOT EXISTS achievements TEXT;
+
+ALTER TABLE majors
+  ADD COLUMN IF NOT EXISTS requirements TEXT,
+  ADD COLUMN IF NOT EXISTS research_areas TEXT,
+  ADD COLUMN IF NOT EXISTS research_labs TEXT,
+  ADD COLUMN IF NOT EXISTS career_outcomes TEXT,
+  ADD COLUMN IF NOT EXISTS interview_focus TEXT;
+
+ALTER TABLE scholarships
+  ADD COLUMN IF NOT EXISTS requirements TEXT,
+  ADD COLUMN IF NOT EXISTS deadline VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS coverage TEXT,
+  ADD COLUMN IF NOT EXISTS study_plan_requirements TEXT,
+  ADD COLUMN IF NOT EXISTS interview_format TEXT,
+  ADD COLUMN IF NOT EXISTS common_interview_questions JSONB,
+  ADD COLUMN IF NOT EXISTS tips TEXT;

@@ -1,0 +1,20 @@
+# Dependencies
+node_modules
+.next
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Dev artifacts
+.git
+.github
+.cursor
+*.md
+*.png
+*.jpg
+lighthouse-*.json

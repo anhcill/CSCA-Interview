@@ -55,6 +55,10 @@ export async function setCachedJson(key: string, payload: unknown, ttlMs: number
   memoryCache.set(key, { expiresAt: Date.now() + ttlMs, payload });
 }
 
+export function clearMemoryCache() {
+  memoryCache.clear();
+}
+
 export function getCacheStatus() {
   return {
     entries: memoryCache.size,

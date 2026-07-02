@@ -39,11 +39,10 @@ export function getWeekStart(date = new Date()) {
 }
 
 export async function ensureUserPreferences(userId: string) {
-  return prisma.user_preferences.upsert({
-    where: { user_id: userId },
-    create: { user_id: userId },
-    update: {}
-  });
+  const existing = await prisma.user_preferences.findUnique({ where: { user_id: userId } });
+  if (existing) return existing;
+
+  return prisma.user_preferences.create({ data: { user_id: userId } });
 }
 
 export async function updateUserPreferences(
@@ -88,20 +87,28 @@ export async function syncWeeklyGoal(
     }
   });
 
-  return prisma.user_weekly_goals.upsert({
-    where: {
-      user_id_week_start: {
+  const existing = await prisma.user_weekly_goals.findUnique({
+    where: { user_id_week_start: { user_id: userId, week_start: weekStart } }
+  });
+
+  if (!existing) {
+    return prisma.user_weekly_goals.create({
+      data: {
+        completed_sessions: completed,
+        target_sessions: preferences.weekly_goal_target,
         user_id: userId,
         week_start: weekStart
       }
-    },
-    create: {
-      completed_sessions: completed,
-      target_sessions: preferences.weekly_goal_target,
-      user_id: userId,
-      week_start: weekStart
-    },
-    update: {
+    });
+  }
+
+  if (existing.completed_sessions === completed && existing.target_sessions === preferences.weekly_goal_target) {
+    return existing;
+  }
+
+  return prisma.user_weekly_goals.update({
+    where: { user_id_week_start: { user_id: userId, week_start: weekStart } },
+    data: {
       completed_sessions: completed,
       target_sessions: preferences.weekly_goal_target
     }
@@ -120,9 +127,18 @@ export async function awardBadgesForUser(userId: string, snapshot?: Gamification
     }))
     .map((badge) => badge.id);
 
-  if (earnedBadgeIds.length) {
+  if (!earnedBadgeIds.length) return;
+
+  const existing = await prisma.user_badges.findMany({
+    select: { badge_id: true },
+    where: { user_id: userId, badge_id: { in: earnedBadgeIds } }
+  });
+  const existingIds = new Set(existing.map((badge) => badge.badge_id));
+  const missingBadgeIds = earnedBadgeIds.filter((badgeId) => !existingIds.has(badgeId));
+
+  if (missingBadgeIds.length) {
     await prisma.user_badges.createMany({
-      data: earnedBadgeIds.map((badgeId) => ({
+      data: missingBadgeIds.map((badgeId) => ({
         badge_id: badgeId,
         metadata: {
           completedSessions: stats.completedSessions,

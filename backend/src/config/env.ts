@@ -49,5 +49,9 @@ export const env = {
   openAiOutputCostPer1M: optionalNumber(process.env.OPENAI_OUTPUT_COST_PER_1M),
   openAiTtsModel: process.env.OPENAI_TTS_MODEL ?? (process.env.OPENAI_BASE_URL?.includes("beeknoee") ? "openai/gpt-4o-mini-tts" : "tts-1"),
   port: Number(process.env.BACKEND_PORT ?? 4000),
-  redisUrl: process.env.REDIS_URL
+  redisUrl: process.env.REDIS_URL,
+  azureSpeechKey: process.env.AZURE_SPEECH_KEY,
+  azureSpeechRegion: process.env.AZURE_SPEECH_REGION ?? "eastasia",
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET
 };

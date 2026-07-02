@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AnswerDetailedAnalysisDto } from "@/lib/interview-client";
+import { activeInterviewSessionStorageKey } from "@/lib/interview-client";
+import { apiPost } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth-client";
+import { Loader2, RefreshCw } from "lucide-react";
 
 function ScoreBadge({ label, score }: { label: string; score: number }) {
   const color =
@@ -20,18 +25,127 @@ function ScoreBadge({ label, score }: { label: string; score: number }) {
 
 export function AnswerFeedbackPanel({
   details,
+  sessionId,
 }: {
   details: AnswerDetailedAnalysisDto[];
+  sessionId: string;
 }) {
+  const router = useRouter();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [selectedQuestions, setSelectedQuestions] = useState<string[]>(() => {
+    // Tự động chọn trước các câu hỏi có điểm số thấp (< 6.5)
+    return details
+      .filter((d) => d.scores.total < 6.5)
+      .map((d) => d.sessionQuestionId);
+  });
+  const [isRePracticing, setIsRePracticing] = useState(false);
 
   if (!details || details.length === 0) return null;
 
+  const toggleSelect = (id: string) => {
+    setSelectedQuestions((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleRePractice = async () => {
+    if (selectedQuestions.length === 0 || !sessionId) return;
+    setIsRePracticing(true);
+    try {
+      const token = getAuthToken();
+      const res = await apiPost<{ session: { id: string } }>(
+        "/api/interviews/re-practice",
+        {
+          sourceSessionId: sessionId,
+          questionIds: selectedQuestions
+        },
+        { token }
+      );
+      if (res?.session?.id) {
+        sessionStorage.setItem(activeInterviewSessionStorageKey, res.session.id);
+        router.push(`/interview?sessionId=${res.session.id}`);
+      }
+    } catch (err) {
+      console.error("Lỗi khởi tạo phiên luyện tập lại:", err);
+      alert("Không thể khởi tạo phiên luyện tập lại. Vui lòng thử lại sau.");
+    } finally {
+      setIsRePracticing(false);
+    }
+  };
+
   return (
-    <div className="space-y-3">
-      <h3 className="text-lg font-semibold text-slate-950 dark:text-white">
+    <div className="space-y-4">
+      {/* Tính năng Luyện tập lại câu hỏi yếu */}
+      <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h4 className="text-sm font-black text-foreground flex items-center gap-2">
+              <span>🎯 Luyện tập có chủ đích</span>
+            </h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Chọn các câu hỏi bạn muốn luyện tập lại để nâng điểm số.
+            </p>
+          </div>
+          <button
+            onClick={handleRePractice}
+            disabled={selectedQuestions.length === 0 || isRePracticing}
+            className="focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-black text-primary-foreground shadow-md hover:bg-primary/95 disabled:opacity-50 transition-all"
+          >
+            {isRePracticing ? (
+              <Loader2 className="animate-spin" size={14} />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+            Luyện lại các câu đã chọn ({selectedQuestions.length})
+          </button>
+        </div>
+
+        {/* Danh sách câu hỏi để tick chọn nhanh */}
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {details.map((d, index) => {
+            const isSelected = selectedQuestions.includes(d.sessionQuestionId);
+            const isWeak = d.scores.total < 6.5;
+            return (
+              <div
+                key={d.sessionQuestionId}
+                onClick={() => toggleSelect(d.sessionQuestionId)}
+                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                  isSelected
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-background hover:bg-muted/50"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => {}} // Đã handle ở thẻ cha
+                  className="mt-1 h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-foreground truncate">
+                    Câu {index + 1}: {d.questionText}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] font-bold text-muted-foreground">
+                      Điểm: {d.scores.total}
+                    </span>
+                    {isWeak && (
+                      <span className="inline-flex rounded-full bg-red-100 dark:bg-red-950/50 px-1.5 py-0.2 text-[8px] font-black text-red-700 dark:text-red-300">
+                        Cần cải thiện
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <h3 className="text-lg font-black text-foreground mt-6">
         📝 Chi tiết từng câu trả lời
       </h3>
+
       {details.map((d, i) => {
         const expanded = expandedIdx === i;
         return (
@@ -78,6 +192,20 @@ export function AnswerFeedbackPanel({
                   <ScoreBadge label="Chuyên ngành" score={d.scores.expertise} />
                   <ScoreBadge label="Ấn tượng" score={d.scores.impression} />
                 </div>
+
+                {d.speech ? (
+                  <div className="rounded-lg border border-cyan-800 bg-cyan-950/30 p-3">
+                    <p className="text-xs font-black uppercase text-cyan-200">Phân tích giọng nói</p>
+                    <div className="mt-2 grid gap-2 text-xs text-cyan-50 sm:grid-cols-3">
+                      {d.speech.fluencyScore !== null ? <span>Trôi chảy: {d.speech.fluencyScore}/100</span> : null}
+                      {d.speech.pronunciationScore !== null ? <span>Phát âm: {d.speech.pronunciationScore}/100</span> : null}
+                      {d.speech.confidenceScore !== null ? <span>Tự tin: {d.speech.confidenceScore}/100</span> : null}
+                      {d.speech.wpm !== null ? <span>Tốc độ: {d.speech.wpm} WPM</span> : null}
+                      {d.speech.pauseCount !== null ? <span>Ngắt nghỉ dài: {d.speech.pauseCount}</span> : null}
+                      {d.speech.fillerWordTotal !== null ? <span>Từ đệm: {d.speech.fillerWordTotal}</span> : null}
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Answer text */}
                 <div>

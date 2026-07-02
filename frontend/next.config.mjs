@@ -8,6 +8,7 @@ const isDev = process.env.NODE_ENV !== "production";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   compress: true,
+  output: "standalone",
   experimental: isDev ? {} : {
     optimizePackageImports: ["framer-motion", "lucide-react", "recharts"]
   },

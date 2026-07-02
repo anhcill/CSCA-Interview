@@ -1,8 +1,8 @@
 "use client";
 
 import { Mail, Phone, User, Send } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { AuthLayout } from "@/components/auth-layout";
 import { PasswordField } from "@/components/password-field";
@@ -15,6 +15,7 @@ const fieldInput =
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -23,6 +24,28 @@ export default function RegisterPage() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const errorQuery = searchParams.get("error");
+    if (errorQuery) {
+      if (errorQuery === "token_exchange_failed") {
+        setError("Không thể trao đổi mã xác thực với Google.");
+      } else if (errorQuery === "user_info_failed") {
+        setError("Không thể lấy thông tin tài khoản từ Google.");
+      } else if (errorQuery === "email_not_provided") {
+        setError("Tài khoản Google của bạn không cung cấp Email.");
+      } else if (errorQuery === "account_disabled") {
+        setError("Tài khoản của bạn đã bị vô hiệu hóa.");
+      } else {
+        setError(`Lỗi đăng ký Google: ${errorQuery}`);
+      }
+    }
+  }, [searchParams]);
+
+  const handleGoogleRegister = () => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4010";
+    window.location.href = `${apiBaseUrl}/api/auth/google`;
+  };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -163,6 +186,7 @@ export default function RegisterPage() {
 
         <button
           type="button"
+          onClick={handleGoogleRegister}
           className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-[15px] font-bold text-slate-700 transition hover:bg-slate-50"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">

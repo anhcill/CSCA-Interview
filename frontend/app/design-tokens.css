@@ -1,16 +1,16 @@
 :root {
-  --color-education-50: #eff6ff;
-  --color-education-100: #dbeafe;
-  --color-education-600: #2563eb;
-  --color-education-700: #1d4ed8;
-  --color-scholarship-50: #fffbeb;
-  --color-scholarship-500: #f59e0b;
+  --color-education-50: #fff5f5;
+  --color-education-100: #ffe3e3;
+  --color-education-600: #b81d24;
+  --color-education-700: #961319;
+  --color-scholarship-50: #fefbeb;
+  --color-scholarship-500: #e5a93b;
   --color-success-50: #ecfdf5;
-  --color-success-500: #10b981;
+  --color-success-500: #2e7d32;
   --color-danger-50: #fef2f2;
-  --color-danger-500: #ef4444;
-  --radius-ui: 8px;
-  --shadow-ui: 0 14px 40px rgba(15, 23, 42, 0.08);
+  --color-danger-500: #d42027;
+  --radius-ui: 10px;
+  --shadow-ui: 0 10px 30px rgba(184, 29, 36, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .dark {
@@ -49,7 +49,8 @@
 
 .page-band {
   background:
-    linear-gradient(180deg, rgba(37, 99, 235, 0.08), transparent 34rem),
+    linear-gradient(180deg, rgba(184, 29, 36, 0.06), transparent 34rem),
+    radial-gradient(circle at top right, rgba(229, 169, 59, 0.12), transparent 22rem),
     hsl(var(--background));
 }
 

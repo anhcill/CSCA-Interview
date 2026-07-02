@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SchoolCombobox } from "@/components/schools/school-combobox";
 import {
   fetchMyProfile,
   updateMyProfile,
@@ -21,7 +22,11 @@ type ProfileFormState = {
   hskLevel: string;
   hskkLevel: string;
   ieltsScore: string;
+  majorId: string;
+  otherLanguages: string;
   researchExperience: string;
+  schoolId: string;
+  scholarshipId: string;
   scholarshipType: string;
   strengths: string;
   studyPlan: string;
@@ -43,7 +48,11 @@ const defaultForm: ProfileFormState = {
   hskLevel: "",
   hskkLevel: "",
   ieltsScore: "",
+  majorId: "",
+  otherLanguages: "",
   researchExperience: "",
+  schoolId: "",
+  scholarshipId: "",
   scholarshipType: "CSC",
   strengths: "",
   studyPlan: "",
@@ -190,7 +199,18 @@ export function ProfileForm() {
                   options={[["BACHELOR", "Đại học"], ["MASTER", "Thạc sĩ"]]}
                 />
                 <NumberField label="Tuổi" value={form.age} onChange={(value) => updateField("age", value)} />
-                <TextField label="Trường apply" required value={form.targetSchool} onChange={(value) => updateField("targetSchool", value)} />
+                <SchoolCombobox
+                  label="Trường apply"
+                  required
+                  value={form.targetSchool}
+                  onChange={(value, school) => {
+                    setForm((current) => ({
+                      ...current,
+                      schoolId: school?.id ?? "",
+                      targetSchool: value
+                    }));
+                  }}
+                />
                 <TextField label="Ngành apply" required value={form.targetMajor} onChange={(value) => updateField("targetMajor", value)} />
                 <TextField label="Loại học bổng" required value={form.scholarshipType} onChange={(value) => updateField("scholarshipType", value)} />
                 <TextField label="GPA" value={form.gpa} onChange={(value) => updateField("gpa", value)} />
@@ -203,6 +223,14 @@ export function ProfileForm() {
                 <TextField label="HSKK" value={form.hskkLevel} onChange={(value) => updateField("hskkLevel", value)} />
                 <TextField label="IELTS" value={form.ieltsScore} onChange={(value) => updateField("ieltsScore", value)} />
                 <TextField label="TOEFL" value={form.toeflScore} onChange={(value) => updateField("toeflScore", value)} />
+              </div>
+              <div className="mt-5">
+                <TextArea
+                  label="+ Ngoại ngữ / chứng chỉ khác"
+                  minRows="min-h-[96px]"
+                  value={form.otherLanguages}
+                  onChange={(value) => updateField("otherLanguages", value)}
+                />
               </div>
             </FormSection>
 
@@ -258,35 +286,36 @@ export function ProfileForm() {
           </div>
         </form>
 
-        <aside className="h-fit rounded-[24px] border border-[#c8d8f0] bg-white p-5 shadow-[0_24px_80px_rgba(34,70,120,0.12)]">
-          <p className="text-sm font-black uppercase text-[#0a347d]">Mức hoàn thiện</p>
-          <div className="mt-5 flex items-center gap-5">
-            <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-[#eaf3ff]">
-              <div
-                className="absolute inset-0 rounded-full"
-                style={{ background: `conic-gradient(#0a347d ${completion}%, transparent 0)` }}
-              />
-              <div className="absolute inset-2 rounded-full bg-white" />
-              <span className="relative text-2xl font-black">{completion}%</span>
+        <aside className="h-fit overflow-hidden rounded-lg border border-[#ead8c2] bg-[#17120f] text-white shadow-[0_24px_80px_rgba(23,18,15,0.18)]">
+          <div className="border-b border-white/10 bg-[linear-gradient(135deg,rgba(184,29,36,0.32),rgba(229,169,59,0.14))] p-5">
+            <p className="text-xs font-black uppercase tracking-wide text-[#e5a93b]">Mức hoàn thiện</p>
+            <div className="mt-4 flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black">Sẵn sàng luyện</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-white/68">
+                  Hoàn thiện hồ sơ để AI chọn câu hỏi sát hơn.
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-4xl font-black tabular-nums">{completion}%</p>
+                <p className="text-xs font-black uppercase text-white/50">ready</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-black">Sẵn sàng luyện</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-[#51607b]">
-                Hoàn thiện các trường bắt buộc để AI chọn câu hỏi sát hồ sơ hơn.
-              </p>
+            <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/12" role="progressbar" aria-label="Mức hoàn thiện profile" aria-valuemin={0} aria-valuemax={100} aria-valuenow={completion}>
+              <div className="h-full rounded-full bg-[#e5a93b]" style={{ width: `${completion}%` }} />
             </div>
           </div>
 
-          <div className="mt-6 space-y-3">
+          <div className="space-y-3 p-5">
             <ChecklistItem done={Boolean(form.targetSchool.trim())} label="Trường apply" />
             <ChecklistItem done={Boolean(form.targetMajor.trim())} label="Ngành apply" />
             <ChecklistItem done={Boolean(form.scholarshipType.trim())} label="Loại học bổng" />
             <ChecklistItem done={form.studyPlan.trim().length >= 10} label="Study plan" />
           </div>
 
-          <div className="mt-6 rounded-2xl bg-[#f7faff] p-4">
-            <p className="text-sm font-black text-[#102456]">Gợi ý trả lời tốt hơn</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#51607b]">
+          <div className="mx-5 mb-5 rounded-lg border border-[#e5a93b]/28 bg-[#e5a93b]/12 p-4">
+            <p className="text-sm font-black text-[#fef3c7]">Gợi ý trả lời tốt hơn</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-white/70">
               Viết study plan theo 3 phần: mục tiêu học tập, kế hoạch theo từng năm/kỳ, và định hướng sau tốt nghiệp.
             </p>
           </div>
@@ -308,7 +337,11 @@ function profileToForm(profile: UserProfileDto): ProfileFormState {
     hskLevel: profile.hskLevel ?? "",
     hskkLevel: profile.hskkLevel ?? "",
     ieltsScore: profile.ieltsScore ?? "",
+    majorId: profile.majorId ?? "",
+    otherLanguages: profile.otherLanguages ?? "",
     researchExperience: profile.researchExperience ?? "",
+    schoolId: profile.schoolId ?? "",
+    scholarshipId: profile.scholarshipId ?? "",
     scholarshipType: profile.scholarshipType,
     strengths: profile.strengths ?? "",
     studyPlan: profile.studyPlan,
@@ -332,7 +365,11 @@ function formToPayload(form: ProfileFormState): ProfileInput {
     hskLevel: optionalText(form.hskLevel),
     hskkLevel: optionalText(form.hskkLevel),
     ieltsScore: optionalText(form.ieltsScore),
+    majorId: optionalText(form.majorId),
+    otherLanguages: optionalText(form.otherLanguages),
     researchExperience: optionalText(form.researchExperience),
+    schoolId: optionalText(form.schoolId),
+    scholarshipId: optionalText(form.scholarshipId),
     scholarshipType: form.scholarshipType.trim(),
     strengths: optionalText(form.strengths),
     studyPlan: form.studyPlan.trim(),
@@ -474,8 +511,8 @@ function SelectField({
 
 function ChecklistItem({ done, label }: { done: boolean; label: string }) {
   return (
-    <div className="flex items-center gap-3 text-sm font-bold text-[#31405f]">
-      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black ${done ? "bg-[#dff7ee] text-[#0a9f7a]" : "bg-[#eef3fb] text-[#8a97ad]"}`}>
+    <div className="flex min-h-11 items-center gap-3 rounded-lg border border-white/10 bg-white/8 px-3 text-sm font-bold text-white/84">
+      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black ${done ? "bg-[#2e7d32] text-white" : "bg-white/12 text-white/44"}`}>
         {done ? "✓" : "•"}
       </span>
       {label}

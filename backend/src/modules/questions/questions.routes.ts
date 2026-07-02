@@ -1,13 +1,25 @@
-import { DegreeLevel, DifficultyLevel, LanguageCode, QuestionCategory, audio_source } from "@prisma/client";
+import { DegreeLevel, DifficultyLevel, LanguageCode, Prisma, QuestionCategory, audio_source } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
-import { requireAuth, requireRole, type AuthenticatedUser } from "../auth/auth.middleware.js";
+import { writeAdminAuditLog } from "../admin/audit.service.js";
+import { getOptionalAuthenticatedUser, requireAuth, requireRole, type AuthenticatedUser } from "../auth/auth.middleware.js";
 
 export const questionsRouter = Router();
+
+const scoringRubricSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return { notes: trimmed };
+  }
+}, z.any().optional().nullable());
 
 const questionSchema = z.object({
   questionText: z.string().trim().min(1, "Nội dung câu hỏi là bắt buộc").max(5000),
@@ -22,7 +34,7 @@ const questionSchema = z.object({
   sampleAnswer: z.string().trim().max(10000).optional().nullable(),
   keywords: z.string().trim().max(5000).optional().nullable(),
   commonMistakes: z.string().trim().max(5000).optional().nullable(),
-  scoringRubric: z.any().optional().nullable(),
+  scoringRubric: scoringRubricSchema,
   isActive: z.boolean().optional()
 });
 
@@ -61,9 +73,11 @@ const audioExtensionByMime: Record<string, string> = {
 questionsRouter.get("/", async (req, res) => {
   try {
     const { search, category, difficulty, language, degreeLevel, schoolId, majorId, scholarshipId, active, page, limit } = req.query;
+    const requester = await getOptionalAuthenticatedUser(req);
+    const canReadAdminFields = requester?.role === "ADMIN" || requester?.role === "SUPER_ADMIN";
     const where: any = {};
 
-    if (active !== "all") where.isActive = true;
+    if (active !== "all" || !canReadAdminFields) where.isActive = true;
     where.deletedAt = null;
     if (search) where.questionText = { contains: String(search), mode: "insensitive" };
     if (category) where.category = String(category);
@@ -78,28 +92,37 @@ questionsRouter.get("/", async (req, res) => {
     const take = Math.min(Math.max(Number(limit) || 20, 1), 100);
     const skip = (currentPage - 1) * take;
 
+    const baseSelect = {
+      category: true,
+      createdAt: true,
+      degreeLevel: true,
+      difficulty: true,
+      id: true,
+      isActive: true,
+      language: true,
+      majorId: true,
+      questionText: true,
+      scholarshipId: true,
+      schoolId: true,
+      school: { select: { id: true, name: true } },
+      major: { select: { id: true, name: true } },
+      scholarship: { select: { id: true, name: true } }
+    } satisfies Prisma.QuestionSelect;
+    const select = canReadAdminFields
+      ? {
+          ...baseSelect,
+          commonMistakes: true,
+          keywords: true,
+          sampleAnswer: true,
+          scoringRubric: true,
+          suggestedAnswerLogic: true
+        } satisfies Prisma.QuestionSelect
+      : baseSelect;
+
     const [questions, total] = await Promise.all([
       prisma.question.findMany({
         where,
-        select: {
-          category: true,
-          createdAt: true,
-          degreeLevel: true,
-          difficulty: true,
-          id: true,
-          isActive: true,
-          keywords: true,
-          language: true,
-          majorId: true,
-          questionText: true,
-          sampleAnswer: true,
-          scholarshipId: true,
-          schoolId: true,
-          suggestedAnswerLogic: true,
-          school: { select: { id: true, name: true } },
-          major: { select: { id: true, name: true } },
-          scholarship: { select: { id: true, name: true } }
-        },
+        select,
         orderBy: { createdAt: "desc" },
         take,
         skip,
@@ -108,7 +131,7 @@ questionsRouter.get("/", async (req, res) => {
     ]);
 
     res.json({ data: questions, total, page: currentPage, totalPages: Math.max(1, Math.ceil(total / take)) });
-  } catch (err) {
+  } catch {
     res.status(500).json({ message: "Lỗi server" });
   }
 });
@@ -137,6 +160,7 @@ questionsRouter.get("/export", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"),
       "sampleAnswer",
       "keywords",
       "commonMistakes",
+      "scoringRubric",
       "isActive"
     ];
     const rows = questions.map((question) => [
@@ -152,6 +176,7 @@ questionsRouter.get("/export", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"),
       question.sampleAnswer ?? "",
       question.keywords ?? "",
       question.commonMistakes ?? "",
+      stringifyJsonCell(question.scoringRubric),
       String(question.isActive)
     ]);
     const csv = [headers, ...rows].map((row) => row.map(escapeCsvCell).join(",")).join("\n");
@@ -174,65 +199,81 @@ questionsRouter.post("/import", requireAuth, requireRole("ADMIN", "SUPER_ADMIN")
 
   try {
     const user = res.locals.user as AuthenticatedUser;
-    const rows = parseCsv(parsed.data.csv);
-    if (!rows.length) {
+    const result = await importQuestionsFromCsv(req, user, parsed.data.csv);
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === "CSV_EMPTY") {
       res.status(400).json({ message: "CSV không có dòng dữ liệu" });
       return;
     }
-
-    const [schools, majors, scholarships] = await Promise.all([
-      prisma.school.findMany({ select: { id: true, name: true } }),
-      prisma.major.findMany({ select: { id: true, name: true } }),
-      prisma.scholarship.findMany({ select: { id: true, name: true } })
-    ]);
-    const schoolMap = toNameMap(schools);
-    const majorMap = toNameMap(majors);
-    const scholarshipMap = toNameMap(scholarships);
-    const skipped: Array<{ line: number; reason: string }> = [];
-    const created = [];
-
-    for (const [index, row] of rows.entries()) {
-      const questionText = getCsvValue(row, "questionText", "question_text", "question", "text");
-      if (!questionText) {
-        skipped.push({ line: index + 2, reason: "Thiếu questionText" });
-        continue;
-      }
-
-      const category = normalizeEnum(QuestionCategory, getCsvValue(row, "category"), QuestionCategory.OTHER);
-      const difficulty = normalizeEnum(DifficultyLevel, getCsvValue(row, "difficulty"), DifficultyLevel.MEDIUM);
-      const language = normalizeEnum(LanguageCode, getCsvValue(row, "language"), LanguageCode.VI);
-      const degreeLevelRaw = getCsvValue(row, "degreeLevel", "degree_level");
-      const degreeLevel = degreeLevelRaw ? normalizeEnum(DegreeLevel, degreeLevelRaw, null) : null;
-      const schoolName = getCsvValue(row, "schoolName", "school", "school_name");
-      const majorName = getCsvValue(row, "majorName", "major", "major_name");
-      const scholarshipName = getCsvValue(row, "scholarshipName", "scholarship", "scholarship_name");
-
-      created.push(await prisma.question.create({
-        data: {
-          category,
-          commonMistakes: getCsvValue(row, "commonMistakes", "common_mistakes") || null,
-          createdBy: user.id,
-          degreeLevel,
-          difficulty,
-          isActive: normalizeBoolean(getCsvValue(row, "isActive", "is_active"), true),
-          keywords: getCsvValue(row, "keywords") || null,
-          language,
-          majorId: majorName ? majorMap.get(normalizeName(majorName)) ?? null : null,
-          questionText,
-          sampleAnswer: getCsvValue(row, "sampleAnswer", "sample_answer") || null,
-          scholarshipId: scholarshipName ? scholarshipMap.get(normalizeName(scholarshipName)) ?? null : null,
-          schoolId: schoolName ? schoolMap.get(normalizeName(schoolName)) ?? null : null,
-          suggestedAnswerLogic: getCsvValue(row, "suggestedAnswerLogic", "suggested_answer_logic") || null
-        }
-      }));
-    }
-
-    res.status(201).json({ created: created.length, skipped });
-  } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Không thể import CSV câu hỏi" });
   }
 });
+
+export async function importQuestionsFromCsv(req: Parameters<typeof writeAdminAuditLog>[0], user: AuthenticatedUser, csv: string) {
+  const rows = parseCsv(csv);
+  if (!rows.length) {
+    throw new Error("CSV_EMPTY");
+  }
+
+  const [schools, majors, scholarships] = await Promise.all([
+    prisma.school.findMany({ select: { id: true, name: true } }),
+    prisma.major.findMany({ select: { id: true, name: true } }),
+    prisma.scholarship.findMany({ select: { id: true, name: true } })
+  ]);
+  const schoolMap = toNameMap(schools);
+  const majorMap = toNameMap(majors);
+  const scholarshipMap = toNameMap(scholarships);
+  const skipped: Array<{ line: number; reason: string }> = [];
+  const created = [];
+
+  for (const [index, row] of rows.entries()) {
+    const questionText = getCsvValue(row, "questionText", "question_text", "question", "text");
+    if (!questionText) {
+      skipped.push({ line: index + 2, reason: "Thiếu questionText" });
+      continue;
+    }
+
+    const category = normalizeEnum(QuestionCategory, getCsvValue(row, "category"), QuestionCategory.OTHER);
+    const difficulty = normalizeEnum(DifficultyLevel, getCsvValue(row, "difficulty"), DifficultyLevel.MEDIUM);
+    const language = normalizeEnum(LanguageCode, getCsvValue(row, "language"), LanguageCode.VI);
+    const degreeLevelRaw = getCsvValue(row, "degreeLevel", "degree_level");
+    const degreeLevel = degreeLevelRaw ? normalizeEnum(DegreeLevel, degreeLevelRaw, null) : null;
+    const schoolName = getCsvValue(row, "schoolName", "school", "school_name");
+    const majorName = getCsvValue(row, "majorName", "major", "major_name");
+    const scholarshipName = getCsvValue(row, "scholarshipName", "scholarship", "scholarship_name");
+
+    created.push(await prisma.question.create({
+      data: {
+        category,
+        commonMistakes: getCsvValue(row, "commonMistakes", "common_mistakes") || null,
+        createdBy: user.id,
+        degreeLevel,
+        difficulty,
+        isActive: normalizeBoolean(getCsvValue(row, "isActive", "is_active"), true),
+        keywords: getCsvValue(row, "keywords") || null,
+        language,
+        majorId: majorName ? majorMap.get(normalizeName(majorName)) ?? null : null,
+        questionText,
+        sampleAnswer: getCsvValue(row, "sampleAnswer", "sample_answer") || null,
+        scholarshipId: scholarshipName ? scholarshipMap.get(normalizeName(scholarshipName)) ?? null : null,
+        scoringRubric: parseScoringRubric(getCsvValue(row, "scoringRubric", "scoring_rubric", "rubric", "aiNotes", "ai_notes")),
+        schoolId: schoolName ? schoolMap.get(normalizeName(schoolName)) ?? null : null,
+        suggestedAnswerLogic: getCsvValue(row, "suggestedAnswerLogic", "suggested_answer_logic") || null
+      }
+    }));
+  }
+
+  await writeAdminAuditLog(req, {
+    action: "QUESTION_IMPORT",
+    adminUserId: user.id,
+    afterData: { created: created.length, skipped },
+    entityType: "question"
+  });
+
+  return { created: created.length, skipped };
+}
 
 questionsRouter.get("/:id/audios", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
   try {
@@ -241,7 +282,7 @@ questionsRouter.get("/:id/audios", requireAuth, requireRole("ADMIN", "SUPER_ADMI
       orderBy: { created_at: "desc" }
     });
     res.json({ data: audios });
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Không thể tải audio câu hỏi" });
   }
 });
@@ -282,6 +323,13 @@ questionsRouter.post("/:id/audios", requireAuth, requireRole("ADMIN", "SUPER_ADM
       }
     });
 
+    await writeAdminAuditLog(req, {
+      action: "QUESTION_AUDIO_CREATE",
+      adminUserId: user.id,
+      afterData: audio,
+      entityId: question.id,
+      entityType: "question"
+    });
     res.status(201).json(audio);
   } catch (error) {
     if (error instanceof Error && error.message === "INVALID_AUDIO_UPLOAD") {
@@ -295,6 +343,22 @@ questionsRouter.post("/:id/audios", requireAuth, requireRole("ADMIN", "SUPER_ADM
 
 questionsRouter.delete("/:questionId/audios/:audioId", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
   try {
+    const user = res.locals.user as AuthenticatedUser;
+    const before = await prisma.question_audios.findFirst({
+      where: {
+        id: req.params.audioId,
+        question_id: req.params.questionId
+      }
+    });
+    if (before) {
+      await writeAdminAuditLog(req, {
+        action: "QUESTION_AUDIO_DELETE",
+        adminUserId: user.id,
+        beforeData: before,
+        entityId: req.params.questionId,
+        entityType: "question"
+      });
+    }
     const result = await prisma.question_audios.deleteMany({
       where: {
         id: req.params.audioId,
@@ -306,7 +370,7 @@ questionsRouter.delete("/:questionId/audios/:audioId", requireAuth, requireRole(
       return;
     }
     res.json({ message: "Đã xóa audio" });
-  } catch (error: any) {
+  } catch {
     res.status(500).json({ message: "Không thể xóa audio" });
   }
 });
@@ -314,13 +378,46 @@ questionsRouter.delete("/:questionId/audios/:audioId", requireAuth, requireRole(
 // GET /api/questions/:id
 questionsRouter.get("/:id", async (req, res) => {
   try {
-    const q = await prisma.question.findUnique({
-      where: { id: req.params.id },
-      include: { school: { select: { id: true, name: true } }, major: { select: { id: true, name: true } }, scholarship: { select: { id: true, name: true } } },
+    const requester = await getOptionalAuthenticatedUser(req);
+    const canReadAdminFields = requester?.role === "ADMIN" || requester?.role === "SUPER_ADMIN";
+    const baseSelect = {
+      category: true,
+      createdAt: true,
+      degreeLevel: true,
+      deletedAt: true,
+      difficulty: true,
+      id: true,
+      isActive: true,
+      language: true,
+      majorId: true,
+      questionText: true,
+      scholarshipId: true,
+      schoolId: true,
+      school: { select: { id: true, name: true } },
+      major: { select: { id: true, name: true } },
+      scholarship: { select: { id: true, name: true } }
+    } satisfies Prisma.QuestionSelect;
+    const select = canReadAdminFields
+      ? {
+          ...baseSelect,
+          commonMistakes: true,
+          keywords: true,
+          sampleAnswer: true,
+          scoringRubric: true,
+          suggestedAnswerLogic: true
+        } satisfies Prisma.QuestionSelect
+      : baseSelect;
+    const q = await prisma.question.findFirst({
+      where: {
+        id: req.params.id,
+        ...(canReadAdminFields ? {} : { isActive: true })
+      },
+      select
     });
     if (!q || q.deletedAt) { res.status(404).json({ message: "Không tìm thấy câu hỏi" }); return; }
-    res.json(q);
-  } catch (err) {
+    const { deletedAt: _deletedAt, ...question } = q;
+    res.json(question);
+  } catch {
     res.status(500).json({ message: "Lỗi server" });
   }
 });
@@ -329,6 +426,22 @@ function escapeCsvCell(value: unknown) {
   const text = String(value ?? "");
   if (/[",\n\r]/.test(text)) return `"${text.replaceAll("\"", "\"\"")}"`;
   return text;
+}
+
+function stringifyJsonCell(value: unknown) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
+
+function parseScoringRubric(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return { notes: trimmed };
+  }
 }
 
 function parseCsv(csv: string) {
@@ -495,8 +608,15 @@ questionsRouter.post("/", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), asyn
         createdBy: user.id,
       },
     });
+    await writeAdminAuditLog(req, {
+      action: "QUESTION_CREATE",
+      adminUserId: user.id,
+      afterData: q,
+      entityId: q.id,
+      entityType: "question"
+    });
     res.status(201).json(q);
-  } catch (err) {
+  } catch {
     res.status(500).json({ message: "Lỗi server" });
   }
 });
@@ -512,6 +632,7 @@ questionsRouter.put("/:id", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), as
   try {
     const user = res.locals.user as AuthenticatedUser;
     const data = parsed.data;
+    const before = await prisma.question.findUnique({ where: { id: req.params.id } });
 
     const q = await prisma.question.update({
       where: { id: req.params.id },
@@ -523,6 +644,14 @@ questionsRouter.put("/:id", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), as
         updatedBy: user.id,
       },
     });
+    await writeAdminAuditLog(req, {
+      action: "QUESTION_UPDATE",
+      adminUserId: user.id,
+      afterData: q,
+      beforeData: before,
+      entityId: q.id,
+      entityType: "question"
+    });
     res.json(q);
   } catch (err: any) {
     if (err.code === "P2025") { res.status(404).json({ message: "Không tìm thấy câu hỏi" }); return; }
@@ -533,9 +662,19 @@ questionsRouter.put("/:id", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), as
 // DELETE /api/questions/:id (soft delete, admin)
 questionsRouter.delete("/:id", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
   try {
-    await prisma.question.update({
+    const user = res.locals.user as AuthenticatedUser;
+    const before = await prisma.question.findUnique({ where: { id: req.params.id } });
+    const question = await prisma.question.update({
       where: { id: req.params.id },
       data: { deletedAt: new Date(), isActive: false },
+    });
+    await writeAdminAuditLog(req, {
+      action: "QUESTION_DELETE",
+      adminUserId: user.id,
+      afterData: question,
+      beforeData: before,
+      entityId: question.id,
+      entityType: "question"
     });
     res.json({ message: "Đã xoá câu hỏi" });
   } catch (err: any) {

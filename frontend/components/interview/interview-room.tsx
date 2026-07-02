@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Eye,
+  EyeOff,
   Keyboard,
   Lightbulb,
   Mic,
@@ -19,7 +21,7 @@ import {
   Timer,
   Volume2
 } from "lucide-react";
-import { ApiError, type EventStreamHandle } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import {
   activeInterviewSessionStorageKey,
   completeInterviewSession,
@@ -29,9 +31,8 @@ import {
   pauseInterviewSession,
   resumeInterviewSession,
   skipInterviewQuestion,
-  streamInterviewAnswerFeedback,
+  submitInterviewAnswer,
   type InterviewQuestionDto,
-  type SubmitInterviewAnswerResponse
 } from "@/lib/interview-client";
 import {
   backendLanguageToBrowserSpeechLang,
@@ -47,9 +48,10 @@ import {
   type InterviewLanguageMode,
   type Locale
 } from "@/lib/i18n";
-import { useVoiceRecorder } from "@/lib/hooks/use-voice-recorder";
-import { playBase64Audio, synthesizeSpeech } from "@/lib/speech-client";
+import { type VoiceRecorderResult, useVoiceRecorder } from "@/lib/hooks/use-voice-recorder";
+import { assessPronunciation, playBase64Audio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
 import { ChatMessage, interviewQuestions } from "./interview-data";
+import { PronunciationPanel, SpeechMetricsPanel } from "./speech-metrics-panel";
 
 type RoomQuestion = {
   aiReason?: string | null;
@@ -74,8 +76,9 @@ const fallbackQuestions: RoomQuestion[] = interviewQuestions.map((question, inde
 }));
 
 const speechVoiceStorageKey = "ai_phongvan_speech_voice";
-const completingInterviewSignal = "__INTERVIEW_COMPLETING__";
+const speechRateStorageKey = "ai_phongvan_speech_rate";
 type SpeechVoicePreset = "auto" | "female" | "male" | "warm" | "slow" | "clear";
+type SpeechRate = 0.5 | 0.75 | 1 | 1.25 | 1.5;
 type RemoteSpeechVoice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 type LastFeedback = {
   feedback: string | null;
@@ -83,7 +86,13 @@ type LastFeedback = {
   scoreTotal: string | null;
 };
 
+type SpeechSubmitPayload = {
+  pronunciation?: PronunciationResult | null;
+  result?: VoiceRecorderResult;
+};
+
 const voicePresets: SpeechVoicePreset[] = ["auto", "female", "male", "warm", "slow", "clear"];
+const speechRates: SpeechRate[] = [0.5, 0.75, 1, 1.25, 1.5];
 
 class MissingBrowserVoiceError extends Error {
   constructor(message: string) {
@@ -100,6 +109,7 @@ export function InterviewRoom() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionLanguage, setSessionLanguage] = useState<BackendLanguage>("ZH");
   const [interviewLanguageMode, setInterviewLanguageMode] = useState<InterviewLanguageMode>("ZH");
+  const [plannedDurationMinutes, setPlannedDurationMinutes] = useState<number | null>(null);
   const [questions, setQuestions] = useState<RoomQuestion[]>(fallbackQuestions);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [messagesList, setMessagesList] = useState<ChatMessage[]>([
@@ -121,11 +131,15 @@ export function InterviewRoom() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [autoSubmitCountdown, setAutoSubmitCountdown] = useState<number | null>(null);
   const [lastFeedback, setLastFeedback] = useState<LastFeedback | null>(null);
+  const [lastSpeechMetrics, setLastSpeechMetrics] = useState<SpeechMetrics | null>(null);
+  const [lastPronunciation, setLastPronunciation] = useState<PronunciationResult | null>(null);
+  const [isAssessingPronunciation, setIsAssessingPronunciation] = useState(false);
+  const [speechNotice, setSpeechNotice] = useState("");
   const [mounted, setMounted] = useState(false);
   const [selectedVoicePreset, setSelectedVoicePreset] = useState<SpeechVoicePreset>("auto");
+  const [selectedSpeechRate, setSelectedSpeechRate] = useState<SpeechRate>(1);
+  const [showChat, setShowChat] = useState(true);
   const isCompletingRef = useRef(false);
-  const feedbackStreamRef = useRef<EventStreamHandle | null>(null);
-  const cancelFeedbackStreamRef = useRef<(() => void) | null>(null);
   const lastAutoSpokenQuestionIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const t = messages[locale].interview;
@@ -135,6 +149,8 @@ export function InterviewRoom() {
     setMounted(true);
     const stored = localStorage.getItem(speechVoiceStorageKey);
     if (isSpeechVoicePreset(stored)) setSelectedVoicePreset(stored);
+    const storedRate = Number(localStorage.getItem(speechRateStorageKey));
+    if (isSpeechRate(storedRate)) setSelectedSpeechRate(storedRate);
   }, []);
 
   useEffect(() => {
@@ -156,14 +172,16 @@ export function InterviewRoom() {
       setLiveTranscript(text.trim());
       setInput(text.trim());
     },
-    onTranscript: (text) => {
+    onTranscript: (text, result) => {
       const transcript = text.trim();
       if (!transcript) return;
       setAutoSubmitCountdown(null);
       setLiveTranscript("");
       setInput(transcript);
+      setSpeechNotice("");
+      if (result?.speechMetrics) setLastSpeechMetrics(result.speechMetrics);
       if (interviewMode !== "TEXT") {
-        void submitAnswer(transcript);
+        void submitAnswer(transcript, result);
       }
     }
   });
@@ -175,6 +193,8 @@ export function InterviewRoom() {
   const activeQuestionDisplay = useMemo(() => {
     return getQuestionDisplayText(activeQuestion, interviewLanguageMode);
   }, [activeQuestion, interviewLanguageMode]);
+  const plannedDurationSeconds = plannedDurationMinutes ? plannedDurationMinutes * 60 : null;
+  const remainingSeconds = plannedDurationSeconds === null ? null : Math.max(0, plannedDurationSeconds - elapsedSeconds);
   const progress = useMemo(() => ((currentQuestion + 1) / totalQuestions) * 100, [currentQuestion, totalQuestions]);
   const progressLabel = interpolate(t.questionProgress, { current: currentQuestion + 1, total: totalQuestions });
 
@@ -189,7 +209,7 @@ export function InterviewRoom() {
     setError("");
     const speechLang = inferSpeechLang(text, backendLanguageToBrowserSpeechLang(sessionLanguage));
     const canUseBrowserSpeech = typeof window !== "undefined" && "speechSynthesis" in window;
-    const remotePreset = getRemoteSpeechPreset(selectedVoicePreset, speechLang);
+    const remotePreset = getRemoteSpeechPreset(selectedVoicePreset, speechLang, selectedSpeechRate);
 
     try {
       if (shouldPreferRemoteSpeech(selectedVoicePreset)) {
@@ -204,7 +224,7 @@ export function InterviewRoom() {
 
       if (canUseBrowserSpeech) {
         try {
-          await speakWithBrowser(text, speechLang, t.browserSpeechFailed, selectedVoicePreset);
+          await speakWithBrowser(text, speechLang, t.browserSpeechFailed, selectedVoicePreset, selectedSpeechRate);
           return;
         } catch (err) {
           if (shouldPreferRemoteSpeech(selectedVoicePreset) || !(err instanceof MissingBrowserVoiceError)) {
@@ -233,6 +253,7 @@ export function InterviewRoom() {
     isSpeaking,
     sessionLanguage,
     selectedVoicePreset,
+    selectedSpeechRate,
     t.browserSpeechFailed,
     t.speechFailed,
     voiceRecorder
@@ -366,9 +387,11 @@ export function InterviewRoom() {
         setSessionId(data.session.id);
         setSessionLanguage(resolvedLanguage);
         setInterviewLanguageMode(resolvedMode);
+        setPlannedDurationMinutes(data.session.plannedDurationMinutes);
         setQuestions(loadedQuestions);
         setCurrentQuestion(nextIndex);
         setIsPaused(data.session.status === "PAUSED");
+        setElapsedSeconds(data.session.startedAt ? Math.max(0, Math.floor((Date.now() - new Date(data.session.startedAt).getTime()) / 1000)) : 0);
         setMessagesList([buildAiMessage(loadedQuestions[nextIndex], 1, resolvedMode)]);
 
         if (createdFromStaleSession && querySessionId) {
@@ -395,7 +418,7 @@ export function InterviewRoom() {
     };
   }, [router, searchParams]);
 
-  async function submitAnswer(answerText: string) {
+  async function submitAnswer(answerText: string, voiceResult?: VoiceRecorderResult) {
     const answer = answerText.trim();
     if (!answer || !sessionId || isSubmitting || isPaused || isCompletingRef.current) {
       return;
@@ -405,10 +428,14 @@ export function InterviewRoom() {
 
     setIsSubmitting(true);
     setError("");
-    const feedbackMessageId = Date.now();
     setInput("");
     setLiveTranscript("");
     setAutoSubmitCountdown(null);
+    if (!voiceResult) {
+      setLastSpeechMetrics(null);
+      setLastPronunciation(null);
+      setSpeechNotice("");
+    }
     setMessagesList((current) => [
       ...current,
       {
@@ -416,80 +443,32 @@ export function InterviewRoom() {
         author: "user",
         content: answer,
         time: getClockTime()
-      },
-      {
-        id: feedbackMessageId,
-        author: "ai",
-        content: "",
-        time: getClockTime()
       }
     ]);
 
     try {
-      const result = await new Promise<SubmitInterviewAnswerResponse>((resolve, reject) => {
-        const stream = streamInterviewAnswerFeedback({
-          answerText: answer,
-          sessionId,
-          sessionQuestionId: question.id,
-          onStatus: () => setIsThinking(true),
-          onToken: (token) => {
-            setMessagesList((current) =>
-              current.map((message) =>
-                message.id === feedbackMessageId
-                  ? { ...message, content: `${message.content}${token}` }
-                  : message
-              )
-            );
-          },
-          onDone: (data) => {
-            feedbackStreamRef.current = null;
-            cancelFeedbackStreamRef.current = null;
-            resolve(data);
-          },
-          onError: (message) => {
-            feedbackStreamRef.current = null;
-            cancelFeedbackStreamRef.current = null;
-            reject(new Error(message));
-          }
-        });
-        feedbackStreamRef.current = stream;
-        cancelFeedbackStreamRef.current = () => {
-          stream.close();
-          feedbackStreamRef.current = null;
-          cancelFeedbackStreamRef.current = null;
-          reject(new Error(completingInterviewSignal));
-        };
+      const speechPayload = await buildSpeechSubmitPayload(answer, voiceResult);
+      const result = await submitInterviewAnswer({
+        answerText: answer,
+        pronunciation: speechPayload.pronunciation,
+        sessionId,
+        sessionQuestionId: question.id,
+        speechDurationSec: speechPayload.result?.duration ?? speechPayload.result?.speechMetrics?.durationSec ?? null,
+        speechLanguage: speechPayload.result?.language ?? null,
+        speechMetrics: speechPayload.result?.speechMetrics ?? null,
+        speechMimeType: speechPayload.result?.mimeType ?? null,
+        speechTranscript: speechPayload.result?.text ?? answer
       });
 
       if (isCompletingRef.current) return;
 
       setLastFeedback({
-        feedback: result.answer.feedback,
-        improvedAnswer: result.answer.improvedAnswer,
-        scoreTotal: result.answer.scoreTotal
-      });
-
-      setMessagesList((current) => {
-        const fallbackFeedback = `${t.feedbackPrefix}: ${result.answer.feedback ?? "Answer saved."}`;
-        const scoreLine = result.answer.scoreTotal ? `${t.scorePrefix}: ${result.answer.scoreTotal}/10` : undefined;
-
-        return current.map((message) =>
-          message.id === feedbackMessageId
-            ? {
-                ...message,
-                content: message.content || fallbackFeedback,
-                translation: scoreLine
-              }
-            : message
-        );
+        feedback: "Đã lưu câu trả lời. AI sẽ chấm điểm sau khi bạn hoàn thành tất cả câu hỏi.",
+        improvedAnswer: null,
+        scoreTotal: null
       });
 
       setInput("");
-
-      const spokenFeedback = buildSpokenFeedback(result, t);
-      if (interviewMode !== "TEXT" && spokenFeedback) {
-        await speakText(spokenFeedback, { startListeningAfter: false });
-      }
 
       if (result.session.status === "COMPLETED") {
         sessionStorage.setItem(activeInterviewSessionStorageKey, sessionId);
@@ -499,16 +478,44 @@ export function InterviewRoom() {
 
       await advanceToNextQuestion(result.session.answeredQuestions);
     } catch (err) {
-      if (err instanceof Error && err.message === completingInterviewSignal) return;
       if (isCompletingRef.current) return;
       setError(err instanceof Error ? err.message : t.saveFailed);
     } finally {
-      feedbackStreamRef.current = null;
-      cancelFeedbackStreamRef.current = null;
       if (!isCompletingRef.current) {
         setIsSubmitting(false);
         setIsThinking(false);
       }
+    }
+  }
+
+  async function buildSpeechSubmitPayload(answer: string, voiceResult?: VoiceRecorderResult): Promise<SpeechSubmitPayload> {
+    if (!voiceResult) return {};
+
+    if (voiceResult.speechMetrics) {
+      setLastSpeechMetrics(voiceResult.speechMetrics);
+    }
+
+    if (voiceResult.source !== "server" || !voiceResult.audioBase64) {
+      return { result: voiceResult };
+    }
+
+    setIsAssessingPronunciation(true);
+    setSpeechNotice("");
+
+    try {
+      const pronunciation = await assessPronunciation(
+        voiceResult.audioBase64,
+        backendLanguageToSpeechLocale(sessionLanguage),
+        voiceResult.text || answer
+      );
+      setLastPronunciation(pronunciation);
+      return { pronunciation, result: voiceResult };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không chấm được phát âm.";
+      setSpeechNotice(message);
+      return { pronunciation: null, result: voiceResult };
+    } finally {
+      setIsAssessingPronunciation(false);
     }
   }
 
@@ -590,7 +597,7 @@ export function InterviewRoom() {
         : await resumeInterviewSession(sessionId);
       setIsPaused(data.session.status === "PAUSED");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Khong cap nhat duoc trang thai tam dung.");
+      setError(err instanceof Error ? err.message : "Không cập nhật được trạng thái tạm dừng.");
     } finally {
       setIsUpdatingPause(false);
     }
@@ -613,10 +620,6 @@ export function InterviewRoom() {
     setInput("");
     setIsThinking(false);
     voiceRecorder.cancelRecording();
-    cancelFeedbackStreamRef.current?.();
-    feedbackStreamRef.current?.close();
-    feedbackStreamRef.current = null;
-    cancelFeedbackStreamRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -645,6 +648,9 @@ export function InterviewRoom() {
     setLiveTranscript("");
     setAutoSubmitCountdown(null);
     setLastFeedback(null);
+    setLastSpeechMetrics(null);
+    setLastPronunciation(null);
+    setSpeechNotice("");
     voiceRecorder.cancelRecording();
 
     setMessagesList((current) => [
@@ -691,6 +697,9 @@ export function InterviewRoom() {
     setAutoSubmitCountdown(null);
     setError("");
     setLastFeedback(null);
+    setLastSpeechMetrics(null);
+    setLastPronunciation(null);
+    setSpeechNotice("");
     if (interviewMode !== "TEXT") {
       window.setTimeout(() => {
         void speakText(activeQuestionDisplay, { startListeningAfter: true });
@@ -703,21 +712,25 @@ export function InterviewRoom() {
   }
 
   return (
-    <main id="main-content" className="min-h-screen bg-[#f3f6f8] p-3 text-[#101b3f] sm:p-5 lg:h-screen lg:overflow-hidden" tabIndex={-1} aria-label={t.title}>
-      <section className="mx-auto grid min-h-[calc(100vh-24px)] lg:h-full max-w-7xl grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-[#d8dee8] bg-white shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
+    <main id="main-content" className="page-band min-h-screen p-3 text-foreground sm:p-5 lg:h-screen lg:overflow-hidden" tabIndex={-1} aria-label={t.title}>
+      <section className="mx-auto grid min-h-[calc(100vh-24px)] max-w-7xl grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-border bg-background shadow-[var(--shadow-ui)] lg:h-full">
         <InterviewHeader
           elapsedSeconds={elapsedSeconds}
+          plannedDurationMinutes={plannedDurationMinutes}
+          remainingSeconds={remainingSeconds}
           isPaused={isPaused}
           isPauseChanging={isUpdatingPause}
+          showChat={showChat}
           value={interviewLanguageMode}
           onChange={handleLanguageChange}
           onTogglePause={handleTogglePause}
+          onToggleChat={() => setShowChat((value) => !value)}
           t={t}
         />
 
-        <div className="grid gap-5 p-4 lg:grid-cols-[1.44fr_0.9fr] lg:p-6 min-h-0 flex-1">
+        <div className={`grid gap-5 p-4 lg:p-6 min-h-0 flex-1 ${showChat ? "lg:grid-cols-[1.44fr_0.9fr]" : "lg:grid-cols-1"}`}>
           <section className="flex min-h-0 flex-col">
-            <div className="relative min-h-[240px] flex-1 overflow-hidden rounded-lg border border-[#cfdaeb] bg-slate-200 shadow-sm">
+            <div className="relative min-h-[240px] flex-1 overflow-hidden rounded-lg border border-border bg-muted shadow-sm">
               <Image
                 src="/interview/interviewer.png"
                 alt={t.title}
@@ -726,8 +739,8 @@ export function InterviewRoom() {
                 sizes="(max-width: 1024px) 100vw, 60vw"
                 className="object-cover"
               />
-              <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/20 to-transparent" />
-              <div className="absolute bottom-4 left-4 right-4 max-w-[520px] rounded-lg border border-white/10 bg-slate-950/86 p-4 shadow-xl shadow-slate-950/20 backdrop-blur sm:bottom-6 sm:left-6 sm:right-6" aria-label={t.questionCard}>
+              <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[#17120f]/42 to-transparent" />
+              <div className="absolute bottom-4 left-4 right-4 max-w-[520px] rounded-lg border border-white/10 bg-[#17120f]/88 p-4 shadow-xl shadow-[#17120f]/20 backdrop-blur sm:bottom-6 sm:left-6 sm:right-6" aria-label={t.questionCard}>
                 <p className="text-base font-black leading-7 text-white sm:text-lg" aria-live="polite">{displayedQuestion || activeQuestion.questionText}</p>
                 {activeSubtitle ? (
                   <p className="mt-2 text-sm font-bold text-slate-300">
@@ -741,7 +754,7 @@ export function InterviewRoom() {
                     {t.followUp} {activeQuestion.followUpDepth ? `x${activeQuestion.followUpDepth}` : ""}
                   </span>
                 ) : null}
-                <span className="rounded-lg border border-white/70 bg-white/88 px-4 py-2 text-sm font-black text-[#0a347d] shadow-lg">
+                <span className="rounded-lg border border-white/70 bg-white/90 px-4 py-2 text-sm font-black text-primary shadow-lg">
                   {activeQuestion.category}
                 </span>
               </div>
@@ -763,45 +776,91 @@ export function InterviewRoom() {
               elapsedSeconds={elapsedSeconds}
               lastFeedback={lastFeedback}
               liveTranscript={liveTranscript}
+              plannedDurationMinutes={plannedDurationMinutes}
+              remainingSeconds={remainingSeconds}
               progress={progress}
               progressLabel={progressLabel}
               t={t}
             />
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-4">
-              <button type="button" onClick={handleTogglePause} disabled={isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#d8e3f2] bg-white px-4 py-2 text-sm font-black transition hover:bg-[#f6f8fb] disabled:opacity-50" aria-label={isPaused ? t.resume : t.pause}>
+            {(lastSpeechMetrics || lastPronunciation || isAssessingPronunciation || speechNotice) ? (
+              <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                {lastSpeechMetrics ? <SpeechMetricsPanel metrics={lastSpeechMetrics} /> : null}
+                {lastPronunciation ? <PronunciationPanel result={lastPronunciation} /> : null}
+                {isAssessingPronunciation ? (
+                  <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm font-bold text-muted-foreground">
+                    Đang chấm phát âm...
+                  </div>
+                ) : null}
+                {speechNotice ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+                    {speechNotice}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+              <button type="button" onClick={handleTogglePause} disabled={isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted disabled:opacity-50" aria-label={isPaused ? t.resume : t.pause}>
                 {isPaused ? <Play size={16} /> : <Pause size={16} />} {isPaused ? t.resume : t.pause}
               </button>
               <button type="button" onClick={() => setShowHint((value) => !value)} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-black text-amber-700 transition hover:bg-amber-100" aria-controls="question-hint" aria-expanded={showHint}>
                 <Lightbulb size={16} /> {t.hint}
               </button>
-              <button type="button" onClick={handleSkipQuestion} disabled={isPaused || isThinking || isSubmitting || isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#d8e3f2] bg-white px-4 py-2 text-sm font-black transition hover:bg-[#f6f8fb] disabled:opacity-50" aria-label={t.skip}>
+              <button type="button" onClick={handleSkipQuestion} disabled={isPaused || isThinking || isSubmitting || isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted disabled:opacity-50" aria-label={t.skip}>
                 <SkipForward size={16} /> {t.skip}
               </button>
-              <button type="button" onClick={handleRetryQuestion} disabled={isPaused || isThinking || isSubmitting || isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#d8e3f2] bg-white px-4 py-2 text-sm font-black transition hover:bg-[#f6f8fb] disabled:opacity-50" aria-label={t.retry}>
+              <button type="button" onClick={handleRetryQuestion} disabled={isPaused || isThinking || isSubmitting || isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted disabled:opacity-50" aria-label={t.retry}>
                 <RotateCcw size={16} /> {t.retry}
+              </button>
+              <button type="button" onClick={() => setShowChat((value) => !value)} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted" aria-pressed={showChat}>
+                {showChat ? <EyeOff size={16} /> : <Eye size={16} />} {showChat ? "Ẩn chat" : "Hiện chat"}
+              </button>
+              <button type="button" onClick={handleCompleteInterview} disabled={!completeTargetSessionId || isCompleting} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#d92c3d] px-4 py-2 text-sm font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-[#b91f2f] disabled:cursor-wait disabled:opacity-65" aria-busy={isCompleting}>
+                <Square size={14} fill="currentColor" /> {isCompleting ? t.completing : t.complete}
               </button>
             </div>
 
-            <div className="mt-3 grid gap-2 rounded-lg border border-[#d8e3f2] bg-white px-4 py-3 sm:grid-cols-[auto_1fr] sm:items-center">
-              <label htmlFor="speech-voice" className="text-sm font-black text-[#51607b]">{t.voiceLabel}</label>
-              <select
-                id="speech-voice"
-                value={selectedVoicePreset}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (!isSpeechVoicePreset(value)) return;
-                  setSelectedVoicePreset(value);
-                  localStorage.setItem(speechVoiceStorageKey, value);
-                }}
-                className="focus-ring h-11 rounded-lg border border-[#d8e3f2] bg-white px-3 text-sm font-bold outline-none"
-              >
-                {voicePresets.map((preset) => (
-                  <option key={preset} value={preset}>
-                    {getVoicePresetLabel(preset, t)}
-                  </option>
-                ))}
-              </select>
+            <div className="mt-3 grid gap-3 rounded-lg border border-border bg-background px-4 py-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-black text-muted-foreground">{t.voiceLabel}</span>
+                <select
+                  id="speech-voice"
+                  value={selectedVoicePreset}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (!isSpeechVoicePreset(value)) return;
+                    setSelectedVoicePreset(value);
+                    localStorage.setItem(speechVoiceStorageKey, value);
+                  }}
+                  className="focus-ring mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-bold outline-none"
+                >
+                  {voicePresets.map((preset) => (
+                    <option key={preset} value={preset}>
+                      {getVoicePresetLabel(preset, t)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-sm font-black text-muted-foreground">Tốc độ nói</span>
+                <select
+                  value={selectedSpeechRate}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (!isSpeechRate(value)) return;
+                    setSelectedSpeechRate(value);
+                    localStorage.setItem(speechRateStorageKey, String(value));
+                  }}
+                  className="focus-ring mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-bold outline-none"
+                >
+                  {speechRates.map((rate) => (
+                    <option key={rate} value={rate}>
+                      {rate}x
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             {showHint ? (
@@ -811,20 +870,36 @@ export function InterviewRoom() {
             ) : null}
 
             <div className="mt-5 flex items-center gap-5">
-              <p className="w-24 text-sm font-black text-[#51607b]">
+              <p className="w-24 text-sm font-black text-muted-foreground">
                 {progressLabel}
               </p>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#dce6f5]" role="progressbar" aria-label={progressLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-                <div className="h-full rounded-full bg-[#1f62e0]" style={{ width: `${progress}%` }} />
+                <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
               </div>
             </div>
+
+            {!showChat ? (
+              <AnswerComposer
+                autoSubmitCountdown={autoSubmitCountdown}
+                input={input}
+                isLoadingSession={isLoadingSession}
+                isPaused={isPaused}
+                isSubmitting={isSubmitting}
+                isUpdatingPause={isUpdatingPause}
+                isRecording={voiceRecorder.isRecording}
+                onChange={setInput}
+                onSubmit={handleSubmit}
+                t={t}
+              />
+            ) : null}
           </section>
 
-          <section className="flex min-h-[400px] lg:min-h-0 flex-col overflow-hidden rounded-lg border border-[#d2deee] bg-[#f4f8ff] shadow-sm">
-            <div className="flex flex-col justify-between gap-3 border-b border-[#d2deee] bg-white/86 px-5 py-4 sm:flex-row sm:items-center">
+          {showChat ? (
+          <section className="flex min-h-[400px] flex-col overflow-hidden rounded-lg border border-border bg-primary/5 shadow-sm lg:min-h-0">
+            <div className="flex flex-col justify-between gap-3 border-b border-border bg-background/86 px-5 py-4 sm:flex-row sm:items-center">
               <div>
                 <h2 className="text-base font-black">{t.conversation}</h2>
-                <p className="mt-1 text-xs font-bold text-[#6a7891]">
+                <p className="mt-1 text-xs font-bold text-muted-foreground">
                   {isLoadingSession ? t.loading : t.modeHelp}
                 </p>
               </div>
@@ -866,37 +941,27 @@ export function InterviewRoom() {
                 </div>
               ) : null}
               {isThinking ? (
-                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-black text-blue-700" role="status">
+                <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm font-black text-primary" role="status">
                   {t.thinking}
                 </div>
               ) : null}
               <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleSubmit} className="border-t border-[#d2deee] bg-white/92 p-4" aria-label={t.answerLabel}>
-              <p className="sr-only" id="answer-input-help">{t.answerInputHelp}</p>
-              <div className="flex items-center gap-3 rounded-lg border border-[#d6e0ef] bg-white px-4 py-3 shadow-sm">
-                <label className="sr-only" htmlFor="interview-answer">{t.answerLabel}</label>
-                <input
-                  id="interview-answer"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause}
-                  aria-describedby="answer-input-help"
-                  className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold outline-none placeholder:text-[#9aa6bb]"
-                  placeholder={voiceRecorder.isRecording ? t.recordingPlaceholder : t.answerPlaceholder}
-                />
-                <button
-                  type="submit"
-                  disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause}
-                  className="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e8f1ff] text-[#0a347d] transition hover:bg-[#d9e8ff]"
-                  aria-label={t.sendAnswer}
-                >
-                  <Send size={19} />
-                </button>
-              </div>
-            </form>
+            <AnswerComposer
+              autoSubmitCountdown={autoSubmitCountdown}
+              input={input}
+              isLoadingSession={isLoadingSession}
+              isPaused={isPaused}
+              isSubmitting={isSubmitting}
+              isUpdatingPause={isUpdatingPause}
+              isRecording={voiceRecorder.isRecording}
+              onChange={setInput}
+              onSubmit={handleSubmit}
+              t={t}
+            />
           </section>
+          ) : null}
         </div>
       </section>
     </main>
@@ -949,15 +1014,6 @@ function buildAiMessage(
   };
 }
 
-function buildSpokenFeedback(result: SubmitInterviewAnswerResponse, t: (typeof messages)["vi"]["interview"]) {
-  const feedback = result.answer.feedback?.trim();
-  const score = result.answer.scoreTotal?.trim();
-  return [
-    score ? `${t.scorePrefix}: ${score}/10.` : "",
-    feedback ? `${t.feedbackPrefix}: ${feedback}` : ""
-  ].filter(Boolean).join(" ");
-}
-
 function getClockTime() {
   return new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit",
@@ -969,6 +1025,14 @@ function formatElapsed(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
   const seconds = (totalSeconds % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function formatDuration(minutes: number | null) {
+  if (!minutes) return "Không giới hạn";
+  if (minutes === 60) return "1 giờ";
+  if (minutes % 60 === 0) return `${minutes / 60} giờ`;
+  if (minutes > 60) return `${Math.floor(minutes / 60)} giờ ${minutes % 60} phút`;
+  return `${minutes} phút`;
 }
 
 function getVoicePresetLabel(preset: SpeechVoicePreset, t: (typeof messages)["vi"]["interview"]) {
@@ -987,6 +1051,8 @@ function InterviewStatusRail({
   elapsedSeconds,
   lastFeedback,
   liveTranscript,
+  plannedDurationMinutes,
+  remainingSeconds,
   progress,
   progressLabel,
   t
@@ -994,25 +1060,28 @@ function InterviewStatusRail({
   elapsedSeconds: number;
   lastFeedback: LastFeedback | null;
   liveTranscript: string;
+  plannedDurationMinutes: number | null;
+  remainingSeconds: number | null;
   progress: number;
   progressLabel: string;
   t: (typeof messages)["vi"]["interview"];
 }) {
   return (
     <section className="mt-4 grid gap-3 md:grid-cols-3" aria-label={t.answerControls}>
-      <div className="rounded-lg border border-[#d8e3f2] bg-white p-4">
-        <p className="text-xs font-black uppercase tracking-wide text-[#51607b]">{t.timer}</p>
-        <p className="mt-2 text-2xl font-black tabular-nums text-[#0a347d]">{formatElapsed(elapsedSeconds)}</p>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dce6f5]" role="progressbar" aria-label={progressLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-          <div className="h-full rounded-full bg-[#1f62e0]" style={{ width: `${progress}%` }} />
+      <div className="rounded-lg border border-border bg-background p-4">
+        <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">{t.timer}</p>
+        <p className="mt-2 text-2xl font-black tabular-nums text-primary">{formatElapsed(elapsedSeconds)}</p>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={progressLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+          <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
         </div>
-        <p className="mt-2 text-xs font-bold text-[#51607b]">{progressLabel}</p>
+        <p className="mt-2 text-xs font-bold text-muted-foreground">{progressLabel}</p>
       </div>
 
-      <div className="rounded-lg border border-[#d8e3f2] bg-white p-4" aria-live="polite">
-        <p className="text-xs font-black uppercase tracking-wide text-[#51607b]">{t.transcript}</p>
-        <p className="mt-2 min-h-12 text-sm font-bold leading-6 text-[#243252]">
-          {liveTranscript || t.answerInputHelp}
+      <div className="rounded-lg border border-border bg-background p-4" aria-live="polite">
+        <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">Thời lượng phỏng vấn</p>
+        <p className="mt-2 text-2xl font-black tabular-nums text-primary">{formatDuration(plannedDurationMinutes)}</p>
+        <p className={`mt-2 text-xs font-bold ${remainingSeconds === 0 ? "text-red-600" : "text-muted-foreground"}`}>
+          {remainingSeconds === null ? "Chưa đặt giới hạn" : `Còn ${formatElapsed(remainingSeconds)}`}
         </p>
       </div>
 
@@ -1031,6 +1100,12 @@ function InterviewStatusRail({
           </details>
         ) : null}
       </div>
+      {liveTranscript ? (
+        <div className="rounded-lg border border-border bg-background p-4 md:col-span-3" aria-live="polite">
+          <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">{t.transcript}</p>
+          <p className="mt-2 text-sm font-bold leading-6 text-foreground">{liveTranscript}</p>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1039,40 +1114,55 @@ function InterviewHeader({
   elapsedSeconds,
   isPauseChanging,
   isPaused,
+  plannedDurationMinutes,
+  remainingSeconds,
+  showChat,
   value,
   onChange,
+  onToggleChat,
   onTogglePause,
   t
 }: {
   elapsedSeconds: number;
   isPauseChanging: boolean;
   isPaused: boolean;
+  plannedDurationMinutes: number | null;
+  remainingSeconds: number | null;
+  showChat: boolean;
   value: InterviewLanguageMode;
   onChange: (mode: InterviewLanguageMode) => void;
+  onToggleChat: () => void;
   onTogglePause: () => void;
   t: (typeof messages)["vi"]["interview"];
 }) {
   return (
-    <header className="grid gap-4 border-b border-[#d8e3f2] bg-white px-5 py-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
+    <header className="grid gap-4 border-b border-border bg-background px-5 py-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
       <Link href="/dashboard" className="focus-ring inline-flex min-h-11 items-center gap-3 text-lg font-black" aria-label={t.backToDashboard}>
-        <span className="flex h-11 w-11 items-center justify-center rounded-lg text-[#101b3f] transition hover:bg-[#eef4ff]">
+        <span className="flex h-11 w-11 items-center justify-center rounded-lg text-foreground transition hover:bg-muted">
           <ArrowLeft size={22} />
         </span>
         {t.title}
       </Link>
 
-      <button type="button" onClick={onTogglePause} disabled={isPauseChanging} className="focus-ring inline-flex min-h-11 items-center justify-center gap-3 rounded-lg border border-[#d8e3f2] bg-white px-6 text-xl font-black tracking-wide shadow-sm transition hover:bg-[#f6f8fb] disabled:opacity-50" aria-label={isPaused ? t.resume : t.pause}>
+      <button type="button" onClick={onTogglePause} disabled={isPauseChanging} className="focus-ring inline-flex min-h-11 items-center justify-center gap-3 rounded-lg border border-border bg-background px-6 text-xl font-black tracking-wide shadow-sm transition hover:bg-muted disabled:opacity-50" aria-label={isPaused ? t.resume : t.pause}>
         <Timer size={18} />
         {formatElapsed(elapsedSeconds)}
+        <span className="text-sm font-black text-muted-foreground">
+          / {remainingSeconds === null ? formatDuration(plannedDurationMinutes) : formatElapsed((plannedDurationMinutes ?? 0) * 60)}
+        </span>
         {isPaused ? <Play size={16} /> : <Pause size={16} />}
       </button>
 
       <div className="flex items-center justify-start gap-4 md:justify-end">
-        <span className="text-sm font-black text-[#51607b]">{t.language}</span>
+        <button type="button" onClick={onToggleChat} className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-black shadow-sm transition hover:bg-muted" aria-pressed={showChat}>
+          {showChat ? <EyeOff size={16} /> : <Eye size={16} />}
+          {showChat ? "Ẩn chat" : "Hiện chat"}
+        </button>
+        <span className="text-sm font-black text-muted-foreground">{t.language}</span>
         <select
           value={value}
           onChange={(event) => onChange(event.target.value as InterviewLanguageMode)}
-          className="focus-ring inline-flex min-h-11 min-w-[150px] cursor-pointer items-center justify-center rounded-lg border border-[#d8e3f2] bg-white px-4 text-sm font-black shadow-sm outline-none"
+          className="focus-ring inline-flex min-h-11 min-w-[150px] cursor-pointer items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-black shadow-sm outline-none"
         >
           <option value="ZH">{t.languageZh}</option>
           <option value="VI">{t.languageVi}</option>
@@ -1112,14 +1202,14 @@ function InterviewControls({
   };
 
   return (
-    <div className="mx-auto mt-5 w-full max-w-[620px] rounded-lg border border-[#dbe5f3] bg-white px-4 py-3 shadow-sm">
-      <div className="mb-3 grid grid-cols-3 gap-2 rounded-lg bg-[#f3f7ff] p-1 text-xs font-black">
+    <div className="mx-auto mt-5 w-full max-w-[620px] rounded-lg border border-border bg-background px-4 py-3 shadow-sm">
+      <div className="mb-3 grid grid-cols-3 gap-2 rounded-lg bg-muted p-1 text-xs font-black">
         {(["TEXT", "VOICE", "HYBRID"] as const).map((mode) => (
           <button
             key={mode}
             type="button"
             onClick={() => onModeChange(mode)}
-            className={`focus-ring min-h-11 rounded-lg px-3 py-2 transition ${interviewMode === mode ? "bg-white text-[#0a347d] shadow-sm" : "text-[#6a7891]"}`}
+            className={`focus-ring min-h-11 rounded-lg px-3 py-2 transition ${interviewMode === mode ? "bg-background text-primary shadow-sm" : "text-muted-foreground"}`}
             aria-pressed={interviewMode === mode}
           >
             {modeLabels[mode]}
@@ -1127,20 +1217,20 @@ function InterviewControls({
         ))}
       </div>
       <div className="grid grid-cols-3">
-        <button type="button" onClick={onToggleRecording} disabled={interviewMode === "TEXT" || isTranscribing} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-[#f3f7ff] disabled:cursor-not-allowed disabled:opacity-45">
+        <button type="button" onClick={onToggleRecording} disabled={interviewMode === "TEXT" || isTranscribing} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45">
           <span className={`flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg ${isRecording ? "bg-[#f3374d] shadow-red-500/25" : "bg-[#0a9f7a] shadow-emerald-500/25"}`}>
             {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={21} />}
           </span>
           {isTranscribing ? t.transcribing : isRecording ? t.stopRecording : t.micOn}
         </button>
-        <button type="button" onClick={onToggleListening} disabled={isListening} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-[#f3f7ff] disabled:cursor-wait disabled:opacity-70">
-          <span className={`flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg ${isListening ? "bg-[#f3374d] shadow-red-500/25" : "bg-[#1f62e0] shadow-blue-500/25"}`}>
+        <button type="button" onClick={onToggleListening} disabled={isListening} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-muted disabled:cursor-wait disabled:opacity-70">
+          <span className={`flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg ${isListening ? "bg-[#d42027] shadow-red-500/25" : "bg-primary shadow-red-500/20"}`}>
             {isListening ? <Square size={18} fill="currentColor" /> : <Volume2 size={21} />}
           </span>
           {isListening ? t.speaking : t.speakQuestion}
         </button>
-        <button type="button" onClick={() => onModeChange("TEXT")} disabled={isSpeaking} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-[#f3f7ff] disabled:cursor-not-allowed disabled:opacity-45">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f8fe] text-[#314478]">
+        <button type="button" onClick={() => onModeChange("TEXT")} disabled={isSpeaking} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-primary">
             <Keyboard size={22} />
           </span>
           {t.textMode}
@@ -1150,18 +1240,73 @@ function InterviewControls({
   );
 }
 
+function AnswerComposer({
+  autoSubmitCountdown,
+  input,
+  isLoadingSession,
+  isPaused,
+  isRecording,
+  isSubmitting,
+  isUpdatingPause,
+  onChange,
+  onSubmit,
+  t
+}: {
+  autoSubmitCountdown: number | null;
+  input: string;
+  isLoadingSession: boolean;
+  isPaused: boolean;
+  isRecording: boolean;
+  isSubmitting: boolean;
+  isUpdatingPause: boolean;
+  onChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  t: (typeof messages)["vi"]["interview"];
+}) {
+  return (
+    <form onSubmit={onSubmit} className="mt-4 border-t border-border bg-background/92 p-4" aria-label={t.answerLabel}>
+      <p className="sr-only" id="answer-input-help">{t.answerInputHelp}</p>
+      {autoSubmitCountdown ? (
+        <p className="mb-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700">
+          {interpolate(t.sendingIn, { seconds: autoSubmitCountdown })}
+        </p>
+      ) : null}
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-3 shadow-sm">
+        <label className="sr-only" htmlFor="interview-answer">{t.answerLabel}</label>
+        <input
+          id="interview-answer"
+          value={input}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause}
+          aria-describedby="answer-input-help"
+          className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold outline-none placeholder:text-muted-foreground"
+          placeholder={isRecording ? t.recordingPlaceholder : t.answerPlaceholder}
+        />
+        <button
+          type="submit"
+          disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause}
+          className="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition hover:bg-primary/15"
+          aria-label={t.sendAnswer}
+        >
+          <Send size={19} />
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function ChatBubble({ message, t }: { message: ChatMessage; t: (typeof messages)["vi"]["interview"] }) {
   const isAi = message.author === "ai";
 
   return (
     <div className="grid grid-cols-[auto_1fr] items-start gap-3 sm:grid-cols-[auto_1fr_auto]" aria-label={isAi ? t.ai : t.you}>
-      <div className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black text-white ${isAi ? "bg-[#0a347d]" : "bg-[#e9eef7] text-[#203154]"}`}>
+      <div className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black ${isAi ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
         {isAi ? t.ai : t.you}
       </div>
-      <div className="rounded-lg bg-white px-4 py-3 shadow-sm">
-        <p className="text-sm font-bold leading-6 text-[#243252]">{message.content}</p>
+      <div className="rounded-lg bg-background px-4 py-3 shadow-sm">
+        <p className="text-sm font-bold leading-6 text-foreground">{message.content}</p>
         {message.translation ? (
-          <p className="mt-1 text-xs font-semibold leading-5 text-[#6f7d94]">{message.translation}</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">{message.translation}</p>
         ) : null}
       </div>
       <span className="hidden pt-3 text-xs font-bold text-[#8794aa] sm:block">{message.time}</span>
@@ -1206,6 +1351,10 @@ function pickVoice(voices: SpeechSynthesisVoice[], lang: string) {
 
 function isSpeechVoicePreset(value: string | null): value is SpeechVoicePreset {
   return value === "auto" || value === "female" || value === "male" || value === "warm" || value === "slow" || value === "clear";
+}
+
+function isSpeechRate(value: number): value is SpeechRate {
+  return speechRates.includes(value as SpeechRate);
 }
 
 function normalizeVoiceName(value: string) {
@@ -1308,11 +1457,14 @@ function pickPresetVoice(voices: SpeechSynthesisVoice[], lang: string, preset: S
   return preset === "warm" ? pickVoice(languageVoices, lang) : null;
 }
 
-function getPresetRate(lang: string, preset: SpeechVoicePreset) {
-  if (preset === "slow") return lang === "zh-CN" ? 0.92 : 0.95;
-  if (preset === "clear") return lang === "zh-CN" ? 1.06 : 1.08;
-  if (preset === "warm") return lang === "zh-CN" ? 0.98 : 1;
-  return lang === "zh-CN" ? 1.02 : 1.04;
+function getPresetRate(lang: string, preset: SpeechVoicePreset, speechRate: SpeechRate = 1) {
+  const baseRate = (() => {
+    if (preset === "slow") return lang === "zh-CN" ? 0.92 : 0.95;
+    if (preset === "clear") return lang === "zh-CN" ? 1.06 : 1.08;
+    if (preset === "warm") return lang === "zh-CN" ? 0.98 : 1;
+    return lang === "zh-CN" ? 1.02 : 1.04;
+  })();
+  return Math.min(1.8, Math.max(0.45, baseRate * speechRate));
 }
 
 function getPresetPitch(preset: SpeechVoicePreset) {
@@ -1326,15 +1478,15 @@ function shouldPreferRemoteSpeech(preset: SpeechVoicePreset) {
   return preset !== "auto";
 }
 
-function getRemoteSpeechPreset(preset: SpeechVoicePreset, lang: string): { voice: RemoteSpeechVoice; speed: number } {
-  const speed = getPresetRate(lang, preset);
+function getRemoteSpeechPreset(preset: SpeechVoicePreset, lang: string, speechRate: SpeechRate): { voice: RemoteSpeechVoice; speed: number } {
+  const speed = getPresetRate(lang, preset, speechRate);
   if (preset === "male") return { voice: "onyx", speed };
   if (preset === "warm") return { voice: "shimmer", speed };
   if (preset === "clear") return { voice: "shimmer", speed };
   return { voice: "nova", speed };
 }
 
-async function speakWithBrowser(text: string, lang: string, errorMessage: string, preset: SpeechVoicePreset = "auto") {
+async function speakWithBrowser(text: string, lang: string, errorMessage: string, preset: SpeechVoicePreset = "auto", speechRate: SpeechRate = 1) {
   const voices = await getBrowserVoices();
   const voice = pickPresetVoice(voices, lang, preset);
 
@@ -1346,7 +1498,7 @@ async function speakWithBrowser(text: string, lang: string, errorMessage: string
   return new Promise<void>((resolve, reject) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = voice?.lang ?? lang;
-    utterance.rate = getPresetRate(lang, preset);
+    utterance.rate = getPresetRate(lang, preset, speechRate);
     utterance.pitch = getPresetPitch(preset);
     if (voice) utterance.voice = voice;
     utterance.onend = () => resolve();

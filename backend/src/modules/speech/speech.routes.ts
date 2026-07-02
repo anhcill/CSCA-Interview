@@ -2,6 +2,11 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { requireAuth } from "../auth/auth.middleware.js";
 import { MissingOpenAiKeyError, synthesizeSpeech, transcribeAudio } from "./speech.service.js";
+import {
+  assessPronunciation,
+  isPronunciationAvailable,
+  MissingAzureSpeechKeyError
+} from "./pronunciation-assessment.service.js";
 
 export const speechRouter = Router();
 
@@ -30,7 +35,9 @@ speechRouter.post("/transcribe", async (req: Request, res: Response) => {
     res.json({
       duration: result.duration,
       language: result.language,
-      text: result.text
+      text: result.text,
+      words: result.words,
+      speechMetrics: result.speechMetrics
     });
   } catch (err) {
     console.error("[SPEECH] Transcribe error:", err);
@@ -79,4 +86,52 @@ speechRouter.post("/synthesize", async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : "Lỗi tổng hợp giọng nói";
     res.status(500).json({ message });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Pronunciation Assessment (Azure Speech SDK)
+// ---------------------------------------------------------------------------
+
+const pronunciationSchema = z.object({
+  audio: z.string().min(1, "Audio data required"),
+  language: z.enum(["en", "zh", "vi"]).optional().default("en"),
+  referenceText: z.string().optional()
+});
+
+speechRouter.post("/pronunciation", async (req: Request, res: Response) => {
+  try {
+    const parsed = pronunciationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: "Dữ liệu không hợp lệ",
+        errors: parsed.error.flatten().fieldErrors
+      });
+      return;
+    }
+
+    const { audio, language, referenceText } = parsed.data;
+    const result = await assessPronunciation(audio, language, referenceText);
+
+    res.json(result);
+  } catch (err) {
+    console.error("[SPEECH] Pronunciation assessment error:", err);
+    if (err instanceof MissingAzureSpeechKeyError) {
+      res.status(503).json({ message: err.message });
+      return;
+    }
+    const message = err instanceof Error ? err.message : "Lỗi đánh giá phát âm";
+    res.status(500).json({ message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Status: check which speech services are available
+// ---------------------------------------------------------------------------
+
+speechRouter.get("/status", (_req: Request, res: Response) => {
+  res.json({
+    transcribe: true, // always available if OpenAI key set (checked at call time)
+    synthesize: true,
+    pronunciationAssessment: isPronunciationAvailable()
+  });
 });

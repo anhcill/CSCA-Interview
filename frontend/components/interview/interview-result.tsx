@@ -103,7 +103,7 @@ export function InterviewResult() {
   return (
     <main className="page-band min-h-screen p-3 text-foreground sm:p-5">
       <ConfettiBurst active={finalReport.overall >= 80} />
-      <section className="mx-auto max-w-7xl rounded-lg border border-border bg-white p-5 shadow-sm dark:bg-slate-950 sm:p-7">
+      <section className="mx-auto max-w-7xl rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)] sm:p-7">
         <header className="flex flex-col justify-between gap-4 border-b border-border pb-5 md:flex-row md:items-center">
           <div>
             <p className="type-caption text-primary">Kết quả phỏng vấn</p>
@@ -128,12 +128,12 @@ export function InterviewResult() {
         {error ? <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
 
         <div className="mt-6 grid gap-5 lg:grid-cols-[0.92fr_1.08fr]">
-          <section className="rounded-lg border border-border bg-slate-50 p-6 dark:bg-slate-900">
+          <section className="rounded-lg border border-border bg-primary/5 p-6">
             <h2 className="type-section">Điểm tổng quan</h2>
             <div className="mt-7 flex flex-col items-center">
-              <div className="relative flex h-44 w-44 items-center justify-center rounded-full border-[12px] border-blue-100 dark:border-slate-800">
+              <div className="relative flex h-44 w-44 items-center justify-center rounded-full border-[12px] border-primary/10">
                 <div className="absolute inset-[-12px] rounded-full" style={{ background: `conic-gradient(hsl(var(--primary)) ${finalReport.overall}%, transparent 0)` }} />
-                <div className="absolute inset-0 rounded-full bg-white dark:bg-slate-950" />
+                <div className="absolute inset-0 rounded-full bg-background" />
                 <div className="relative text-center">
                   <p className="text-5xl font-black">{finalReport.overall}</p>
                   <p className="text-sm font-black text-slate-500">/100</p>
@@ -144,7 +144,7 @@ export function InterviewResult() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-border bg-white p-6 dark:bg-slate-950">
+          <section className="rounded-lg border border-border bg-background p-6">
             <h2 className="type-section">Chi tiết theo tiêu chí</h2>
             <div className="mt-6 space-y-5">
               {finalReport.criteria.map((item) => (
@@ -181,12 +181,12 @@ export function InterviewResult() {
 
         {activeTab === "overview" ? (
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <section className="rounded-lg border border-border bg-slate-50 p-6 dark:bg-slate-900">
+            <section className="rounded-lg border border-border bg-primary/5 p-6">
               <h2 className="type-section">AI nhận xét</h2>
               <p className="type-body mt-4 text-slate-700 dark:text-slate-200">{finalReport.summary}</p>
-              {finalReport.progressHint ? <p className="mt-4 rounded-lg bg-white px-4 py-3 text-sm font-black text-primary dark:bg-slate-950">{finalReport.progressHint}</p> : null}
+              {finalReport.progressHint ? <p className="mt-4 rounded-lg bg-background px-4 py-3 text-sm font-black text-primary">{finalReport.progressHint}</p> : null}
             </section>
-            <section className="rounded-lg border border-border bg-white p-6 dark:bg-slate-950">
+            <section className="rounded-lg border border-border bg-background p-6">
               <h2 className="type-section mb-4">Radar năng lực</h2>
               {analysis?.criteriaAverages ? <ScoreRadarChart data={analysis.criteriaAverages} /> : <p className="type-body text-slate-500">Chưa đủ dữ liệu radar.</p>}
             </section>
@@ -202,15 +202,15 @@ export function InterviewResult() {
         ) : null}
 
         {activeTab === "details" ? (
-          <section className="mt-5 rounded-lg border border-border bg-white p-6 shadow-sm dark:bg-slate-950">
+          <section className="mt-5 rounded-lg border border-border bg-background p-6 shadow-sm">
             {analysis?.answerDetails?.length ? (
-              <AnswerFeedbackPanel details={analysis.answerDetails} />
+              <AnswerFeedbackPanel details={analysis.answerDetails} sessionId={session?.id ?? ""} />
             ) : (
               <div className="space-y-4">
                 {(session?.questions ?? []).map((question, index) => {
                   const answer = session?.answers.find((item) => item.sessionQuestionId === question.id);
                   return (
-                    <article key={question.id} className="rounded-lg border border-border bg-slate-50 p-4 dark:bg-slate-900">
+                    <article key={question.id} className="rounded-lg border border-border bg-primary/5 p-4">
                       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
                         <div>
                           <p className="text-xs font-black uppercase text-primary">Câu {index + 1}</p>
@@ -221,7 +221,7 @@ export function InterviewResult() {
                         </Link>
                       </div>
                       <p className="type-body mt-3 text-slate-600 dark:text-slate-300">{answer?.answerText || "Chưa có câu trả lời."}</p>
-                      {answer?.feedback ? <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-200">{answer.feedback}</p> : null}
+                      {answer?.feedback ? <p className="mt-3 rounded-lg bg-primary/10 px-3 py-2 text-xs font-bold text-primary">{answer.feedback}</p> : null}
                     </article>
                   );
                 })}
@@ -238,11 +238,11 @@ function ListCard({ items, title, tone }: { items: string[]; title: string; tone
   const colors = {
     good: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
     warn: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200",
-    info: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200"
+    info: "border-primary/20 bg-primary/10 text-primary"
   };
 
   return (
-    <section className="rounded-lg border border-border bg-white p-6 shadow-sm dark:bg-slate-950">
+    <section className="rounded-lg border border-border bg-background p-6 shadow-sm">
       <h2 className="type-section">{title}</h2>
       <ul className="mt-4 space-y-3">
         {items.length ? items.map((item) => (
@@ -273,7 +273,7 @@ function mergeAnalysis(report: ReturnType<typeof buildReport>, analysis: Intervi
     overall,
     progressHint: analysis.progressHint || report.progressHint,
     suggestions: analysis.improvementTips.length ? analysis.improvementTips : report.suggestions,
-    summary: analysis.sessionSummary || report.summary
+    summary: [analysis.sessionSummary || report.summary, analysis.speechSummary].filter(Boolean).join(" ")
   };
 }
 

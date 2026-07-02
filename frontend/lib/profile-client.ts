@@ -14,7 +14,11 @@ export type UserProfileDto = {
   hskkLevel: string | null;
   id: string;
   ieltsScore: string | null;
+  majorId: string | null;
+  otherLanguages: string | null;
   researchExperience: string | null;
+  schoolId: string | null;
+  scholarshipId: string | null;
   scholarshipType: string;
   strengths: string | null;
   studyPlan: string;
@@ -38,7 +42,11 @@ export type ProfileInput = {
   hskLevel?: string | null;
   hskkLevel?: string | null;
   ieltsScore?: string | null;
+  majorId?: string | null;
+  otherLanguages?: string | null;
   researchExperience?: string | null;
+  schoolId?: string | null;
+  scholarshipId?: string | null;
   scholarshipType: string;
   strengths?: string | null;
   studyPlan: string;

@@ -12,6 +12,8 @@ import {
   getRefreshTokenExpiresAt,
   getRefreshTokenFromRequest,
   hashRefreshToken,
+  passwordHashNeedsRefresh,
+  passwordHashRounds,
   sanitizeUser,
   setRefreshTokenCookie
 } from "./auth.utils.js";
@@ -81,7 +83,7 @@ authRouter.post("/register", asyncRoute(async (req, res) => {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await bcrypt.hash(password, passwordHashRounds);
   const user = await prisma.user.create({
     data: {
       fullName,
@@ -100,6 +102,7 @@ authRouter.post("/register", asyncRoute(async (req, res) => {
     token,
     user: sanitizeUser(user)
   });
+
 }));
 
 authRouter.post("/login", asyncRoute(async (req, res) => {
@@ -123,12 +126,19 @@ authRouter.post("/login", asyncRoute(async (req, res) => {
     return;
   }
 
+  if (!user.passwordHash) {
+    res.status(400).json({ message: "Tài khoản này được đăng ký bằng Google. Vui lòng sử dụng Đăng nhập bằng Google." });
+    return;
+  }
+
   const passwordMatches = await bcrypt.compare(password, user.passwordHash);
 
   if (!passwordMatches) {
     res.status(401).json({ message: "Email hoặc mật khẩu không đúng" });
     return;
   }
+
+  const shouldRefreshPasswordHash = passwordHashNeedsRefresh(user.passwordHash);
 
   await prisma.user.update({
     where: { id: user.id },
@@ -143,6 +153,12 @@ authRouter.post("/login", asyncRoute(async (req, res) => {
     token,
     user: sanitizeUser(user)
   });
+
+  if (shouldRefreshPasswordHash) {
+    void bcrypt.hash(password, passwordHashRounds)
+      .then((passwordHash) => prisma.user.update({ where: { id: user.id }, data: { passwordHash } }))
+      .catch(() => undefined);
+  }
 }));
 
 authRouter.post("/refresh", asyncRoute(async (req, res) => {
@@ -244,5 +260,153 @@ authRouter.get("/me", asyncRoute(async (req, res) => {
     res.json({ user: sanitizeUser(user) });
   } catch {
     res.status(401).json({ message: "Phiên đăng nhập đã hết hạn hoặc không hợp lệ" });
+  }
+}));
+
+const getGoogleRedirectUri = (req: Request) => {
+  const host = req.get("host");
+  const protocol = req.protocol;
+  return `${protocol}://${host}/api/auth/google/callback`;
+};
+
+authRouter.get("/google", (req, res) => {
+  const clientId = env.googleClientId;
+  if (!clientId || clientId === "placeholder_google_client_id") {
+    res.status(500).json({ message: "Google Client ID chưa được cấu hình trên Server." });
+    return;
+  }
+  const redirectUri = getGoogleRedirectUri(req);
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile&prompt=select_account`;
+  res.redirect(authUrl);
+});
+
+authRouter.get("/google/callback", asyncRoute(async (req, res) => {
+  const { code, error } = req.query;
+
+  if (error) {
+    console.error("Google Auth Error query:", error);
+    res.redirect(`${env.frontendUrl}/login?error=${encodeURIComponent(String(error))}`);
+    return;
+  }
+
+  if (!code || typeof code !== "string") {
+    res.redirect(`${env.frontendUrl}/login?error=auth_code_missing`);
+    return;
+  }
+
+  const clientId = env.googleClientId;
+  const clientSecret = env.googleClientSecret;
+  const redirectUri = getGoogleRedirectUri(req);
+
+  try {
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId || "",
+        client_secret: clientSecret || "",
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code"
+      }).toString()
+    });
+
+    if (!tokenRes.ok) {
+      const errorText = await tokenRes.text();
+      console.error("Lỗi trao đổi token với Google:", errorText);
+      res.redirect(`${env.frontendUrl}/login?error=token_exchange_failed`);
+      return;
+    }
+
+    const tokens = await tokenRes.json() as { access_token: string };
+
+    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`
+      }
+    });
+
+    if (!userRes.ok) {
+      const errorText = await userRes.text();
+      console.error("Lỗi lấy thông tin người dùng từ Google:", errorText);
+      res.redirect(`${env.frontendUrl}/login?error=user_info_failed`);
+      return;
+    }
+
+    const googleUser = await userRes.json() as {
+      sub: string;
+      email: string;
+      name: string;
+      picture?: string;
+    };
+
+    const { sub, email, name, picture } = googleUser;
+
+    if (!email) {
+      res.redirect(`${env.frontendUrl}/login?error=email_not_provided`);
+      return;
+    }
+
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { googleId: sub },
+          { email: email.toLowerCase() }
+        ]
+      }
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          fullName: name || email.split("@")[0] || "Google User",
+          email: email.toLowerCase(),
+          googleId: sub,
+          avatarUrl: picture || null,
+          passwordHash: null,
+          role: "USER",
+          emailVerifiedAt: new Date(),
+          isActive: true
+        }
+      });
+    } else {
+      const updateData: any = {};
+      if (!user.googleId) {
+        updateData.googleId = sub;
+      }
+      if (!user.avatarUrl && picture) {
+        updateData.avatarUrl = picture;
+      }
+      if (!user.emailVerifiedAt) {
+        updateData.emailVerifiedAt = new Date();
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: updateData
+        });
+      }
+    }
+
+    if (user.deletedAt || !user.isActive) {
+      res.redirect(`${env.frontendUrl}/login?error=account_disabled`);
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() }
+    });
+
+    const token = createAccessToken(user);
+    await issueRefreshSession(req, res, user.id);
+
+    res.redirect(`${env.frontendUrl}/login/callback?token=${encodeURIComponent(token)}`);
+  } catch (err) {
+    console.error("Lỗi xác thực Google OAuth2:", err);
+    res.redirect(`${env.frontendUrl}/login?error=server_error`);
   }
 }));

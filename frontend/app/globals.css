@@ -3,27 +3,33 @@
 @tailwind utilities;
 
 :root {
-  --background: 216 100% 97%;
-  --foreground: 222 47% 11%;
-  --border: 214 32% 91%;
-  --primary: 221 83% 53%;
-  --muted: 210 40% 96%;
-  --accent: 38 92% 50%;
-  --success: 160 84% 39%;
-  --error: 0 84% 60%;
+  --background: 36 33% 96%;
+  --foreground: 20 20% 12%;
+  --border: 24 15% 85%;
+  --primary: 357 73% 42%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 36 20% 90%;
+  --muted-foreground: 20 10% 40%;
+  --accent: 39 77% 56%;
+  --accent-foreground: 20 20% 12%;
+  --success: 145 63% 38%;
+  --error: 0 74% 48%;
   --font-scale: 100%;
   color-scheme: light;
 }
 
 :root.dark {
-  --background: 222 47% 7%;
-  --foreground: 210 40% 98%;
-  --border: 217 33% 20%;
-  --primary: 217 91% 60%;
-  --muted: 222 47% 12%;
-  --accent: 38 92% 55%;
-  --success: 160 84% 45%;
-  --error: 0 84% 64%;
+  --background: 20 20% 9%;
+  --foreground: 36 20% 94%;
+  --border: 20 15% 18%;
+  --primary: 357 73% 48%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 20 15% 15%;
+  --muted-foreground: 36 12% 70%;
+  --accent: 39 77% 50%;
+  --accent-foreground: 20 20% 12%;
+  --success: 145 58% 44%;
+  --error: 0 74% 54%;
   color-scheme: dark;
 }
 
@@ -190,5 +196,63 @@ textarea:focus-visible {
 
 .ds-button-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 14px 32px rgba(184, 29, 36, 0.24);
+}
+
+.admin-theme {
+  --admin-surface: #ffffff;
+  --admin-surface-muted: #f8fafc;
+  color: hsl(var(--foreground));
+}
+
+.dark .admin-theme {
+  --admin-surface: #0e172a;
+  --admin-surface-muted: #111c31;
+}
+
+.admin-theme :is(.bg-white) {
+  background-color: var(--admin-surface) !important;
+  color: hsl(var(--foreground)) !important;
+  transition-property: border-color, box-shadow, transform, opacity !important;
+}
+
+.admin-theme :is(.bg-slate-50, .bg-slate-100) {
+  background-color: var(--admin-surface-muted) !important;
+  color: hsl(var(--foreground)) !important;
+  transition-property: border-color, box-shadow, transform, opacity !important;
+}
+
+.admin-theme :is(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700) {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .admin-theme :is(.text-slate-600, .text-slate-500, .text-slate-400) {
+  color: rgb(203 213 225) !important;
+}
+
+.dark .admin-theme :is(.text-indigo-700, .text-indigo-600, .text-sky-700, .text-emerald-700) {
+  color: rgb(165 180 252) !important;
+}
+
+.dark .admin-theme :is(.border, .border-t, .border-b, .border-l, .border-r, .border-slate-100, .border-slate-200, .border-slate-300) {
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .admin-theme :is(input, select, textarea) {
+  border-color: hsl(var(--border)) !important;
+  background-color: color-mix(in srgb, hsl(var(--muted)) 88%, black 12%) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .admin-theme :is(input, select, textarea)::placeholder {
+  color: rgb(148 163 184);
+}
+
+.dark .admin-theme :is(.hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, tr.hover\:bg-slate-50:hover) {
+  background-color: color-mix(in srgb, hsl(var(--muted)) 68%, white 4%) !important;
+}
+
+.dark .admin-theme :is(.bg-indigo-50, .bg-blue-50) {
+  background-color: rgb(30 58 138 / 0.45) !important;
+  color: rgb(191 219 254) !important;
 }

@@ -68,27 +68,19 @@
 
 ## 🟡 CẦN CẢI THIỆN (Ưu tiên trung bình)
 
-### 6. Không có input validation ở nhiều routes
-- **Files**: `schools.routes.ts`, `majors.routes.ts`, `scholarships.routes.ts` — POST/PUT routes dùng Zod nhưng...
-- **Vấn đề**: `interviews.routes.ts` các endpoint như pause/resume/complete không rõ có validate đầy đủ không.
-- **Fix**: Thêm Zod schemas cho TẤT CẢ request bodies.
+### 6. ~~Không có input validation ở nhiều routes~~ ✅ ĐÃ KIỂM TRA
+- **Files**: `schools.routes.ts`, `majors.routes.ts`, `scholarships.routes.ts` — POST/PUT routes đã dùng Zod.
+- **Trạng thái**: `interviews.routes.ts` — pause/resume/complete chỉ cần `sessionId` từ URL param (không cần body validation). Tất cả routes có body đều đã có Zod schema. **OK.**
 
-### 7. Error handling không nhất quán
-- **Vấn đề**: 
-  - Auth routes: catch `P1001` trả 503
-  - Questions routes: wrap trong try/catch riêng
-  - Interviews routes: dựa vào global error handler
-  - Một số nơi có dấu tiếng Việt không dấu: `"Khong ket noi duoc co so du lieu"`
-- **Fix**: Tạo custom error classes (`AppError`, `NotFoundError`, `DatabaseError`) + 1 error handler thống nhất.
+### 7. ~~Error handling không nhất quán~~ ✅ ĐÃ SỬA
+- **Đã tạo**:
+  - `backend/src/utils/errors.ts` — Custom error classes: `AppError`, `NotFoundError`, `BadRequestError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `TooManyRequestsError`, `DatabaseError`, `ValidationError`
+  - `backend/src/middleware/error-handler.ts` — Unified error handler: AppError, ZodError, Prisma errors, generic fallback
+- **Đã wire**: `errorHandler` đã được import và mount cuối middleware chain trong `server.ts`.
+- **Còn lại**: Refactor routes dùng `throw new AppError(...)` thay `res.status().json()`.
 
-### 8. Compression tự viết — nên dùng thư viện
-- **File**: `server.ts` line 168-216 — `responseCompression()` tự implement brotli/gzip
-- **Vấn đề**: ~50 dòng code tự viết, monkey-patch `res.write`/`res.end`. Dễ bug, khó debug.
-- **Fix**: Dùng `compression` npm package (standard, battle-tested):
-```ts
-import compression from "compression";
-app.use(compression());
-```
+### 8. ~~Compression tự viết~~ ✅ ĐÃ SỬA
+- **Đã fix**: Bỏ toàn bộ ~50 dòng `responseCompression()` tự viết, thay bằng `compression` npm package. Filter SSE (text/event-stream) tránh buffer.
 
 ### 9. WebSocket chỉ echo — chưa có logic thực
 - **File**: `server.ts` line 363-387
@@ -117,43 +109,26 @@ app.use(compression());
 
 ## 🟢 NÊN LÀM (Cải thiện chất lượng)
 
-### 13. Thiếu logging structured
-- **Vấn đề**: Dùng `console.log`/`console.error` trực tiếp. Production cần structured logging.
-- **Fix**: Dùng `pino` hoặc `winston` với JSON format, log levels, request ID tracking.
+### 13. ~~Thiếu logging structured~~ ✅ ĐÃ SỬA
+- **Đã fix**: Tạo `backend/src/config/logger.ts` dùng `pino` — JSON format production, pretty dev. Thay tất cả `console.log/error` trong `server.ts` bằng `logger.info/error/warn`.
 
-### 14. Thiếu graceful shutdown
-- **File**: `server.ts` — không handle `SIGTERM`/`SIGINT`
-- **Fix**:
-```ts
-process.on("SIGTERM", async () => {
-  console.log("[SHUTDOWN] Received SIGTERM");
-  wss.close();
-  server.close();
-  await prisma.$disconnect();
-  process.exit(0);
-});
-```
+### 14. ~~Thiếu graceful shutdown~~ ✅ ĐÃ SỬA
+- **Đã fix**: Thêm `gracefulShutdown()` function xử lý `SIGTERM`/`SIGINT` — close WebSocket clients, close HTTP server, disconnect Prisma, forced exit timeout 10s.
 
-### 15. Thiếu request ID / correlation ID
-- **Fix**: Thêm middleware tạo unique ID cho mỗi request, truyền vào logs để trace.
+### 15. ~~Thiếu request ID / correlation ID~~ ✅ ĐÃ SỬA
+- **Đã fix**: Tạo `backend/src/middleware/request-id.ts` — generate UUID per request, set `X-Request-Id` header, attach `req.requestId`. Wire vào `server.ts`.
 
-### 16. `uploads/` directory served statically — cần validate
-- **File**: `server.ts` line 266
-- **Vấn đề**: `express.static("uploads")` serve tất cả files. Nếu ai upload malicious file → serve trực tiếp.
-- **Fix**: Validate file types, thêm auth middleware cho private uploads, hoặc dùng cloud storage (S3).
+### 16. ~~`uploads/` directory served statically — cần validate~~ ✅ ĐÃ SỬA
+- **Đã fix**: Tạo `backend/src/middleware/upload-security.ts` — whitelist MIME types (audio/image/pdf), reject path traversal, 50MB limit, set `Content-Disposition`, `X-Content-Type-Options: nosniff`. Wire vào `server.ts` thay `express.static`.
 
-### 17. JSON body limit 12mb — quá lớn
-- **File**: `server.ts` line 265 — `express.json({ limit: "12mb" })`
-- **Vấn đề**: 12MB cho JSON request body quá lớn, dễ bị abuse (DoS).
-- **Fix**: Giảm xuống 1-2MB cho JSON. Nếu cần upload file, dùng `multer` với multipart riêng.
+### 17. ~~JSON body limit 12mb — quá lớn~~ ✅ ĐÃ SỬA
+- **Đã fix**: Giảm từ 12MB xuống 2MB.
 
-### 18. Frontend cần error boundaries
-- **Vấn đề**: Các trang interview nếu crash sẽ trắng trang.
-- **Fix**: Thêm React Error Boundary cho các sections chính.
+### 18. ~~Frontend cần error boundaries~~ ✅ ĐÃ SỬA
+- **Đã fix**: Tạo `frontend/components/error-boundary.tsx` (reusable ErrorBoundary component), `frontend/app/error.tsx` (global error page with retry + home link), `frontend/app/not-found.tsx` (custom 404 page).
 
-### 19. Thiếu Docker / deployment config
-- **Vấn đề**: Không có `Dockerfile`, `docker-compose.yml`, hay CI/CD config.
-- **Fix**: Tạo Docker setup cho dev & production deployment.
+### 19. ~~Thiếu Docker / deployment config~~ ✅ ĐÃ SỬA
+- **Đã fix**: Tạo `backend/Dockerfile` (multi-stage, node:20-alpine, Prisma generate), `frontend/Dockerfile` (multi-stage Next.js standalone), `docker-compose.yml` (postgres + backend + frontend + healthchecks), `.dockerignore` files.
 
 ### 20. Git chưa init
 - **Vấn đề**: Dự án không có `.git` directory — không có version control.
@@ -161,51 +136,107 @@ process.on("SIGTERM", async () => {
 
 ---
 
-## ✅ ĐÃ SỬA TRONG LẦN REVIEW NÀY
+## ✅ ĐÃ SỬA TRONG LẦN REVIEW NÀY (17 mục)
 
 | # | Mục | Trạng thái |
 |---|---|---|
 | 2 | Cookie-parser — thêm middleware + đơn giản hóa auth.utils.ts | ✅ Done |
 | 3 | Tách interviews — tạo `interviews.schemas.ts` + `interviews.service.ts` | ✅ Done |
 | 5 | Bỏ query token authentication — chỉ còn Bearer header | ✅ Done |
-| 7 | Error messages tiếng Việt — sửa tất cả messages không dấu & corrupted UTF-8 | ✅ Done |
+| 6 | Input validation — kiểm tra tất cả routes, xác nhận đã đủ Zod | ✅ Done |
+| 7a | Error messages tiếng Việt — sửa tất cả messages không dấu & corrupted UTF-8 | ✅ Done |
+| 7b | Custom error classes — tạo `utils/errors.ts` (9 classes) | ✅ Done |
+| 7c | Unified error handler — tạo + wire vào `server.ts` | ✅ Done |
+| 8 | Compression — thay code tự viết bằng `compression` package | ✅ Done |
+| 10 | Frontend api.ts — sửa timeout error message thiếu dấu tiếng Việt | ✅ Done |
+| 13 | Structured logging — tạo `logger.ts` dùng pino, thay console.log | ✅ Done |
+| 14 | Graceful shutdown — `SIGTERM`/`SIGINT` handler + Prisma disconnect | ✅ Done |
+| 15 | Request ID middleware — UUID per request, `X-Request-Id` header | ✅ Done |
+| 16 | Upload security middleware — MIME whitelist, path traversal, nosniff | ✅ Done |
 | 17 | Giảm JSON body limit 12MB → 2MB | ✅ Done |
+| 18 | Frontend error boundaries — ErrorBoundary + error.tsx + not-found.tsx | ✅ Done |
+| 19 | Docker — Dockerfiles + docker-compose.yml + .dockerignore | ✅ Done |
+| — | Fix TS type conflicts (duplicate @types/express root vs backend) | ✅ Done |
+| — | Fix ESLint build errors (audio caption + Link) | ✅ Done |
 
-## 📊 MỨC ĐỘ ƯU TIÊN (còn lại — 11 mục)
+## 📊 MỨC ĐỘ ƯU TIÊN (còn lại — 4 mục)
 
 | # | Mục | Mức độ | Effort |
 |---|---|---|---|
 | 20 | Git init | 🔴 Ngay | 5 phút |
-| 8 | Dùng compression package thay code tự viết | 🟡 Sớm | 20 phút |
 | 3 | Refactor interviews.routes.ts import từ schemas/service | 🟡 Trung bình | 1-2 giờ |
-| 7 | Error handling classes thống nhất | 🟡 Trung bình | 2-3 giờ |
-| 6 | Validate tất cả inputs | 🟡 Trung bình | 1-2 giờ |
 | 12 | Thêm tests | 🟡 Trung bình | 1-2 ngày |
-| 14 | Graceful shutdown | 🟢 Khi rảnh | 30 phút |
-| 16 | Upload security | 🟢 Khi rảnh | 1 giờ |
-| 13 | Structured logging | 🟢 Khi rảnh | 2-3 giờ |
-| 15 | Request ID | 🟢 Khi rảnh | 30 phút |
-| 18 | Error boundaries | 🟢 Khi rảnh | 1 giờ |
-| 19 | Docker | 🟢 Khi deploy | 2-3 giờ |
-| 9 | WebSocket logic | 🟢 Nếu cần | 4-8 giờ |
-| 11 | Migration strategy | 🟢 Khi scale | 1-2 giờ |
+| 9 | WebSocket logic (hoặc bỏ, SSE đủ) | 🟢 Nếu cần | 4-8 giờ |
+| 11 | Migration strategy (Prisma migrate) | 🟢 Khi scale | 1-2 giờ |
 
 ---
+
+## 📁 FILES ĐÃ TẠO MỚI
+
+| File | Mô tả |
+|---|---|
+| `backend/src/modules/interviews/interviews.schemas.ts` | Zod schemas tách từ interviews.routes.ts |
+| `backend/src/modules/interviews/interviews.service.ts` | Business logic tách từ interviews.routes.ts |
+| `backend/src/utils/errors.ts` | 9 custom error classes (AppError, NotFoundError, DatabaseError...) |
+| `backend/src/middleware/error-handler.ts` | Unified Express error handler middleware |
+
+## 📁 FILES ĐÃ SỬA
+
+| File | Thay đổi |
+|---|---|
+| `backend/src/modules/auth/auth.middleware.ts` | Bỏ query token fallback |
+| `backend/src/modules/auth/auth.utils.ts` | Đơn giản hóa cookie parsing |
+| `backend/src/server.ts` | cookie-parser, compression pkg, errorHandler, graceful shutdown, JSON 2MB |
+| `frontend/lib/api.ts` | Sửa timeout error message thiếu dấu tiếng Việt |
+| `package.json` (root) | Bỏ `@types/express` trùng với backend |
+| Nhiều routes files | Sửa error messages tiếng Việt không dấu |
+
+---
+
+## 📁 FILES ĐÃ TẠO MỚI (lần 2)
+
+| File | Mô tả |
+|---|---|
+| `backend/src/config/logger.ts` | Pino structured logger — JSON prod, pretty dev |
+| `backend/src/middleware/request-id.ts` | UUID per request, `X-Request-Id` header |
+| `backend/src/middleware/upload-security.ts` | MIME whitelist, path traversal guard, nosniff |
+| `frontend/components/error-boundary.tsx` | Reusable React ErrorBoundary component |
+| `frontend/app/error.tsx` | Next.js global error page with retry |
+| `frontend/app/not-found.tsx` | Custom 404 page |
+| `backend/Dockerfile` | Multi-stage build, node:20-alpine |
+| `frontend/Dockerfile` | Multi-stage Next.js standalone build |
+| `docker-compose.yml` | Postgres + backend + frontend + healthchecks |
+| `backend/.dockerignore` | Docker ignore for backend |
+| `frontend/.dockerignore` | Docker ignore for frontend |
 
 ## 🎯 KẾT LUẬN
 
 **Dự án có nền tảng tốt**: Auth flow hoàn chỉnh, middleware pattern nhất quán, rate limiting, health check, AI integration với fallback, i18n, accessibility. 
 
-**Đã fix trong lần review này (5 mục)**:
+**Đã fix trong lần review này (17 mục)**:
 - ✅ Cookie-parser middleware + đơn giản hóa `getRefreshTokenFromRequest()`
 - ✅ Sửa tất cả error messages tiếng Việt không dấu & corrupted UTF-8
 - ✅ Bỏ query token authentication — chỉ còn Bearer header
 - ✅ Giảm JSON body limit 12MB → 2MB
 - ✅ Tách `interviews.routes.ts` — tạo `interviews.schemas.ts` + `interviews.service.ts`
+- ✅ Tạo custom error classes (`utils/errors.ts` — 9 classes)
+- ✅ Tạo + wire unified error handler vào `server.ts`
+- ✅ Thay compression tự viết bằng `compression` npm package
+- ✅ Thêm graceful shutdown (`SIGTERM`/`SIGINT`)
+- ✅ Kiểm tra input validation tất cả routes — xác nhận đủ
+- ✅ Fix frontend `api.ts` timeout message thiếu dấu
+- ✅ Fix TS type conflicts (duplicate `@types/express`)
+- ✅ Structured logging (pino) — thay console.log trong server.ts
+- ✅ Request ID middleware — UUID per request
+- ✅ Upload security middleware — MIME whitelist + path traversal
+- ✅ Frontend error boundaries — ErrorBoundary + error.tsx + not-found.tsx
+- ✅ Docker + docker-compose setup (multi-stage builds)
+- ✅ Fix ESLint build errors (audio caption)
 
-**Việc cần làm tiếp (ưu tiên cao)**:
+**Việc cần làm tiếp (ưu tiên cao → thấp)**:
 1. `git init` + initial commit (chưa có version control!)
 2. Refactor `interviews.routes.ts` import từ schemas/service mới
-3. Thay compression tự viết bằng `compression` package
-4. Error handling classes thống nhất
-5. Thêm unit tests
+3. Refactor routes dùng `throw new AppError(...)` thay `res.status().json()`
+4. Thêm unit tests
+5. WebSocket logic hoặc bỏ (SSE đủ)
+6. Migration strategy (Prisma migrate)
