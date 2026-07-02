@@ -167,24 +167,24 @@ export function ProfileForm() {
   }
 
   return (
-    <main className="min-h-screen bg-[#eaf3ff] p-3 text-[#101b3f] sm:p-5">
+    <main className="min-h-screen bg-[#eaf3ff] dark:bg-background p-3 text-[#101b3f] dark:text-foreground sm:p-5 transition-colors duration-150">
       <section className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[1fr_340px]">
-        <form onSubmit={handleSubmit} className="rounded-[24px] border border-[#c8d8f0] bg-white p-5 shadow-[0_24px_80px_rgba(34,70,120,0.14)] sm:p-7">
-          <header className="flex flex-col justify-between gap-4 border-b border-[#dce6f5] pb-6 md:flex-row md:items-center">
+        <form onSubmit={handleSubmit} className="rounded-[24px] border border-[#c8d8f0] dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-md p-5 shadow-[0_24px_80px_rgba(34,70,120,0.14)] dark:shadow-none sm:p-7 transition-colors duration-150">
+          <header className="flex flex-col justify-between gap-4 border-b border-[#dce6f5] dark:border-slate-800 pb-6 md:flex-row md:items-center">
             <div>
-              <p className="text-sm font-black uppercase text-[#0a347d]">Profile apply</p>
-              <h1 className="mt-2 text-3xl font-black tracking-[-0.02em]">Hồ sơ luyện phỏng vấn</h1>
-              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#51607b]">
+              <p className="text-sm font-black uppercase text-[#0a347d] dark:text-amber-500">Profile apply</p>
+              <h1 className="mt-2 text-3xl font-black tracking-[-0.02em] dark:text-slate-100">Hồ sơ luyện phỏng vấn</h1>
+              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#51607b] dark:text-slate-400">
                 Dữ liệu này được dùng để chọn câu hỏi theo trường, ngành, học bổng và tạo câu hỏi AI cá nhân hóa.
               </p>
             </div>
-            <Link href="/dashboard" className="w-fit rounded-xl border border-[#d8e3f2] px-5 py-3 text-sm font-black">
+            <Link href="/dashboard" className="w-fit rounded-xl border border-[#d8e3f2] dark:border-slate-800 px-5 py-3 text-sm font-black text-[#101b3f] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
               Dashboard
             </Link>
           </header>
 
           {isLoading ? (
-            <div className="mt-6 rounded-2xl border border-[#d8e3f2] bg-[#f7faff] p-5 text-sm font-bold text-[#51607b]">
+            <div className="mt-6 rounded-2xl border border-[#d8e3f2] dark:border-slate-800 bg-[#f7faff] dark:bg-slate-950 p-5 text-sm font-bold text-[#51607b] dark:text-slate-400">
               Đang tải profile...
             </div>
           ) : null}
@@ -267,11 +267,11 @@ export function ProfileForm() {
             <p className="mt-6 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{success}</p>
           ) : null}
 
-          <div className="mt-7 flex flex-col justify-between gap-3 border-t border-[#dce6f5] pt-6 sm:flex-row sm:items-center">
+          <div className="mt-7 flex flex-col justify-between gap-3 border-t border-[#dce6f5] dark:border-slate-800 pt-6 sm:flex-row sm:items-center">
             <button
               type="submit"
               disabled={isSaving}
-              className="rounded-xl border border-[#d8e3f2] px-6 py-3 text-sm font-black text-[#102456] disabled:opacity-60"
+              className="rounded-xl border border-[#d8e3f2] dark:border-slate-800 px-6 py-3 text-sm font-black text-[#102456] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-60"
             >
               {isSaving ? "Đang lưu..." : "Lưu profile"}
             </button>
@@ -279,7 +279,7 @@ export function ProfileForm() {
               type="button"
               onClick={handleSaveAndStart}
               disabled={isSaving}
-              className="rounded-xl bg-[#0a347d] px-6 py-3 text-sm font-black text-white shadow-lg shadow-blue-950/20 disabled:opacity-60"
+              className="rounded-xl bg-[#0a347d] dark:bg-amber-600 dark:hover:bg-amber-700 px-6 py-3 text-sm font-black text-white shadow-lg shadow-blue-950/20 disabled:opacity-60 transition"
             >
               Lưu và tạo phòng phỏng vấn
             </button>
@@ -396,10 +396,10 @@ function FormSection({
   title: string;
 }) {
   return (
-    <section className="rounded-2xl border border-[#d8e3f2] bg-white p-5">
+    <section className="rounded-2xl border border-[#d8e3f2] dark:border-slate-800 bg-white dark:bg-slate-900/30 p-5 transition-colors">
       <div className="mb-5">
-        <h2 className="text-lg font-black text-[#102456]">{title}</h2>
-        <p className="mt-1 text-sm font-semibold leading-6 text-[#6a7891]">{description}</p>
+        <h2 className="text-lg font-black text-[#102456] dark:text-slate-200">{title}</h2>
+        <p className="mt-1 text-sm font-semibold leading-6 text-[#6a7891] dark:text-slate-400">{description}</p>
       </div>
       {children}
     </section>
@@ -419,13 +419,13 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-black text-[#102456]">
+      <span className="text-sm font-black text-[#102456] dark:text-slate-300">
         {label}{required ? " *" : ""}
       </span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-12 w-full rounded-xl border border-[#d8e3f2] bg-white px-4 text-sm font-semibold outline-none transition focus:border-[#0a347d]"
+        className="mt-2 h-12 w-full rounded-xl border border-[#d8e3f2] dark:border-slate-800 bg-white dark:bg-slate-950 px-4 text-sm font-semibold dark:text-slate-100 outline-none transition focus:border-[#0a347d] dark:focus:border-amber-500"
       />
     </label>
   );
@@ -442,14 +442,14 @@ function NumberField({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-black text-[#102456]">{label}</span>
+      <span className="text-sm font-black text-[#102456] dark:text-slate-300">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         type="number"
         min={12}
         max={80}
-        className="mt-2 h-12 w-full rounded-xl border border-[#d8e3f2] bg-white px-4 text-sm font-semibold outline-none transition focus:border-[#0a347d]"
+        className="mt-2 h-12 w-full rounded-xl border border-[#d8e3f2] dark:border-slate-800 bg-white dark:bg-slate-950 px-4 text-sm font-semibold dark:text-slate-100 outline-none transition focus:border-[#0a347d] dark:focus:border-amber-500"
       />
     </label>
   );
@@ -470,13 +470,13 @@ function TextArea({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-black text-[#102456]">
+      <span className="text-sm font-black text-[#102456] dark:text-slate-300">
         {label}{required ? " *" : ""}
       </span>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`mt-2 w-full rounded-xl border border-[#d8e3f2] bg-white px-4 py-3 text-sm font-semibold leading-7 outline-none transition focus:border-[#0a347d] ${minRows}`}
+        className={`mt-2 w-full rounded-xl border border-[#d8e3f2] dark:border-slate-800 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold dark:text-slate-100 leading-7 outline-none transition focus:border-[#0a347d] dark:focus:border-amber-500 ${minRows}`}
       />
     </label>
   );
@@ -495,14 +495,14 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-black text-[#102456]">{label}</span>
+      <span className="text-sm font-black text-[#102456] dark:text-slate-300">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-12 w-full rounded-xl border border-[#d8e3f2] bg-white px-4 text-sm font-black outline-none transition focus:border-[#0a347d]"
+        className="mt-2 h-12 w-full rounded-xl border border-[#d8e3f2] dark:border-slate-800 bg-white dark:bg-slate-950 px-4 text-sm font-black dark:text-slate-100 outline-none transition focus:border-[#0a347d] dark:focus:border-amber-500"
       >
         {options.map(([optionValue, labelText]) => (
-          <option key={optionValue} value={optionValue}>{labelText}</option>
+          <option key={optionValue} value={optionValue} className="dark:bg-slate-950">{labelText}</option>
         ))}
       </select>
     </label>
