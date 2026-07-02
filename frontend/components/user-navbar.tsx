@@ -35,6 +35,7 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [hiddenOnScroll, setHiddenOnScroll] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const t = messages[locale];
@@ -55,6 +56,19 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
     setUserMenuOpen(false);
   }, [activePathname]);
 
+  useEffect(() => {
+    let lastY = window.scrollY;
+
+    function handleScroll() {
+      const nextY = window.scrollY;
+      setHiddenOnScroll(nextY > 96 && nextY > lastY);
+      lastY = nextY;
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   async function handleLogout() {
     setIsLoggingOut(true);
     try {
@@ -68,16 +82,16 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/90 text-foreground backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/dashboard" className="focus-ring flex min-w-0 max-w-[11rem] items-center gap-3 rounded-lg sm:max-w-[12rem] lg:max-w-none" aria-label={t.app.name}>
+    <header className={`sticky top-0 z-50 border-b border-border bg-background/90 text-foreground backdrop-blur-md transition-transform duration-200 ${hiddenOnScroll && !mobileOpen ? "-translate-y-full" : "translate-y-0"}`}>
+      <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between gap-3 px-4 sm:h-20 sm:px-6 xl:px-8">
+        <Link href="/dashboard" className="focus-ring flex min-w-[12.5rem] max-w-[15rem] items-center gap-3 rounded-lg xl:min-w-[14rem]" aria-label={t.app.name}>
           <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(184,29,36,0.22)]">
             <GraduationCap size={21} />
             <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-background bg-accent" />
           </span>
-          <span className="hidden min-w-0 overflow-hidden sm:block">
-            <span className="block truncate whitespace-nowrap text-sm font-black leading-4 text-primary">{t.app.name}</span>
-            <span className="block truncate whitespace-nowrap text-xs font-bold text-muted-foreground">China interview studio</span>
+          <span className="hidden min-w-0 sm:block">
+            <span className="block text-sm font-black leading-4 text-primary">{t.app.name}</span>
+            <span className="block max-w-[8.5rem] text-xs font-bold leading-4 text-muted-foreground xl:max-w-none">China interview studio</span>
           </span>
         </Link>
 
@@ -89,7 +103,7 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`focus-ring group relative inline-flex min-h-11 items-center gap-2 rounded-lg px-4 text-sm font-black transition ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                className={`focus-ring group relative inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-black transition xl:px-4 ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
                 aria-current={active ? "page" : undefined}
               >
                 <Icon size={17} />
