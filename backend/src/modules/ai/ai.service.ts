@@ -18,7 +18,6 @@ const openai = deepseek || (env.openAiApiKey
     })
   : null);
 
-const activeModel = env.deepseekApiKey ? env.deepseekModel : env.openAiModel;
 const activeProvider = env.deepseekApiKey ? "deepseek" : "openai";
 
 export type InterviewQuestionInput = {
@@ -202,10 +201,15 @@ async function completeJson<T>(input: {
     return null;
   }
 
+  const isScoringOrAnalysis = input.taskType === ai_task_type.SCORE_ANSWER || input.taskType === ai_task_type.ANALYZE_STUDY_PLAN;
+  const modelToUse = env.deepseekApiKey
+    ? (isScoringOrAnalysis ? "deepseek-v4-pro" : "deepseek-v4-flash")
+    : env.openAiModel;
+
   try {
     const response = await openai.chat.completions.create({
       messages: input.messages,
-      model: activeModel,
+      model: modelToUse,
       response_format: { type: "json_object" },
       temperature: input.temperature ?? 0.3
     });
@@ -215,7 +219,7 @@ async function completeJson<T>(input: {
 
     await logAiUsage({
       latencyMs,
-      model: activeModel,
+      model: modelToUse,
       promptTemplateId: input.promptTemplateId ?? null,
       provider: activeProvider,
       requestPayload: input.requestPayload ?? { messages: input.messages },
@@ -229,14 +233,14 @@ async function completeJson<T>(input: {
       userId: input.userId ?? null
     });
 
-    console.log(`[AI] ${input.operation} ${activeProvider} ${latencyMs}ms model=${activeModel}`);
+    console.log(`[AI] ${input.operation} ${activeProvider} ${latencyMs}ms model=${modelToUse}`);
     return parsed;
   } catch (error) {
     const latencyMs = Date.now() - startedAt;
     await logAiUsage({
       errorMessage: error instanceof Error ? error.message : String(error),
       latencyMs,
-      model: activeModel,
+      model: modelToUse,
       promptTemplateId: input.promptTemplateId ?? null,
       provider: activeProvider,
       requestPayload: input.requestPayload ?? { messages: input.messages },
