@@ -210,6 +210,44 @@ textarea:focus-visible {
   --admin-surface-muted: #111c31;
 }
 
+:root:not(.dark) .admin-theme :is(.bg-slate-950, .bg-slate-900) {
+  background-color: var(--admin-surface) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.bg-slate-800, .bg-slate-700) {
+  background-color: var(--admin-surface-muted) !important;
+  color: rgb(51 65 85) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.border-slate-900, .border-slate-800, .border-slate-700) {
+  border-color: rgb(226 232 240) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.text-slate-100, .text-slate-200, .text-slate-300, .text-white) {
+  color: hsl(var(--foreground)) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.text-slate-400, .text-slate-500) {
+  color: rgb(71 85 105) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.text-red-300, .text-red-200) {
+  color: rgb(220 38 38) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.text-green-300, .text-emerald-300) {
+  color: rgb(21 128 61) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.bg-slate-950\/80, .bg-slate-950\/92) {
+  background-color: rgb(255 255 255 / 0.92) !important;
+}
+
+:root:not(.dark) .admin-theme :is(.bg-red-600, .bg-red-700, .bg-indigo-600, .bg-indigo-700, .bg-sky-700, .bg-sky-800).text-white {
+  color: white !important;
+}
+
 .admin-theme :is(.bg-white) {
   background-color: var(--admin-surface) !important;
   color: hsl(var(--foreground)) !important;

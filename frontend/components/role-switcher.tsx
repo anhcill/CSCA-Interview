@@ -21,7 +21,7 @@ export function RoleSwitcher({ active, className = "", variant = "light" }: Role
     <nav
       aria-label="Chuyen doi User Admin"
       className={`inline-flex items-center rounded-lg border p-1 ${
-        dark ? "border-slate-700 bg-slate-900" : "border-border bg-muted/50"
+        dark ? "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" : "border-border bg-muted/50"
       } ${className}`}
     >
       {items.map((item) => {
@@ -39,7 +39,7 @@ export function RoleSwitcher({ active, className = "", variant = "light" }: Role
                   ? "bg-red-600 text-white shadow-lg shadow-red-950/30"
                   : "bg-background text-primary shadow-sm"
                 : dark
-                  ? "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  ? "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   : "text-muted-foreground hover:bg-background hover:text-foreground"
             }`}
           >
