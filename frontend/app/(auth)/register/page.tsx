@@ -1,19 +1,31 @@
 "use client";
 
-import { Mail, Phone, User, Send } from "lucide-react";
+import { Mail, Phone, User } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { AuthLayout } from "@/components/auth-layout";
 import { PasswordField } from "@/components/password-field";
 import { registerAccount, saveAuthSession } from "@/lib/auth-client";
 
-const fieldShell =
-  "flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 transition focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-100";
-const fieldInput =
-  "min-w-0 flex-1 appearance-none border-0 bg-transparent text-[15px] font-medium text-slate-800 outline-none placeholder:text-slate-400";
+const inputWrap =
+  "flex h-11 items-center gap-3 rounded-xl px-4 transition-all duration-200 focus-within:ring-2 focus-within:ring-red-500/40";
+const inputBase =
+  "min-w-0 flex-1 appearance-none border-0 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/30";
+const inputStyle = {
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.1)",
+};
 
-export default function RegisterPage() {
+function GoogleIcon() {
+  return (
+    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
+      <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.89 5.89 0 0 1 8 12.628a5.89 5.89 0 0 1 5.99-5.89 5.75 5.75 0 0 1 3.96 1.543l3.14-3.14A10.15 10.15 0 0 0 13.99 3c-5.523 0-10 4.477-10 10s4.477 10 10 10c5.77 0 9.588-4.053 9.588-9.75 0-.663-.058-1.295-.168-1.965H12.24Z" />
+    </svg>
+  );
+}
+
+function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [fullName, setFullName] = useState("");
@@ -27,19 +39,14 @@ export default function RegisterPage() {
 
   useEffect(() => {
     const errorQuery = searchParams.get("error");
-    if (errorQuery) {
-      if (errorQuery === "token_exchange_failed") {
-        setError("Không thể trao đổi mã xác thực với Google.");
-      } else if (errorQuery === "user_info_failed") {
-        setError("Không thể lấy thông tin tài khoản từ Google.");
-      } else if (errorQuery === "email_not_provided") {
-        setError("Tài khoản Google của bạn không cung cấp Email.");
-      } else if (errorQuery === "account_disabled") {
-        setError("Tài khoản của bạn đã bị vô hiệu hóa.");
-      } else {
-        setError(`Lỗi đăng ký Google: ${errorQuery}`);
-      }
-    }
+    if (!errorQuery) return;
+    const messages: Record<string, string> = {
+      token_exchange_failed: "Không thể trao đổi mã xác thực với Google.",
+      user_info_failed: "Không thể lấy thông tin tài khoản từ Google.",
+      email_not_provided: "Tài khoản Google của bạn không cung cấp Email.",
+      account_disabled: "Tài khoản của bạn đã bị vô hiệu hóa.",
+    };
+    setError(messages[errorQuery] ?? `Lỗi đăng ký Google: ${errorQuery}`);
   }, [searchParams]);
 
   const handleGoogleRegister = () => {
@@ -50,19 +57,15 @@ export default function RegisterPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận chưa khớp");
       return;
     }
-
     if (!acceptedTerms) {
       setError("Bạn cần đồng ý với điều khoản và chính sách bảo mật");
       return;
     }
-
     setIsLoading(true);
-
     try {
       const data = await registerAccount({ fullName, email, phone, password });
       saveAuthSession(data);
@@ -77,17 +80,18 @@ export default function RegisterPage() {
   return (
     <AuthLayout
       mode="register"
-      title="Tạo hồ sơ apply"
-      subtitle="Đăng ký tài khoản để lưu thông tin ứng viên và bắt đầu luyện phỏng vấn theo mục tiêu du học."
+      title="Bắt đầu hành trình"
+      subtitle="Đăng ký để lưu hồ sơ và luyện phỏng vấn theo chuẩn học bổng Chính phủ Trung Quốc (CSC)."
     >
-      <form className="space-y-3" onSubmit={handleSubmit}>
+      <form className="space-y-2.5" onSubmit={handleSubmit}>
+        {/* Full name */}
         <label className="block">
-          <span className={fieldShell}>
-            <User size={18} className="text-blue-600" />
+          <span className={inputWrap} style={inputStyle}>
+            <User size={16} className="shrink-0 text-red-400" />
             <input
               value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              className={fieldInput}
+              onChange={(e) => setFullName(e.target.value)}
+              className={inputBase}
               placeholder="Họ và tên"
               aria-label="Họ và tên"
               autoComplete="name"
@@ -96,13 +100,14 @@ export default function RegisterPage() {
           </span>
         </label>
 
+        {/* Email */}
         <label className="block">
-          <span className={fieldShell}>
-            <Mail size={18} className="text-blue-600" />
+          <span className={inputWrap} style={inputStyle}>
+            <Mail size={16} className="shrink-0 text-red-400" />
             <input
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className={fieldInput}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputBase}
               type="email"
               placeholder="Email"
               aria-label="Email"
@@ -112,20 +117,22 @@ export default function RegisterPage() {
           </span>
         </label>
 
+        {/* Phone */}
         <label className="block">
-          <span className={fieldShell}>
-            <Phone size={18} className="text-blue-600" />
+          <span className={inputWrap} style={inputStyle}>
+            <Phone size={16} className="shrink-0 text-red-400" />
             <input
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              className={fieldInput}
-              placeholder="Số điện thoại (không bắt buộc)"
+              onChange={(e) => setPhone(e.target.value)}
+              className={inputBase}
+              placeholder="Số điện thoại (tuỳ chọn)"
               aria-label="Số điện thoại"
               autoComplete="tel"
             />
           </span>
         </label>
 
+        {/* Password */}
         <PasswordField
           value={password}
           onChange={setPassword}
@@ -133,8 +140,10 @@ export default function RegisterPage() {
           ariaLabel="Mật khẩu"
           autoComplete="new-password"
           compact
+          darkMode
         />
 
+        {/* Confirm password */}
         <PasswordField
           value={confirmPassword}
           onChange={setConfirmPassword}
@@ -142,71 +151,85 @@ export default function RegisterPage() {
           ariaLabel="Xác nhận mật khẩu"
           autoComplete="new-password"
           compact
+          darkMode
         />
 
-        <label className="flex items-start gap-2 text-[12px] font-semibold leading-5 text-slate-500 cursor-pointer">
+        {/* Terms */}
+        <label className="flex cursor-pointer items-start gap-2.5 pt-0.5 text-[12px] font-semibold leading-5 text-white/40">
           <input
             checked={acceptedTerms}
-            onChange={(event) => setAcceptedTerms(event.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-red-500"
             type="checkbox"
           />
           <span>
             Tôi đồng ý với{" "}
-            <a href="/terms" className="text-blue-600 hover:text-blue-700 font-bold">
-              Điều khoản
-            </a>{" "}
-            &{" "}
-            <a href="/privacy" className="text-blue-600 hover:text-blue-700 font-bold">
-              Chính sách bảo mật
-            </a>
+            <a href="/terms" className="text-red-400 hover:text-red-300 transition">Điều khoản</a>{" "}&amp;{" "}
+            <a href="/privacy" className="text-red-400 hover:text-red-300 transition">Chính sách bảo mật</a>
           </span>
         </label>
 
-        {error ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+        {/* Error */}
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-semibold text-red-300">
             {error}
-          </p>
-        ) : null}
+          </div>
+        )}
 
+        {/* Submit */}
         <button
           type="submit"
+          id="btn-register-submit"
           disabled={isLoading}
-          className="h-11 w-full rounded-xl bg-blue-600 text-[15px] font-bold text-white shadow-md shadow-blue-500/10 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70 flex items-center justify-center gap-2"
+          className="h-12 w-full rounded-xl text-sm font-black text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 hover:opacity-90 active:scale-[0.98]"
+          style={{ background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%)", boxShadow: "0 4px 24px rgba(192,57,43,0.4)" }}
         >
-          <Send size={17} className="rotate-45" />
-          {isLoading ? "Đang đăng ký..." : "Đăng ký"}
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              Đang đăng ký...
+            </span>
+          ) : "🏮 Tạo tài khoản"}
         </button>
 
-        <div className="relative flex py-1.5 items-center">
-          <div className="flex-grow border-t border-slate-100"></div>
-          <span className="flex-shrink mx-4 text-xs font-semibold text-slate-400">hoặc</span>
-          <div className="flex-grow border-t border-slate-100"></div>
+        {/* Divider */}
+        <div className="relative flex items-center py-0.5">
+          <div className="flex-grow border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }} />
+          <span className="mx-4 flex-shrink text-[11px] font-bold text-white/25">hoặc</span>
+          <div className="flex-grow border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }} />
         </div>
 
+        {/* Google */}
         <button
           type="button"
+          id="btn-register-google"
           onClick={handleGoogleRegister}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-[15px] font-bold text-slate-700 transition hover:bg-slate-50"
+          className="flex h-11 w-full items-center justify-center gap-3 rounded-xl text-sm font-bold text-white/80 transition-all duration-200 hover:text-white hover:bg-white/10 active:scale-[0.98]"
+          style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)" }}
         >
-          <svg className="h-5 w-5" viewBox="0 0 24 24">
-            <path
-              fill="#EA4335"
-              d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.89 5.89 0 0 1 8 12.628a5.89 5.89 0 0 1 5.99-5.89 5.75 5.75 0 0 1 3.96 1.543l3.14-3.14A10.15 10.15 0 0 0 13.99 3c-5.523 0-10 4.477-10 10s4.477 10 10 10c5.77 0 9.588-4.053 9.588-9.75 0-.663-.058-1.295-.168-1.965H12.24Z"
-            />
-          </svg>
+          <GoogleIcon />
           Đăng ký với Google
         </button>
 
-        <div className="text-center pt-2">
-          <span className="text-[14px] font-semibold text-slate-500">
-            Đã có tài khoản?{" "}
-            <Link href="/login" className="font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
-              Đăng nhập ngay <span className="text-lg leading-none">→</span>
-            </Link>
-          </span>
-        </div>
+        {/* Switch */}
+        <p className="pt-1 text-center text-[13px] font-semibold text-white/30">
+          Đã có tài khoản?{" "}
+          <Link href="/login" className="font-black text-red-400 hover:text-red-300 transition">
+            Đăng nhập →
+          </Link>
+        </p>
       </form>
     </AuthLayout>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }

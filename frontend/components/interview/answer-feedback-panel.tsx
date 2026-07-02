@@ -106,21 +106,25 @@ export function AnswerFeedbackPanel({
             const isSelected = selectedQuestions.includes(d.sessionQuestionId);
             const isWeak = d.scores.total < 6.5;
             return (
-              <div
+              <button
+                type="button"
                 key={d.sessionQuestionId}
+                aria-pressed={isSelected}
                 onClick={() => toggleSelect(d.sessionQuestionId)}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                className={`flex w-full items-start gap-3 p-3 rounded-lg border text-left cursor-pointer transition-all ${
                   isSelected
                     ? "border-primary bg-primary/5"
                     : "border-border bg-background hover:bg-muted/50"
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => {}} // Đã handle ở thẻ cha
-                  className="mt-1 h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary shrink-0"
-                />
+                <span
+                  aria-hidden="true"
+                  className={`mt-1 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
+                    isSelected ? "border-primary bg-primary" : "border-border bg-background"
+                  }`}
+                >
+                  {isSelected && <span className="h-1.5 w-1.5 rounded-sm bg-primary-foreground" />}
+                </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black text-foreground truncate">
                     Câu {index + 1}: {d.questionText}
@@ -136,7 +140,7 @@ export function AnswerFeedbackPanel({
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

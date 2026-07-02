@@ -1,42 +1,49 @@
 "use client";
 
-import { Mail, Send } from "lucide-react";
+import { Mail, Lock } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { AuthLayout } from "@/components/auth-layout";
 import { PasswordField } from "@/components/password-field";
 import { loginAccount, saveAuthSession } from "@/lib/auth-client";
 
-const fieldShell =
-  "flex h-12 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 transition focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-100";
-const fieldInput =
-  "min-w-0 flex-1 appearance-none border-0 bg-transparent text-[15px] font-medium text-slate-800 outline-none placeholder:text-slate-400";
+const inputWrap =
+  "flex h-12 items-center gap-3 rounded-xl px-4 transition-all duration-200 focus-within:ring-2 focus-within:ring-red-500/40";
+const inputBase =
+  "min-w-0 flex-1 appearance-none border-0 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/30";
+const inputStyle = {
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.1)",
+};
+const inputFocusStyle = {};
 
-export default function LoginPage() {
+function GoogleIcon() {
+  return (
+    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
+      <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.89 5.89 0 0 1 8 12.628a5.89 5.89 0 0 1 5.99-5.89 5.75 5.75 0 0 1 3.96 1.543l3.14-3.14A10.15 10.15 0 0 0 13.99 3c-5.523 0-10 4.477-10 10s4.477 10 10 10c5.77 0 9.588-4.053 9.588-9.75 0-.663-.058-1.295-.168-1.965H12.24Z" />
+    </svg>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const errorQuery = searchParams.get("error");
-    if (errorQuery) {
-      if (errorQuery === "token_exchange_failed") {
-        setError("Không thể trao đổi mã xác thực với Google.");
-      } else if (errorQuery === "user_info_failed") {
-        setError("Không thể lấy thông tin tài khoản từ Google.");
-      } else if (errorQuery === "email_not_provided") {
-        setError("Tài khoản Google của bạn không cung cấp Email.");
-      } else if (errorQuery === "account_disabled") {
-        setError("Tài khoản của bạn đã bị vô hiệu hóa.");
-      } else {
-        setError(`Lỗi xác thực Google: ${errorQuery}`);
-      }
-    }
+    if (!errorQuery) return;
+    const messages: Record<string, string> = {
+      token_exchange_failed: "Không thể trao đổi mã xác thực với Google.",
+      user_info_failed: "Không thể lấy thông tin tài khoản từ Google.",
+      email_not_provided: "Tài khoản Google của bạn không cung cấp Email.",
+      account_disabled: "Tài khoản của bạn đã bị vô hiệu hóa.",
+    };
+    setError(messages[errorQuery] ?? `Lỗi xác thực Google: ${errorQuery}`);
   }, [searchParams]);
 
   const handleGoogleLogin = () => {
@@ -48,7 +55,6 @@ export default function LoginPage() {
     event.preventDefault();
     setError("");
     setIsLoading(true);
-
     try {
       const data = await loginAccount({ email, password });
       saveAuthSession(data);
@@ -69,17 +75,18 @@ export default function LoginPage() {
   return (
     <AuthLayout
       mode="login"
-      title="Đăng nhập hồ sơ"
-      subtitle="Tiếp tục luyện phỏng vấn, kiểm tra tiến độ và chuẩn bị câu trả lời cho kỳ apply du học."
+      title="Chào mừng trở lại"
+      subtitle="Tiếp tục luyện phỏng vấn, theo dõi tiến độ và chuẩn bị tốt nhất cho kỳ apply học bổng."
     >
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <form className="space-y-3" onSubmit={handleSubmit}>
+        {/* Email */}
         <label className="block">
-          <span className={fieldShell}>
-            <Mail size={18} className="text-blue-600" />
+          <span className={inputWrap} style={inputStyle}>
+            <Mail size={17} className="shrink-0 text-red-400" />
             <input
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className={fieldInput}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputBase}
               type="email"
               placeholder="Email đăng nhập"
               aria-label="Email đăng nhập"
@@ -89,73 +96,90 @@ export default function LoginPage() {
           </span>
         </label>
 
+        {/* Password */}
         <PasswordField
           value={password}
           onChange={setPassword}
           placeholder="Mật khẩu"
           ariaLabel="Mật khẩu"
           autoComplete="current-password"
+          darkMode
         />
 
-        <div className="flex items-center justify-between gap-4 text-[13px] font-semibold">
-          <label className="flex items-center gap-2 text-slate-500 cursor-pointer">
-            <input
-              checked={rememberMe}
-              onChange={(event) => setRememberMe(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              type="checkbox"
-            />
+        {/* Remember + Forgot */}
+        <div className="flex items-center justify-between text-xs font-semibold">
+          <label className="flex cursor-pointer items-center gap-2 text-white/40 hover:text-white/60 transition">
+            <input type="checkbox" defaultChecked className="h-3.5 w-3.5 accent-red-500" />
             Ghi nhớ đăng nhập
           </label>
-          <button type="button" className="text-blue-600 hover:text-blue-700">
+          <button type="button" className="text-red-400 hover:text-red-300 transition">
             Quên mật khẩu?
           </button>
         </div>
 
-        {error ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+        {/* Error */}
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-semibold text-red-300">
             {error}
-          </p>
-        ) : null}
+          </div>
+        )}
 
+        {/* Submit */}
         <button
           type="submit"
+          id="btn-login-submit"
           disabled={isLoading}
-          className="h-12 w-full rounded-xl bg-blue-600 text-[15px] font-bold text-white shadow-md shadow-blue-500/10 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70 flex items-center justify-center gap-2"
+          className="relative h-12 w-full overflow-hidden rounded-xl text-sm font-black text-white shadow-lg transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 hover:opacity-90 active:scale-[0.98]"
+          style={{ background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%)", boxShadow: "0 4px 24px rgba(192,57,43,0.4)" }}
         >
-          <Send size={17} className="rotate-45" />
-          {isLoading ? "Đang đăng nhập..." : "Đăng nhập"}
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              Đang đăng nhập...
+            </span>
+          ) : (
+            "🏮 Đăng nhập"
+          )}
         </button>
 
-        <div className="relative flex py-2 items-center">
-          <div className="flex-grow border-t border-slate-100"></div>
-          <span className="flex-shrink mx-4 text-xs font-semibold text-slate-400">hoặc</span>
-          <div className="flex-grow border-t border-slate-100"></div>
+        {/* Divider */}
+        <div className="relative flex items-center py-1">
+          <div className="flex-grow border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }} />
+          <span className="mx-4 flex-shrink text-[11px] font-bold text-white/25">hoặc</span>
+          <div className="flex-grow border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }} />
         </div>
 
+        {/* Google */}
         <button
           type="button"
+          id="btn-login-google"
           onClick={handleGoogleLogin}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-[15px] font-bold text-slate-700 transition hover:bg-slate-50"
+          className="flex h-12 w-full items-center justify-center gap-3 rounded-xl text-sm font-bold text-white/80 transition-all duration-200 hover:text-white hover:bg-white/10 active:scale-[0.98]"
+          style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)" }}
         >
-          <svg className="h-5 w-5" viewBox="0 0 24 24">
-            <path
-              fill="#EA4335"
-              d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.89 5.89 0 0 1 8 12.628a5.89 5.89 0 0 1 5.99-5.89 5.75 5.75 0 0 1 3.96 1.543l3.14-3.14A10.15 10.15 0 0 0 13.99 3c-5.523 0-10 4.477-10 10s4.477 10 10 10c5.77 0 9.588-4.053 9.588-9.75 0-.663-.058-1.295-.168-1.965H12.24Z"
-            />
-          </svg>
+          <GoogleIcon />
           Đăng nhập với Google
         </button>
 
-        <div className="text-center pt-2">
-          <span className="text-[14px] font-semibold text-slate-500">
-            Chưa có tài khoản?{" "}
-            <Link href="/register" className="font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
-              Đăng ký ngay <span className="text-lg leading-none">→</span>
-            </Link>
-          </span>
-        </div>
+        {/* Switch */}
+        <p className="pt-1 text-center text-[13px] font-semibold text-white/30">
+          Chưa có tài khoản?{" "}
+          <Link href="/register" className="font-black text-red-400 hover:text-red-300 transition">
+            Đăng ký ngay →
+          </Link>
+        </p>
       </form>
     </AuthLayout>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

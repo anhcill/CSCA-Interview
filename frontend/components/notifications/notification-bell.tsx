@@ -160,11 +160,13 @@ export function NotificationBell() {
               </div>
             ) : (
               notifications.map((notification) => (
-                <div
+                <button
+                  type="button"
                   key={notification.id}
                   onClick={() => !notification.isRead && markAsRead(notification.id)}
-                  className={`flex flex-col gap-1 p-3 rounded-lg text-left cursor-pointer transition-colors ${
-                    notification.isRead ? "hover:bg-muted/50" : "bg-primary/5 hover:bg-primary/10"
+                  disabled={notification.isRead}
+                  className={`flex w-full flex-col gap-1 p-3 rounded-lg text-left transition-colors disabled:cursor-default ${
+                    notification.isRead ? "hover:bg-muted/50" : "cursor-pointer bg-primary/5 hover:bg-primary/10"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -181,7 +183,7 @@ export function NotificationBell() {
                   <span className="text-[10px] text-muted-foreground/75 font-semibold mt-1">
                     {formatTime(notification.createdAt)}
                   </span>
-                </div>
+                </button>
               ))
             )}
           </div>

@@ -27,7 +27,7 @@ const adminPrefetchPaths = [
   "/admin/scholarships"
 ];
 
-const publicPaths = new Set(["/", "/403-forbidden", "/features", "/guide", "/login", "/pricing", "/register"]);
+const publicPaths = new Set(["/", "/403-forbidden", "/features", "/guide", "/login", "/pricing", "/privacy", "/register", "/terms"]);
 const fullScreenPaths = new Set(["/interview"]);
 const adminRoles: AuthUser["role"][] = ["ADMIN", "SUPER_ADMIN"];
 type AuthStatus = "checking" | "authenticated" | "error" | "forbidden" | "public" | "unauthenticated";
