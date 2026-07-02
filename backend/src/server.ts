@@ -28,6 +28,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { wsInterviewHandler } from "./modules/realtime/ws-interview.handler.js";
 
 const app = express();
+app.set("trust proxy", true);
 
 const startedAt = new Date();
 const realtimeState = {

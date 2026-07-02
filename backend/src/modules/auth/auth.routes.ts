@@ -265,7 +265,7 @@ authRouter.get("/me", asyncRoute(async (req, res) => {
 
 const getGoogleRedirectUri = (req: Request) => {
   const host = req.get("host");
-  const protocol = req.protocol;
+  const protocol = env.isProd ? "https" : req.protocol;
   return `${protocol}://${host}/api/auth/google/callback`;
 };
 
