@@ -12,3 +12,7 @@ backend/node_modules
 frontend/.next
 backend/dist
 nginx/certs
+
+# Logs & screenshots (dọn dẹp root)
+logs/
+docs/screenshots/
