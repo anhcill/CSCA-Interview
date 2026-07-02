@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Clock, GraduationCap, Plus, School, Trash2, type LucideIcon } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { apiDelete, apiGet } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
 
