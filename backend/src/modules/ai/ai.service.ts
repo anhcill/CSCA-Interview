@@ -4,12 +4,22 @@ import { env } from "../../config/env.js";
 import { extractOpenAiTokenUsage, logAiUsage } from "./ai-usage.service.js";
 import { promptTemplateNames, renderPromptTemplate, resolvePromptTemplate } from "./prompt-templates.js";
 
-const openai = env.openAiApiKey
+const deepseek = env.deepseekApiKey
+  ? new OpenAI({
+      apiKey: env.deepseekApiKey,
+      baseURL: env.deepseekBaseUrl || "https://api.deepseek.com/v1"
+    })
+  : null;
+
+const openai = deepseek || (env.openAiApiKey
   ? new OpenAI({
       apiKey: env.openAiApiKey,
       ...(env.openAiBaseUrl ? { baseURL: env.openAiBaseUrl } : {})
     })
-  : null;
+  : null);
+
+const activeModel = env.deepseekApiKey ? env.deepseekModel : env.openAiModel;
+const activeProvider = env.deepseekApiKey ? "deepseek" : "openai";
 
 export type InterviewQuestionInput = {
   degreeLevel: string;
@@ -195,7 +205,7 @@ async function completeJson<T>(input: {
   try {
     const response = await openai.chat.completions.create({
       messages: input.messages,
-      model: env.openAiModel,
+      model: activeModel,
       response_format: { type: "json_object" },
       temperature: input.temperature ?? 0.3
     });
@@ -205,9 +215,9 @@ async function completeJson<T>(input: {
 
     await logAiUsage({
       latencyMs,
-      model: env.openAiModel,
+      model: activeModel,
       promptTemplateId: input.promptTemplateId ?? null,
-      provider: "openai",
+      provider: activeProvider,
       requestPayload: input.requestPayload ?? { messages: input.messages },
       responsePayload: {
         id: response.id,
@@ -219,21 +229,21 @@ async function completeJson<T>(input: {
       userId: input.userId ?? null
     });
 
-    console.log(`[AI] ${input.operation} openai ${latencyMs}ms model=${env.openAiModel}`);
+    console.log(`[AI] ${input.operation} ${activeProvider} ${latencyMs}ms model=${activeModel}`);
     return parsed;
   } catch (error) {
     const latencyMs = Date.now() - startedAt;
     await logAiUsage({
       errorMessage: error instanceof Error ? error.message : String(error),
       latencyMs,
-      model: env.openAiModel,
+      model: activeModel,
       promptTemplateId: input.promptTemplateId ?? null,
-      provider: "openai",
+      provider: activeProvider,
       requestPayload: input.requestPayload ?? { messages: input.messages },
       taskType: input.taskType,
       userId: input.userId ?? null
     });
-    console.error(`[AI] ${input.operation} openai failed; using fallback`, error);
+    console.error(`[AI] ${input.operation} ${activeProvider} failed; using fallback`, error);
     return null;
   }
 }
