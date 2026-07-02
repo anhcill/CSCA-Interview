@@ -50,6 +50,7 @@ function RegisterForm() {
   }, [searchParams]);
 
   const handleGoogleRegister = () => {
+    if (!acceptedTerms) return;
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4010";
     window.location.href = `${apiBaseUrl}/api/auth/google`;
   };
@@ -159,13 +160,13 @@ function RegisterForm() {
           <input
             checked={acceptedTerms}
             onChange={(e) => setAcceptedTerms(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 accent-red-500"
+            className="mt-0.5 h-3.5 w-3.5 accent-red-500 cursor-pointer"
             type="checkbox"
           />
           <span>
             Tôi đồng ý với{" "}
-            <a href="/terms" className="text-red-400 hover:text-red-300 transition">Điều khoản</a>{" "}&amp;{" "}
-            <a href="/privacy" className="text-red-400 hover:text-red-300 transition">Chính sách bảo mật</a>
+            <Link href="/terms" target="_blank" className="text-red-400 hover:text-red-300 transition underline">Điều khoản</Link>{" "}&amp;{" "}
+            <Link href="/privacy" target="_blank" className="text-red-400 hover:text-red-300 transition underline">Chính sách bảo mật</Link>
           </span>
         </label>
 
@@ -180,9 +181,9 @@ function RegisterForm() {
         <button
           type="submit"
           id="btn-register-submit"
-          disabled={isLoading}
-          className="h-12 w-full rounded-xl text-sm font-black text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 hover:opacity-90 active:scale-[0.98]"
-          style={{ background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%)", boxShadow: "0 4px 24px rgba(192,57,43,0.4)" }}
+          disabled={isLoading || !acceptedTerms}
+          className="h-12 w-full rounded-xl text-sm font-black text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 hover:opacity-90 active:scale-[0.98]"
+          style={{ background: "linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%)", boxShadow: acceptedTerms ? "0 4px 24px rgba(192,57,43,0.4)" : "none" }}
         >
           {isLoading ? (
             <span className="flex items-center justify-center gap-2">
@@ -206,8 +207,9 @@ function RegisterForm() {
         <button
           type="button"
           id="btn-register-google"
+          disabled={isLoading || !acceptedTerms}
           onClick={handleGoogleRegister}
-          className="flex h-11 w-full items-center justify-center gap-3 rounded-xl text-sm font-bold text-white/80 transition-all duration-200 hover:text-white hover:bg-white/10 active:scale-[0.98]"
+          className="flex h-11 w-full items-center justify-center gap-3 rounded-xl text-sm font-bold text-white/80 transition-all duration-200 hover:text-white hover:bg-white/10 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)" }}
         >
           <GoogleIcon />
