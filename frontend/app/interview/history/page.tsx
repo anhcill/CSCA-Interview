@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Clock, GraduationCap, Plus, School, Trash2, type LucideIcon } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { apiDelete, apiGet } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
 
@@ -94,6 +95,7 @@ export default function InterviewHistoryPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
   const groups = useMemo(() => groupByMajor(sessions), [sessions]);
   const selectedGroup = groups.find((group) => group.key === selectedMajorKey) ?? groups[0] ?? null;
@@ -133,17 +135,23 @@ export default function InterviewHistoryPage() {
     }
   }, [groups, selectedMajorKey]);
 
-  async function deleteSession(sessionId: string) {
+  function handleDeleteClick(sessionId: string) {
+    setSessionToDelete(sessionId);
+  }
+
+  async function confirmDelete() {
+    if (!sessionToDelete) return;
+    const sessionId = sessionToDelete;
     const token = getAuthToken();
     if (!token) {
       setError("Vui lòng đăng nhập");
+      setSessionToDelete(null);
       return;
     }
 
-    if (!window.confirm("Xóa buổi phỏng vấn này khỏi lịch sử?")) return;
-
     setDeletingId(sessionId);
     setError("");
+    setSessionToDelete(null);
 
     try {
       await apiDelete<{ message: string }>(`/api/interviews/${sessionId}`, { token });
@@ -256,7 +264,7 @@ export default function InterviewHistoryPage() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => deleteSession(session.id)}
+                            onClick={() => handleDeleteClick(session.id)}
                             disabled={deletingId === session.id}
                             className="focus-ring flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-50"
                             aria-label="Xóa lịch sử phỏng vấn"
@@ -274,6 +282,50 @@ export default function InterviewHistoryPage() {
           </div>
         )}
       </section>
+      <AnimatePresence>
+        {sessionToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSessionToDelete(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            
+            {/* Modal Card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-border bg-background p-6 shadow-2xl"
+            >
+              <h3 className="text-xl font-black text-foreground">Xác nhận xóa lịch sử</h3>
+              <p className="mt-3 text-sm font-semibold text-muted-foreground leading-6">
+                Bạn có chắc chắn muốn xóa buổi phỏng vấn này khỏi lịch sử? Hành động này sẽ không thể hoàn tác và toàn bộ dữ liệu liên quan sẽ bị loại bỏ.
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSessionToDelete(null)}
+                  className="focus-ring min-h-11 rounded-xl border border-border bg-background px-5 text-sm font-black text-foreground hover:bg-muted transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  className="focus-ring min-h-11 rounded-xl bg-red-600 hover:bg-red-700 px-5 text-sm font-black text-white shadow-lg shadow-red-950/20 transition"
+                >
+                  Đồng ý xóa
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
