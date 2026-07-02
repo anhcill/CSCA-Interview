@@ -11,6 +11,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "AI Phỏng Vấn Du Học",
   description: "AI interview practice for China scholarship applications",
+  icons: {
+    icon: "/favicon.png",
+  },
   alternates: {
     languages: {
       en: "/?lang=en",
