@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Lock, Mail, Phone, Search, Unlock, UserCheck } from "lucide-react";
+import { Calendar, FileText, Lock, Mail, Phone, Search, Unlock, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -33,6 +33,7 @@ type UserProfile = {
   toeflScore?: string | null;
   gpa?: string | null;
   studyPlan?: string | null;
+  studyPlanFileName?: string | null;
   careerPlan?: string | null;
   strengths?: string | null;
   weaknesses?: string | null;
@@ -341,6 +342,24 @@ export default function AdminUsersPage() {
                     <InfoRow label="GPA" value={selectedUser.profile.gpa} />
                     <InfoRow label="HSK/HSKK" value={[selectedUser.profile.hskLevel, selectedUser.profile.hskkLevel].filter(Boolean).join(" / ")} />
                     <InfoRow label="IELTS/TOEFL" value={[selectedUser.profile.ieltsScore, selectedUser.profile.toeflScore].filter(Boolean).join(" / ")} />
+                    <div className="grid grid-cols-[120px_1fr] gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                      <span className="text-slate-500">Study Plan</span>
+                      <span className="font-medium text-slate-900">
+                        {selectedUser.profile.studyPlanFileName ? (
+                          <a
+                            href={`/api/admin/users/${selectedUser.id}/study-plan/download`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-850 hover:underline font-bold"
+                          >
+                            <FileText size={14} className="shrink-0" />
+                            {selectedUser.profile.studyPlanFileName}
+                          </a>
+                        ) : (
+                          <span className="text-slate-400">Không có file tải lên</span>
+                        )}
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">User chưa tạo profile.</p>

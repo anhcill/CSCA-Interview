@@ -50,11 +50,16 @@ export const env = {
   openAiTtsModel: process.env.OPENAI_TTS_MODEL ?? (process.env.OPENAI_BASE_URL?.includes("beeknoee") ? "openai/gpt-4o-mini-tts" : "tts-1"),
   deepseekApiKey: process.env.DEEPSEEK_API_KEY,
   deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL,
-  deepseekModel: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
+  deepseekFlashModel: process.env.DEEPSEEK_FLASH_MODEL ?? process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash",
+  deepseekProModel: process.env.DEEPSEEK_PRO_MODEL ?? "deepseek-v4-pro",
   port: Number(process.env.BACKEND_PORT ?? 4000),
+  requestBodyLimit: process.env.REQUEST_BODY_LIMIT ?? "35mb",
   redisUrl: process.env.REDIS_URL,
   azureSpeechKey: process.env.AZURE_SPEECH_KEY,
   azureSpeechRegion: process.env.AZURE_SPEECH_REGION ?? "eastasia",
   googleClientId: process.env.GOOGLE_CLIENT_ID,
-  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET
 };

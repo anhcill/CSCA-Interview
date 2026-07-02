@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FileText, Upload, X } from "lucide-react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
 import {
   fetchMyProfile,
@@ -30,6 +31,8 @@ type ProfileFormState = {
   scholarshipType: string;
   strengths: string;
   studyPlan: string;
+  studyPlanFileName: string;
+  studyPlanFileContent: string;
   targetMajor: string;
   targetSchool: string;
   toeflScore: string;
@@ -56,6 +59,8 @@ const defaultForm: ProfileFormState = {
   scholarshipType: "CSC",
   strengths: "",
   studyPlan: "",
+  studyPlanFileName: "",
+  studyPlanFileContent: "",
   targetMajor: "",
   targetSchool: "",
   toeflScore: "",
@@ -77,6 +82,70 @@ export function ProfileForm() {
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      void handleFileChange(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      void handleFileChange(e.target.files[0]);
+    }
+  };
+
+  const handleFileChange = async (file: File) => {
+    if (file.size > 15 * 1024 * 1024) {
+      setError("Dung lượng tệp tối đa được phép là 15MB.");
+      return;
+    }
+
+    const allowedExtensions = ["pdf", "docx", "txt"];
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (!extension || !allowedExtensions.includes(extension)) {
+      setError("Định dạng tệp không được hỗ trợ. Vui lòng tải lên file PDF, DOCX hoặc TXT.");
+      return;
+    }
+
+    setError("");
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setForm((current) => ({
+        ...current,
+        studyPlanFileName: file.name,
+        studyPlanFileContent: base64,
+        studyPlan: `Tệp đã chọn: ${file.name}`
+      }));
+    };
+  };
+
+  const handleRemoveFile = () => {
+    setForm((current) => ({
+      ...current,
+      studyPlanFileName: "",
+      studyPlanFileContent: "",
+      studyPlan: ""
+    }));
+  };
 
   const completion = useMemo(() => {
     const filled = requiredFields.filter((key) => form[key].trim()).length;
@@ -134,8 +203,8 @@ export function ProfileForm() {
       return;
     }
 
-    if (form.studyPlan.trim().length < 10) {
-      setError("Kế hoạch học tập cần có ít nhất 10 ký tự.");
+    if (!form.studyPlanFileName || form.studyPlan.trim().length < 10) {
+      setError("Vui lòng tải lên tệp Kế hoạch học tập (Study Plan) hợp lệ.");
       return;
     }
 
@@ -245,14 +314,56 @@ export function ProfileForm() {
               </div>
             </FormSection>
 
-            <FormSection title="Kế hoạch học tập" description="Phần quan trọng nhất để AI tạo câu hỏi cá nhân hóa.">
-              <TextArea
-                label="Study plan"
-                required
-                minRows="min-h-[180px]"
-                value={form.studyPlan}
-                onChange={(value) => updateField("studyPlan", value)}
-              />
+            <FormSection title="Kế hoạch học tập" description="Tải lên kế hoạch học tập của bạn (PDF, DOCX hoặc TXT, tối đa 15MB).">
+              <div className="space-y-4">
+                <span className="block text-sm font-bold text-slate-700 dark:text-slate-300">
+                  Tệp Study Plan <span className="text-red-500">*</span>
+                </span>
+
+                {form.studyPlanFileName ? (
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20">
+                        <FileText size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-slate-900 dark:text-white truncate">{form.studyPlanFileName}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">Đã tải lên thành công</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveFile}
+                      className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 transition hover:bg-red-50 dark:border-slate-800 dark:hover:bg-slate-800"
+                      title="Xóa tệp"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onDragEnter={handleDrag}
+                    onDragOver={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDrop={handleDrop}
+                    className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition ${
+                      dragActive
+                        ? "border-primary bg-primary/5"
+                        : "border-slate-200 hover:border-primary/45 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/30"
+                    }`}
+                  >
+                    <Upload className="text-slate-400 dark:text-slate-500" size={32} />
+                    <p className="mt-3 text-sm font-black text-slate-900 dark:text-white">Kéo thả tệp vào đây, hoặc click để chọn</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Chấp nhận PDF, Word (.docx) hoặc Text (.txt), tối đa 15MB</p>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.txt"
+                      onChange={handleFileSelect}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    />
+                  </div>
+                )}
+              </div>
               <div className="mt-5 grid gap-5 md:grid-cols-2">
                 <TextArea label="Định hướng nghề nghiệp" value={form.careerPlan} onChange={(value) => updateField("careerPlan", value)} />
                 <TextArea label="Ghi chú thêm" value={form.additionalNotes} onChange={(value) => updateField("additionalNotes", value)} />
@@ -345,6 +456,8 @@ function profileToForm(profile: UserProfileDto): ProfileFormState {
     scholarshipType: profile.scholarshipType,
     strengths: profile.strengths ?? "",
     studyPlan: profile.studyPlan,
+    studyPlanFileName: profile.studyPlanFileName ?? "",
+    studyPlanFileContent: "",
     targetMajor: profile.targetMajor,
     targetSchool: profile.targetSchool,
     toeflScore: profile.toeflScore ?? "",
@@ -373,6 +486,8 @@ function formToPayload(form: ProfileFormState): ProfileInput {
     scholarshipType: form.scholarshipType.trim(),
     strengths: optionalText(form.strengths),
     studyPlan: form.studyPlan.trim(),
+    studyPlanFileName: form.studyPlanFileName.trim() ? form.studyPlanFileName.trim() : null,
+    studyPlanFileContent: form.studyPlanFileContent.trim() ? form.studyPlanFileContent.trim() : null,
     targetMajor: form.targetMajor.trim(),
     targetSchool: form.targetSchool.trim(),
     toeflScore: optionalText(form.toeflScore),

@@ -104,6 +104,9 @@ model UserProfile {
   extracurricularActivities String?               @map("extracurricular_activities")
   workExperience            String?               @map("work_experience")
   studyPlan                 String                @map("study_plan")
+  studyPlanFileName         String?               @map("study_plan_file_name") @db.VarChar(255)
+  studyPlanFileContent      String?               @map("study_plan_file_content") @db.Text
+  studyPlanFileUrl          String?               @map("study_plan_file_url") @db.Text
   careerPlan                String?               @map("career_plan")
   strengths                 String?
   weaknesses                String?

@@ -203,7 +203,7 @@ async function completeJson<T>(input: {
 
   const isScoringOrAnalysis = input.taskType === ai_task_type.SCORE_ANSWER || input.taskType === ai_task_type.ANALYZE_STUDY_PLAN;
   const modelToUse = env.deepseekApiKey
-    ? (isScoringOrAnalysis ? "deepseek-v4-pro" : "deepseek-v4-flash")
+    ? (isScoringOrAnalysis ? env.deepseekProModel : env.deepseekFlashModel)
     : env.openAiModel;
 
   try {
@@ -1331,4 +1331,3 @@ export async function analyzeStudyPlanWithAi(
     ]
   };
 }
-

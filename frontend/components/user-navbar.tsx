@@ -13,6 +13,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AccessibilityToolbar } from "@/components/accessibility-toolbar";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { RoleSwitcher } from "@/components/role-switcher";
 import { clearAuthSession, logoutAccount, type AuthUser } from "@/lib/auth-client";
 import { messages, type Locale } from "@/lib/i18n";
 
@@ -38,6 +39,7 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const t = messages[locale];
   const activePathname = pathname ?? "/";
+  const canSwitchRole = currentUser ? adminRoles.includes(currentUser.role) : false;
   const initials = useMemo(() => {
     const source = currentUser?.fullName || currentUser?.email || "PV";
     return source
@@ -99,6 +101,7 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
+          {canSwitchRole ? <RoleSwitcher active="user" /> : null}
           <AccessibilityToolbar />
           <NotificationBell />
           <Link href="/interview/setup" className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-black text-primary-foreground shadow-[0_12px_28px_rgba(184,29,36,0.18)]">
@@ -178,6 +181,7 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
             })}
           </nav>
           <div className="mt-4 grid gap-3 border-t border-border pt-4">
+            {canSwitchRole ? <RoleSwitcher active="user" className="flex w-full" /> : null}
             <Link href="/notifications" className="focus-ring flex min-h-12 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-black text-foreground">
               <BellIcon size={18} />
               Thông báo

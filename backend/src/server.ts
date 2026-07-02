@@ -261,7 +261,7 @@ app.use(compression({ filter: (req, res) => {
   if (String(res.getHeader("Content-Type") ?? "").includes("text/event-stream")) return false;
   return compression.filter(req, res);
 }}) as unknown as RequestHandler);
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: env.requestBodyLimit }));
 app.use(cookieParser() as unknown as RequestHandler);
 app.use("/uploads", uploadSecurityMiddleware, express.static(path.join(process.cwd(), "uploads")));
 app.use(clearCacheOnMutation);

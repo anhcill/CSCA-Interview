@@ -454,6 +454,49 @@ adminRouter.get("/users/:id", async (req, res) => {
   }
 });
 
+adminRouter.get("/users/:id/study-plan/download", async (req, res) => {
+  try {
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId: req.params.id }
+    });
+
+    if (!profile || (!profile.studyPlanFileContent && !profile.studyPlanFileUrl)) {
+      res.status(404).json({ message: "Người dùng này chưa tải lên tệp kế hoạch học tập." });
+      return;
+    }
+
+    const fileName = profile.studyPlanFileName || "study_plan.pdf";
+
+    // 1. Nếu tệp được lưu trên Cloudinary -> redirect đến URL
+    if (profile.studyPlanFileUrl) {
+      res.redirect(profile.studyPlanFileUrl);
+      return;
+    }
+
+    // 2. Nếu tệp được lưu trong Database (Base64) -> decode và gửi dạng file download
+    if (profile.studyPlanFileContent) {
+      const buffer = Buffer.from(profile.studyPlanFileContent, "base64");
+      const extension = fileName.split(".").pop()?.toLowerCase();
+      let contentType = "application/octet-stream";
+      if (extension === "pdf") {
+        contentType = "application/pdf";
+      } else if (extension === "docx") {
+        contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      } else if (extension === "txt") {
+        contentType = "text/plain; charset=utf-8";
+      }
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.send(buffer);
+      return;
+    }
+  } catch (error) {
+    console.error("[Admin StudyPlan Download Error]", error);
+    res.status(500).json({ message: "Không thể tải xuống tệp kế hoạch học tập" });
+  }
+});
+
 adminRouter.put("/users/:id/status", async (req, res) => {
   const parsed = userStatusSchema.safeParse(req.body ?? {});
   if (!parsed.success) {

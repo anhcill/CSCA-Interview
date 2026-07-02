@@ -22,6 +22,9 @@ export type UserProfileDto = {
   scholarshipType: string;
   strengths: string | null;
   studyPlan: string;
+  studyPlanFileName: string | null;
+  studyPlanFileContent: string | null;
+  studyPlanFileUrl: string | null;
   targetMajor: string;
   targetSchool: string;
   toeflScore: string | null;
@@ -49,7 +52,9 @@ export type ProfileInput = {
   scholarshipId?: string | null;
   scholarshipType: string;
   strengths?: string | null;
-  studyPlan: string;
+  studyPlan?: string | null;
+  studyPlanFileName?: string | null;
+  studyPlanFileContent?: string | null;
   targetMajor: string;
   targetSchool: string;
   toeflScore?: string | null;

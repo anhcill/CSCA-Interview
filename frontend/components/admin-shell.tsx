@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { AccessibilityToolbar } from "@/components/accessibility-toolbar";
 import { LogoutButton } from "@/components/logout-button";
+import { RoleSwitcher } from "@/components/role-switcher";
 import type { AuthUser } from "@/lib/auth-client";
 import type { Locale } from "@/lib/i18n";
 
@@ -21,6 +22,7 @@ const adminNavItems = [
   { href: "/admin/audit", icon: ClipboardList, label: "Audit logs" },
   { href: "/admin/settings", icon: Settings, label: "Cài đặt" }
 ] as const;
+const adminRoles: AuthUser["role"][] = ["ADMIN", "SUPER_ADMIN"];
 
 type AdminShellProps = {
   activePathname: string;
@@ -33,6 +35,7 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const activeItem = adminNavItems.find((item) => activePathname === item.href || (item.href !== "/admin" && activePathname.startsWith(`${item.href}/`))) ?? adminNavItems[0];
+  const canSwitchRole = currentUser ? adminRoles.includes(currentUser.role) : false;
 
   return (
     <div className="dark min-h-screen bg-slate-950 text-slate-100">
@@ -85,6 +88,7 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {canSwitchRole ? <RoleSwitcher active="admin" variant="dark" className="hidden sm:inline-flex" /> : null}
             <div className="hidden text-right md:block">
               <p className="text-sm font-bold text-white">{currentUser?.fullName ?? "Admin"}</p>
               <p className="text-xs font-semibold text-slate-400">{currentUser?.role ?? "ADMIN"}</p>
@@ -106,6 +110,7 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
                 <X size={18} />
               </button>
             </div>
+            {canSwitchRole ? <RoleSwitcher active="admin" variant="dark" className="mt-4 flex w-full" /> : null}
             <nav className="mt-5 space-y-1" aria-label="Điều hướng quản trị mobile">
               {adminNavItems.map((item) => {
                 const active = activePathname === item.href || (item.href !== "/admin" && activePathname.startsWith(`${item.href}/`));

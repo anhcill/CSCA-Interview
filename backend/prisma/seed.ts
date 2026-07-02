@@ -28,6 +28,10 @@ const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@ai-phongvan.local";
 const userEmail = process.env.SEED_USER_EMAIL ?? "user@ai-phongvan.local";
 const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "Admin@123456";
 const userPassword = process.env.SEED_USER_PASSWORD ?? "User@123456";
+const fixedAdminUsers = [
+  { email: "khlyp05@gmail.com", fullName: "Admin khlyp05" },
+  { email: "ducanhle28072003@gmail.com", fullName: "Admin ducanhle28072003" }
+] as const;
 
 async function main() {
   const adminPasswordHash = await bcrypt.hash(adminPassword, passwordHashRounds);
@@ -66,6 +70,26 @@ async function main() {
     },
     where: { email: userEmail }
   });
+
+  await Promise.all(
+    fixedAdminUsers.map((user) =>
+      prisma.user.upsert({
+        create: {
+          email: user.email,
+          fullName: user.fullName,
+          isActive: true,
+          passwordHash: null,
+          role: "ADMIN"
+        },
+        update: {
+          fullName: user.fullName,
+          isActive: true,
+          role: "ADMIN"
+        },
+        where: { email: user.email }
+      })
+    )
+  );
 
   const [school, major, scholarship] = await Promise.all([
     prisma.school.upsert({
