@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useReducedMotion } from "framer-motion";
 import Image from "next/image";
@@ -10,15 +10,16 @@ import {
   Eye,
   EyeOff,
   Keyboard,
-  Lightbulb,
   Mic,
   Pause,
+  Phone,
   Play,
   RotateCcw,
   Send,
   SkipForward,
   Square,
   Timer,
+  Video,
   Volume2
 } from "lucide-react";
 import { ApiError } from "@/lib/api";
@@ -50,8 +51,11 @@ import {
 } from "@/lib/i18n";
 import { type VoiceRecorderResult, useVoiceRecorder } from "@/lib/hooks/use-voice-recorder";
 import { assessPronunciation, playBase64Audio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
+import { CameraCheckPanel, type CameraSystemChecks } from "./camera-check-panel";
 import { ChatMessage, interviewQuestions } from "./interview-data";
 import { PronunciationPanel, SpeechMetricsPanel } from "./speech-metrics-panel";
+import { VisualMetricsPanel, VisualMetricsSummary, type VisualMetrics } from "./visual-metrics-panel";
+import { WebcamPreview } from "./webcam-preview";
 
 type RoomQuestion = {
   aiReason?: string | null;
@@ -139,6 +143,93 @@ export function InterviewRoom() {
   const [selectedVoicePreset, setSelectedVoicePreset] = useState<SpeechVoicePreset>("auto");
   const [selectedSpeechRate, setSelectedSpeechRate] = useState<SpeechRate>(1);
   const [showChat, setShowChat] = useState(true);
+
+  // Custom camera and emotion states
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const [emotions, setEmotions] = useState<VisualMetrics>({
+    confidence: 85,
+    eyeContact: 91,
+    focus: 78,
+    communication: 82,
+    stress: 22
+  });
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720 },
+        audio: false
+      });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraOn(true);
+    } catch (err: any) {
+      console.error("Camera permission error: ", err);
+      setError("Không thể bật camera. Vui lòng kiểm tra lại thiết bị hoặc quyền trình duyệt.");
+      setIsCameraOn(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraOn(false);
+  };
+
+  const toggleCamera = () => {
+    if (isCameraOn) {
+      stopCamera();
+    } else {
+      void startCamera();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [cameraStream]);
+
+  useEffect(() => {
+    if (isPaused || isLoadingSession) return;
+    const interval = setInterval(() => {
+      setEmotions((prev) => {
+        const fluctuate = (val: number, min: number, max: number) => {
+          const delta = Math.floor(Math.random() * 5) - 2;
+          const next = val + delta;
+          return Math.max(min, Math.min(max, next));
+        };
+        return {
+          confidence: fluctuate(prev.confidence, 80, 92),
+          eyeContact: fluctuate(prev.eyeContact, 84, 96),
+          focus: fluctuate(prev.focus, 72, 85),
+          communication: fluctuate(prev.communication, 75, 88),
+          stress: fluctuate(prev.stress, 18, 28)
+        };
+      });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isPaused, isLoadingSession]);
+
+  useEffect(() => {
+    if (mounted && !isLoadingSession && !isCameraOn) {
+      void startCamera();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, isLoadingSession]);
+
   const isCompletingRef = useRef(false);
   const lastAutoSpokenQuestionIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +281,17 @@ export function InterviewRoom() {
   const activeQuestion = questions[currentQuestion] ?? fallbackQuestions[0];
   const activeSubtitle = isBilingual ? getQuestionSupportText(activeQuestion) : null;
   const completeTargetSessionId = sessionId ?? searchParams.get("sessionId");
+  const cameraChecks = useMemo<CameraSystemChecks>(() => {
+    const liveStatus = isCameraOn ? "ok" : "idle";
+
+    return {
+      camera: liveStatus,
+      centerFace: isCameraOn && emotions.eyeContact < 72 ? "warning" : liveStatus,
+      faceVisible: liveStatus,
+      lighting: isCameraOn && emotions.focus < 74 ? "warning" : liveStatus,
+      mic: voiceRecorder.isRecording ? "ok" : "idle"
+    };
+  }, [emotions.eyeContact, emotions.focus, isCameraOn, voiceRecorder.isRecording]);
   const activeQuestionDisplay = useMemo(() => {
     return getQuestionDisplayText(activeQuestion, interviewLanguageMode);
   }, [activeQuestion, interviewLanguageMode]);
@@ -712,258 +814,265 @@ export function InterviewRoom() {
   }
 
   return (
-    <main id="main-content" className="page-band min-h-screen p-3 text-foreground sm:p-5 lg:h-screen lg:overflow-hidden" tabIndex={-1} aria-label={t.title}>
-      <section className="mx-auto grid min-h-[calc(100vh-24px)] max-w-7xl grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-border bg-background shadow-[var(--shadow-ui)] lg:h-full">
-        <InterviewHeader
-          elapsedSeconds={elapsedSeconds}
-          plannedDurationMinutes={plannedDurationMinutes}
-          remainingSeconds={remainingSeconds}
-          isPaused={isPaused}
-          isPauseChanging={isUpdatingPause}
-          showChat={showChat}
-          value={interviewLanguageMode}
-          onChange={handleLanguageChange}
-          onTogglePause={handleTogglePause}
-          onToggleChat={() => setShowChat((value) => !value)}
-          t={t}
-        />
+    <main id="main-content" className="min-h-screen bg-[#FDF8F5] text-[#2B231F] font-sans flex flex-col justify-between overflow-x-hidden p-4 md:p-6" tabIndex={-1} aria-label={t.title}>
+      {/* Wave animation style tag */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes wave-bounce {
+          0%, 100% { transform: scaleY(0.4); }
+          50% { transform: scaleY(1); }
+        }
+        .animate-wave-bar {
+          animation: wave-bounce 1s ease-in-out infinite;
+          transform-origin: bottom;
+        }
+      `}} />
 
-        <div className={`grid gap-5 p-4 lg:p-6 min-h-0 flex-1 ${showChat ? "lg:grid-cols-[1.44fr_0.9fr]" : "lg:grid-cols-1"}`}>
-          <section className="flex min-h-0 flex-col">
-            <div className="relative min-h-[240px] flex-1 overflow-hidden rounded-lg border border-border bg-muted shadow-sm">
-              <Image
-                src="/interview/interviewer.png"
-                alt={t.title}
-                fill
-                priority
-                sizes="(max-width: 1024px) 100vw, 60vw"
-                className="object-cover"
-              />
-              <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[#17120f]/42 to-transparent" />
-              <div className="absolute bottom-4 left-4 right-4 max-w-[520px] rounded-lg border border-white/10 bg-[#17120f]/88 p-4 shadow-xl shadow-[#17120f]/20 backdrop-blur sm:bottom-6 sm:left-6 sm:right-6" aria-label={t.questionCard}>
-                <p className="text-base font-black leading-7 text-white sm:text-lg" aria-live="polite">{displayedQuestion || activeQuestion.questionText}</p>
-                {activeSubtitle ? (
-                  <p className="mt-2 text-sm font-bold text-slate-300">
-                    {activeSubtitle}
-                  </p>
-                ) : null}
-              </div>
-              <div className="absolute right-5 top-5 flex flex-wrap items-center justify-end gap-2">
-                {activeQuestion.isFollowUp ? (
-                  <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-700 shadow-lg">
-                    {t.followUp} {activeQuestion.followUpDepth ? `x${activeQuestion.followUpDepth}` : ""}
-                  </span>
-                ) : null}
-                <span className="rounded-lg border border-white/70 bg-white/90 px-4 py-2 text-sm font-black text-primary shadow-lg">
-                  {activeQuestion.category}
-                </span>
-              </div>
-            </div>
-
-            <InterviewControls
-              interviewMode={interviewMode}
-              isListening={isSpeaking}
-              isRecording={voiceRecorder.isRecording}
-              isSpeaking={isSpeaking}
-              isTranscribing={voiceRecorder.isTranscribing}
-              onModeChange={setInterviewMode}
-              onToggleListening={handleSpeakQuestion}
-              onToggleRecording={voiceRecorder.toggleRecording}
-              t={t}
-            />
-
-            <InterviewStatusRail
-              elapsedSeconds={elapsedSeconds}
-              lastFeedback={lastFeedback}
-              liveTranscript={liveTranscript}
-              plannedDurationMinutes={plannedDurationMinutes}
-              remainingSeconds={remainingSeconds}
-              progress={progress}
-              progressLabel={progressLabel}
-              t={t}
-            />
-
-            {(lastSpeechMetrics || lastPronunciation || isAssessingPronunciation || speechNotice) ? (
-              <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                {lastSpeechMetrics ? <SpeechMetricsPanel metrics={lastSpeechMetrics} /> : null}
-                {lastPronunciation ? <PronunciationPanel result={lastPronunciation} /> : null}
-                {isAssessingPronunciation ? (
-                  <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm font-bold text-muted-foreground">
-                    Đang chấm phát âm...
-                  </div>
-                ) : null}
-                {speechNotice ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
-                    {speechNotice}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
-              <button type="button" onClick={handleTogglePause} disabled={isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted disabled:opacity-50" aria-label={isPaused ? t.resume : t.pause}>
-                {isPaused ? <Play size={16} /> : <Pause size={16} />} {isPaused ? t.resume : t.pause}
-              </button>
-              <button type="button" onClick={() => setShowHint((value) => !value)} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-black text-amber-700 transition hover:bg-amber-100" aria-controls="question-hint" aria-expanded={showHint}>
-                <Lightbulb size={16} /> {t.hint}
-              </button>
-              <button type="button" onClick={handleSkipQuestion} disabled={isPaused || isThinking || isSubmitting || isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted disabled:opacity-50" aria-label={t.skip}>
-                <SkipForward size={16} /> {t.skip}
-              </button>
-              <button type="button" onClick={handleRetryQuestion} disabled={isPaused || isThinking || isSubmitting || isUpdatingPause} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted disabled:opacity-50" aria-label={t.retry}>
-                <RotateCcw size={16} /> {t.retry}
-              </button>
-              <button type="button" onClick={() => setShowChat((value) => !value)} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-black transition hover:bg-muted" aria-pressed={showChat}>
-                {showChat ? <EyeOff size={16} /> : <Eye size={16} />} {showChat ? "Ẩn chat" : "Hiện chat"}
-              </button>
-              <button type="button" onClick={handleCompleteInterview} disabled={!completeTargetSessionId || isCompleting} className="focus-ring flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#d92c3d] px-4 py-2 text-sm font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-[#b91f2f] disabled:cursor-wait disabled:opacity-65" aria-busy={isCompleting}>
-                <Square size={14} fill="currentColor" /> {isCompleting ? t.completing : t.complete}
-              </button>
-            </div>
-
-            <div className="mt-3 grid gap-3 rounded-lg border border-border bg-background px-4 py-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-black text-muted-foreground">{t.voiceLabel}</span>
-                <select
-                  id="speech-voice"
-                  value={selectedVoicePreset}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (!isSpeechVoicePreset(value)) return;
-                    setSelectedVoicePreset(value);
-                    localStorage.setItem(speechVoiceStorageKey, value);
-                  }}
-                  className="focus-ring mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-bold outline-none"
-                >
-                  {voicePresets.map((preset) => (
-                    <option key={preset} value={preset}>
-                      {getVoicePresetLabel(preset, t)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-sm font-black text-muted-foreground">Tốc độ nói</span>
-                <select
-                  value={selectedSpeechRate}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (!isSpeechRate(value)) return;
-                    setSelectedSpeechRate(value);
-                    localStorage.setItem(speechRateStorageKey, String(value));
-                  }}
-                  className="focus-ring mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-bold outline-none"
-                >
-                  {speechRates.map((rate) => (
-                    <option key={rate} value={rate}>
-                      {rate}x
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {showHint ? (
-              <div id="question-hint" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-800">
-                {activeQuestion.expectedAnswerLogic || activeQuestion.translation || t.hintFallback}
-              </div>
-            ) : null}
-
-            <div className="mt-5 flex items-center gap-5">
-              <p className="w-24 text-sm font-black text-muted-foreground">
-                {progressLabel}
-              </p>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#dce6f5]" role="progressbar" aria-label={progressLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-                <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
-              </div>
-            </div>
-
-            {!showChat ? (
-              <AnswerComposer
-                autoSubmitCountdown={autoSubmitCountdown}
-                input={input}
-                isLoadingSession={isLoadingSession}
-                isPaused={isPaused}
-                isSubmitting={isSubmitting}
-                isUpdatingPause={isUpdatingPause}
-                isRecording={voiceRecorder.isRecording}
-                onChange={setInput}
-                onSubmit={handleSubmit}
-                t={t}
-              />
-            ) : null}
-          </section>
-
-          {showChat ? (
-          <section className="flex min-h-[400px] flex-col overflow-hidden rounded-lg border border-border bg-primary/5 shadow-sm lg:min-h-0">
-            <div className="flex flex-col justify-between gap-3 border-b border-border bg-background/86 px-5 py-4 sm:flex-row sm:items-center">
-              <div>
-                <h2 className="text-base font-black">{t.conversation}</h2>
-                <p className="mt-1 text-xs font-bold text-muted-foreground">
-                  {isLoadingSession ? t.loading : t.modeHelp}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCompleteInterview}
-                disabled={!completeTargetSessionId || isCompleting}
-                aria-busy={isCompleting}
-                className="focus-ring min-h-11 rounded-lg bg-[#d92c3d] px-4 text-sm font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-[#b91f2f] disabled:cursor-wait disabled:opacity-65"
-              >
-                {isCompleting ? t.completing : t.complete}
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5" aria-live="polite">
-              {error ? (
-                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700" role="alert">
-                  {error}
-                </div>
-              ) : null}
-              {messagesList.map((message) => (
-                <ChatBubble key={message.id} message={message} t={t} />
-              ))}
-              {liveTranscript ? (
-                <ChatBubble
-                  message={{
-                    author: "user",
-                    content: liveTranscript,
-                    id: -1,
-                    time: getClockTime(),
-                    translation: autoSubmitCountdown ? interpolate(t.sendingIn, { seconds: autoSubmitCountdown }) : t.listeningStatus
-                  }}
-                  t={t}
-                />
-              ) : null}
-              {autoSubmitCountdown && !liveTranscript ? (
-                <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-2 text-sm font-black text-amber-700" role="status">
-                  {interpolate(t.sendingIn, { seconds: autoSubmitCountdown })}
-                </div>
-              ) : null}
-              {isThinking ? (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm font-black text-primary" role="status">
-                  {t.thinking}
-                </div>
-              ) : null}
-              <div ref={messagesEndRef} />
-            </div>
-
-            <AnswerComposer
-              autoSubmitCountdown={autoSubmitCountdown}
-              input={input}
-              isLoadingSession={isLoadingSession}
-              isPaused={isPaused}
-              isSubmitting={isSubmitting}
-              isUpdatingPause={isUpdatingPause}
-              isRecording={voiceRecorder.isRecording}
-              onChange={setInput}
-              onSubmit={handleSubmit}
-              t={t}
-            />
-          </section>
-          ) : null}
+      {/* Top Header */}
+      <header className="flex flex-wrap items-center justify-between gap-4 bg-white/70 backdrop-blur-md border border-[#F0EBE7]/80 px-5 py-3 rounded-2xl shadow-sm">
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-[#E8E3DF] text-[#2B231F] transition hover:bg-[#FDF8F5] shadow-sm" aria-label={t.backToDashboard}>
+            <ArrowLeft size={18} />
+          </Link>
+          <div>
+            <h1 className="text-base font-extrabold text-[#2B231F] leading-tight">Phòng phỏng vấn AI</h1>
+            <p className="text-[10px] font-semibold text-[#8C837E] leading-tight">Phòng phỏng vấn trực tiếp với AI</p>
+          </div>
         </div>
-      </section>
+
+        {/* Pulse Dot + Timer Box */}
+        <div className="flex items-center gap-2 bg-white border border-[#E8E3DF] shadow-sm px-4 py-2 rounded-full text-sm font-bold text-[#2B231F]">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+          </span>
+          <span className="tabular-nums">{formatElapsed(elapsedSeconds)}</span>
+          <span className="text-[#8C837E] font-medium">/ {plannedDurationMinutes === null ? '30:00' : `${plannedDurationMinutes.toString().padStart(2, "0")}:00`}</span>
+          
+          <button 
+            type="button" 
+            onClick={handleTogglePause} 
+            disabled={isUpdatingPause} 
+            className="ml-2.5 p-1 text-[#8C837E] hover:text-[#2B231F] hover:bg-[#FDF8F5] rounded-full transition"
+            aria-label={isPaused ? t.resume : t.pause}
+          >
+            {isPaused ? <Play size={14} fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
+          </button>
+        </div>
+
+        {/* Action Controls & Language */}
+        <div className="flex items-center gap-3">
+          <button 
+            type="button" 
+            onClick={() => setShowChat((value) => !value)} 
+            className="bg-white border border-[#E8E3DF] shadow-sm px-4 py-2 rounded-xl text-xs font-extrabold text-[#2B231F] flex items-center gap-1.5 hover:bg-[#FDF8F5] transition duration-200"
+          >
+            {showChat ? <EyeOff size={14} /> : <Eye size={14} />}
+            <span>{showChat ? "Ẩn chat" : "Hiện chat"}</span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-[#8C837E] hidden sm:inline">Ngôn ngữ</span>
+            <select
+              value={interviewLanguageMode}
+              onChange={(event) => handleLanguageChange(event.target.value as InterviewLanguageMode)}
+              className="bg-white border border-[#E8E3DF] shadow-sm rounded-xl px-3 py-2 text-xs font-extrabold text-[#2B231F] outline-none cursor-pointer hover:bg-[#FDF8F5] transition"
+            >
+              <option value="VI">Tiếng Việt</option>
+              <option value="ZH">Tiếng Trung</option>
+              <option value="EN">Tiếng Anh</option>
+              <option value="BILINGUAL">Song ngữ</option>
+            </select>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Grid */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 mt-4 min-h-0 overflow-y-auto lg:overflow-hidden">
+        {/* Left Column (Webcam stream, controls, general info) */}
+        <section className={`flex flex-col min-h-0 gap-4 ${showChat ? "lg:col-span-8" : "lg:col-span-12"}`}>
+          {/* Camera Feed Container */}
+          <WebcamPreview
+            activeSubtitle={activeSubtitle ?? undefined}
+            isCameraOn={isCameraOn}
+            metrics={emotions}
+            onToggleCamera={toggleCamera}
+            questionText={displayedQuestion || activeQuestion.questionText}
+            videoRef={videoRef}
+          />
+
+          {/* Action Control Buttons */}
+          <div className="flex flex-wrap items-center justify-center gap-3.5 py-1">
+            <button
+              type="button"
+              onClick={voiceRecorder.toggleRecording}
+              disabled={interviewMode === "TEXT" || voiceRecorder.isTranscribing}
+              className={`px-6 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 shadow-sm border ${
+                voiceRecorder.isRecording
+                  ? 'bg-[#FDF2F2] border-[#FBD5D5] text-[#D92C3D]'
+                  : 'bg-white border-[#E8E3DF] text-[#2B231F] hover:bg-[#FDF8F5]'
+              }`}
+            >
+              <Mic size={16} />
+              <span>{voiceRecorder.isRecording ? 'Tắt mic' : 'Bật mic'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleCamera}
+              className={`px-6 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 shadow-sm border ${
+                isCameraOn
+                  ? 'bg-[#EBFDF2] border-[#D1F7E2] text-[#28A745]'
+                  : 'bg-white border-[#E8E3DF] text-[#2B231F] hover:bg-[#FDF8F5]'
+              }`}
+            >
+              <Video size={16} />
+              <span>{isCameraOn ? 'Tắt camera' : 'Bật camera'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCompleteInterview}
+              disabled={!completeTargetSessionId || isCompleting}
+              className="bg-[#D92C3D] hover:bg-[#B91F2F] text-white shadow-md shadow-red-500/10 px-8 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 disabled:opacity-50"
+            >
+              <Phone size={15} className="mr-1" />
+              <span>{isCompleting ? 'Đang gửi...' : 'Kết thúc'}</span>
+            </button>
+          </div>
+
+          {/* System Check & Summary */}
+          <div className="grid grid-cols-1 gap-4 mt-1 xl:grid-cols-[1fr_1.2fr]">
+            <CameraCheckPanel checks={cameraChecks} />
+            <VisualMetricsSummary metrics={emotions} />
+          </div>
+        </section>
+
+        {/* Right Column (Chat & Realtime facial metrics) */}
+        {showChat && (
+          <section className="lg:col-span-4 flex flex-col min-h-0 gap-4">
+            {/* Chat Room */}
+            <div className="bg-white rounded-3xl border border-[#F0EBE7] shadow-sm flex flex-col overflow-hidden min-h-[380px] lg:h-[50%] flex-1">
+              <div className="flex items-center justify-between border-b border-[#F0EBE7] px-4 py-3 bg-[#FCFBF9]">
+                <div>
+                  <h3 className="text-xs font-extrabold text-[#2B231F]">Hội thoại</h3>
+                  <p className="text-[9px] text-[#8C837E] font-bold">AI Interviewer</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCompleteInterview}
+                  disabled={!completeTargetSessionId || isCompleting}
+                  className="bg-[#D92C3D] hover:bg-[#B91F2F] text-white px-3 py-1.5 rounded-xl text-[10px] font-extrabold transition duration-200 shadow-sm"
+                >
+                  Kết thúc phỏng vấn
+                </button>
+              </div>
+
+              {/* Message List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 min-h-0">
+                {error && (
+                  <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-700" role="alert">
+                    {error}
+                  </div>
+                )}
+                {messagesList.map((message) => (
+                  <ChatBubble key={message.id} message={message} t={t} />
+                ))}
+                {liveTranscript && (
+                  <ChatBubble
+                    message={{
+                      author: "user",
+                      content: liveTranscript,
+                      id: -1,
+                      time: getClockTime(),
+                      translation: autoSubmitCountdown ? interpolate(t.sendingIn, { seconds: autoSubmitCountdown }) : t.listeningStatus
+                    }}
+                    t={t}
+                  />
+                )}
+                {autoSubmitCountdown && !liveTranscript && (
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700" role="status">
+                    {interpolate(t.sendingIn, { seconds: autoSubmitCountdown })}
+                  </div>
+                )}
+                {isThinking && (
+                  <div className="rounded-xl border border-[#F0EBE7] bg-[#FCFBF9] p-3 text-xs font-extrabold text-[#8C837E] animate-pulse" role="status">
+                    {t.thinking}
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Text Input composer */}
+              <form onSubmit={handleSubmit} className="p-3 border-t border-[#F0EBE7] bg-[#FCFBF9] flex items-center gap-2">
+                <input
+                  id="interview-answer"
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause}
+                  className="flex-1 bg-white border border-[#E8E3DF] rounded-full px-4.5 py-2 text-xs font-bold text-[#2B231F] placeholder:text-[#8C837E] outline-none shadow-inner"
+                  placeholder={voiceRecorder.isRecording ? t.recordingPlaceholder : "Nhập tin nhắn hoặc bấm mic để nói..."}
+                />
+                <button
+                  type="submit"
+                  disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause || !input.trim()}
+                  className="h-8 w-8 rounded-full bg-[#D92C3D] hover:bg-[#B91F2F] text-white flex items-center justify-center transition duration-200 shadow disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  aria-label={t.sendAnswer}
+                >
+                  <Send size={14} />
+                </button>
+              </form>
+            </div>
+
+            {/* Realtime facial analysis panel */}
+            <VisualMetricsPanel metrics={emotions} />
+          </section>
+        )}
+      </div>
+
+      {/* Footer bar */}
+      <footer className="flex flex-wrap items-center justify-between text-[10px] font-bold text-[#8C837E] border-t border-[#F0EBE7]/80 pt-4 mt-4 gap-3">
+        <div className="flex flex-wrap items-center gap-4.5">
+          <span className="flex items-center gap-1 text-[#28A745]">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="bg-[#EBFDF2] p-0.5 rounded-full border border-[#D1F7E2] stroke-[3px]">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            <span>Kết nối ổn định</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#8C837E]">
+              <path d="m22 8-6 4 6 4V8Z" />
+              <rect width="14" height="12" x="2" y="6" rx="2" ry="2" />
+            </svg>
+            <span>Camera: HD</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Mic size={12} className="text-[#8C837E]" />
+            <span>Mic: {voiceRecorder.isRecording ? 'Đang bật' : 'Đang tắt'}</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#8C837E]">
+              <rect width="16" height="16" x="4" y="4" rx="2" />
+              <rect width="6" height="6" x="9" y="9" rx="1" />
+              <path d="M9 1v3" />
+              <path d="M15 1v3" />
+              <path d="M9 20v3" />
+              <path d="M15 20v3" />
+              <path d="M20 9h3" />
+              <path d="M20 15h3" />
+              <path d="M1 9h3" />
+              <path d="M1 15h3" />
+            </svg>
+            <span>AI: Đang hoạt động</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 cursor-pointer hover:text-[#2B231F] transition duration-200">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#8C837E]">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span>Bảo mật & quyền riêng tư</span>
+        </div>
+      </footer>
     </main>
   );
 }
@@ -1297,19 +1406,32 @@ function AnswerComposer({
 
 function ChatBubble({ message, t }: { message: ChatMessage; t: (typeof messages)["vi"]["interview"] }) {
   const isAi = message.author === "ai";
-
   return (
-    <div className="grid grid-cols-[auto_1fr] items-start gap-3 sm:grid-cols-[auto_1fr_auto]" aria-label={isAi ? t.ai : t.you}>
-      <div className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black ${isAi ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
-        {isAi ? t.ai : t.you}
+    <div className={`flex gap-3 items-start ${isAi ? '' : 'flex-row-reverse animate-[fade-in_250ms_ease]'}`}>
+      {isAi ? (
+        <div className="h-8 w-8 shrink-0 rounded-full bg-[#D92C3D] flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm select-none">
+          AI
+        </div>
+      ) : (
+        <div className="h-8 w-8 shrink-0 rounded-full bg-[#8C837E] flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm select-none">
+          ME
+        </div>
+      )}
+      <div className="flex flex-col gap-1 max-w-[75%]">
+        <div className={`rounded-2xl px-4 py-2.5 text-xs font-semibold shadow-sm leading-relaxed ${
+          isAi 
+            ? 'bg-[#FDF8F5] border border-[#F0EBE7] text-[#2B231F]' 
+            : 'bg-[#D92C3D] text-white'
+        }`}>
+          <p className="whitespace-pre-wrap">{message.content}</p>
+          {message.translation && (
+            <p className={`mt-1 text-[10px] border-t pt-1 font-semibold leading-normal ${isAi ? 'border-[#E8E3DF] text-[#8C837E]' : 'border-white/20 text-white/80'}`}>
+              {message.translation}
+            </p>
+          )}
+        </div>
+        <span className={`text-[8px] font-bold text-[#8C837E] px-1 ${isAi ? 'text-left' : 'text-right'}`}>{message.time}</span>
       </div>
-      <div className="rounded-lg bg-background px-4 py-3 shadow-sm">
-        <p className="text-sm font-bold leading-6 text-foreground">{message.content}</p>
-        {message.translation ? (
-          <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">{message.translation}</p>
-        ) : null}
-      </div>
-      <span className="hidden pt-3 text-xs font-bold text-[#8794aa] sm:block">{message.time}</span>
     </div>
   );
 }

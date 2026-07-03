@@ -29,7 +29,7 @@ import {
 } from "@/lib/i18n";
 import { apiPost } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
-import { fetchMyProfile, updateMyProfile, type UserProfileDto } from "@/lib/profile-client";
+import { fetchMyProfile, updateMyProfile, type ProfileInput, type UserProfileDto } from "@/lib/profile-client";
 
 const durationOptions = [30, 60, 90] as const;
 const stepLabels = ["Profile", "Mục tiêu", "Chế độ", "Study Plan", "Phân tích AI", "Bắt đầu"];
@@ -48,6 +48,8 @@ const initialForm: WizardSetupForm = {
   scholarshipId: "",
   scholarshipType: "",
   studyPlan: "",
+  studyPlanFileContent: "",
+  studyPlanFileName: "",
   targetMajor: "",
   targetSchool: ""
 };
@@ -76,9 +78,9 @@ export function InterviewSetup() {
       { done: Boolean(selectedTargetSchool), label: t.school },
       { done: Boolean(form.targetMajor.trim()), label: t.major },
       { done: Boolean(form.scholarshipType.trim()), label: t.scholarship },
-      { done: Boolean(form.studyPlan.trim().length >= 20), label: t.studyPlan }
+      { done: Boolean(form.studyPlanFileName && form.studyPlan.trim().length >= 10), label: t.studyPlan }
     ];
-  }, [form.scholarshipType, form.studyPlan, form.targetMajor, selectedTargetSchool, t.major, t.scholarship, t.school, t.studyPlan]);
+  }, [form.scholarshipType, form.studyPlan, form.studyPlanFileName, form.targetMajor, selectedTargetSchool, t.major, t.scholarship, t.school, t.studyPlan]);
 
   const readyCount = readyItems.filter((item) => item.done).length;
   const isProfileReady = readyCount === readyItems.length;
@@ -127,6 +129,8 @@ export function InterviewSetup() {
             scholarshipId: current.scholarshipId || loadedProfile.scholarshipId || "",
             scholarshipType: current.scholarshipType || loadedProfile.scholarshipType || "",
             studyPlan: current.studyPlan || loadedProfile.studyPlan || "",
+            studyPlanFileContent: current.studyPlanFileContent,
+            studyPlanFileName: current.studyPlanFileName || loadedProfile.studyPlanFileName || "",
             targetMajor: current.targetMajor || loadedProfile.targetMajor || "",
             targetSchool: current.targetSchool || loadedProfile.targetSchool || ""
           }));
@@ -163,6 +167,62 @@ export function InterviewSetup() {
     });
   }
 
+  function handleStudyPlanFileSelect(file: File) {
+    if (file.size > 15 * 1024 * 1024) {
+      setError("Dung lượng tệp tối đa được phép là 15MB.");
+      return;
+    }
+
+    const allowedExtensions = ["pdf", "docx", "txt"];
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (!extension || !allowedExtensions.includes(extension)) {
+      setError("Định dạng tệp không được hỗ trợ. Vui lòng upload PDF, DOCX hoặc TXT.");
+      return;
+    }
+
+    setError("");
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      setForm((current) => ({
+        ...current,
+        studyPlan: `Tệp đã chọn: ${file.name}`,
+        studyPlanFileContent: reader.result as string,
+        studyPlanFileName: file.name
+      }));
+    };
+  }
+
+  function buildProfilePayload(): ProfileInput {
+    return {
+      additionalNotes: profile?.additionalNotes ?? null,
+      age: profile?.age ?? null,
+      awards: profile?.awards ?? null,
+      careerPlan: profile?.careerPlan ?? null,
+      degreeLevel: profile?.degreeLevel ?? "BACHELOR",
+      extracurricularActivities: profile?.extracurricularActivities ?? null,
+      gpa: form.gpa.trim() || null,
+      hskLevel: form.hskLevel.trim() || null,
+      hskkLevel: profile?.hskkLevel ?? null,
+      ieltsScore: form.ieltsScore.trim() || null,
+      majorId: form.majorId || profile?.majorId || null,
+      otherLanguages: form.otherLanguages.trim() || null,
+      researchExperience: profile?.researchExperience ?? null,
+      schoolId: selectedSchoolId,
+      scholarshipId: form.scholarshipId || profile?.scholarshipId || null,
+      scholarshipType: form.scholarshipType.trim(),
+      strengths: profile?.strengths ?? null,
+      studyPlan: form.studyPlan.trim(),
+      studyPlanFileContent: form.studyPlanFileContent.trim() || null,
+      studyPlanFileName: form.studyPlanFileName.trim() || null,
+      targetMajor: form.targetMajor.trim(),
+      targetSchool: selectedTargetSchool,
+      toeflScore: profile?.toeflScore ?? null,
+      weaknesses: profile?.weaknesses ?? null,
+      workExperience: profile?.workExperience ?? null
+    };
+  }
+
   function validateForm() {
     if (!isProfileReady) {
       setError("Cần đủ trường, ngành, học bổng và study plan trước khi tạo phòng.");
@@ -187,16 +247,29 @@ export function InterviewSetup() {
     }
 
     if (currentStep === 3) {
-      if (!form.studyPlan || form.studyPlan.trim().length < 10) {
-        setError("Vui lòng nhập Study Plan tối thiểu 10 ký tự để phân tích.");
+      if (!form.studyPlanFileName || !form.studyPlan || form.studyPlan.trim().length < 10) {
+        setError("Vui lòng upload file Study Plan trước khi phân tích.");
         return;
       }
       setIsAnalyzing(true);
       setAnalysisError("");
       try {
+        let studyPlanForAnalysis = form.studyPlan.trim();
+        if (form.studyPlanFileContent.trim()) {
+          const saved = await updateMyProfile(buildProfilePayload());
+          studyPlanForAnalysis = saved.profile.studyPlan;
+          setProfile(saved.profile);
+          setForm((current) => ({
+            ...current,
+            studyPlan: saved.profile.studyPlan,
+            studyPlanFileContent: "",
+            studyPlanFileName: saved.profile.studyPlanFileName ?? current.studyPlanFileName
+          }));
+        }
+
         const token = getAuthToken();
         const res = await apiPost<any>("/api/interviews/analyze-study-plan", {
-          studyPlan: form.studyPlan,
+          studyPlan: studyPlanForAnalysis,
           schoolId: selectedSchoolId || null,
           majorId: form.majorId || null,
           scholarshipId: form.scholarshipId || null,
@@ -231,31 +304,9 @@ export function InterviewSetup() {
     setError("");
 
     try {
-      await updateMyProfile({
-        additionalNotes: profile?.additionalNotes ?? null,
-        age: profile?.age ?? null,
-        awards: profile?.awards ?? null,
-        careerPlan: profile?.careerPlan ?? null,
-        degreeLevel: profile?.degreeLevel ?? "BACHELOR",
-        extracurricularActivities: profile?.extracurricularActivities ?? null,
-        gpa: form.gpa.trim() || null,
-        hskLevel: form.hskLevel.trim() || null,
-        hskkLevel: profile?.hskkLevel ?? null,
-        ieltsScore: form.ieltsScore.trim() || null,
-        majorId: form.majorId || profile?.majorId || null,
-        otherLanguages: form.otherLanguages.trim() || null,
-        researchExperience: profile?.researchExperience ?? null,
-        schoolId: selectedSchoolId,
-        scholarshipId: form.scholarshipId || profile?.scholarshipId || null,
-        scholarshipType: form.scholarshipType.trim(),
-        strengths: profile?.strengths ?? null,
-        studyPlan: form.studyPlan.trim(),
-        targetMajor: form.targetMajor.trim(),
-        targetSchool: selectedTargetSchool,
-        toeflScore: profile?.toeflScore ?? null,
-        weaknesses: profile?.weaknesses ?? null,
-        workExperience: profile?.workExperience ?? null
-      });
+      const saved = await updateMyProfile(buildProfilePayload());
+      const sessionStudyPlan = saved.profile.studyPlan;
+      setProfile(saved.profile);
 
       const backendLanguage = interviewModeToBackendLanguage(form.language);
       const data = await createInterviewSession({
@@ -266,7 +317,7 @@ export function InterviewSetup() {
         schoolId: selectedSchoolId,
         scholarshipId: form.scholarshipId || null,
         scholarshipType: form.scholarshipType.trim(),
-        studyPlan: form.studyPlan.trim(),
+        studyPlan: sessionStudyPlan,
         targetMajor: form.targetMajor.trim(),
         targetSchool: selectedTargetSchool
       });
@@ -329,6 +380,7 @@ export function InterviewSetup() {
                 isLoadingProfile={isLoadingProfile}
                 isProfileReady={isProfileReady}
                 onChange={updateForm}
+                onStudyPlanFileSelect={handleStudyPlanFileSelect}
                 profile={profile}
                 readyCount={readyCount}
                 readyItems={readyItems}
@@ -365,6 +417,7 @@ export function InterviewSetup() {
             {currentStep === 3 ? (
               <StudyPlanWizardStep
                 form={form}
+                onFileSelect={handleStudyPlanFileSelect}
                 onChange={updateForm}
               />
             ) : null}

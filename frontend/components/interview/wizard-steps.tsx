@@ -1,6 +1,6 @@
 "use client";
 
-import { Award, BookOpen, Check, Clock, Globe, Loader2, School, Sparkles, User, type LucideIcon } from "lucide-react";
+import { Award, BookOpen, Check, Clock, FileText, Globe, Loader2, School, Sparkles, Upload, User, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
@@ -23,6 +23,8 @@ export type WizardSetupForm = {
   scholarshipId: string;
   scholarshipType: string;
   studyPlan: string;
+  studyPlanFileContent: string;
+  studyPlanFileName: string;
   targetMajor: string;
   targetSchool: string;
 };
@@ -56,6 +58,7 @@ export function ProfileWizardStep({
   isLoadingProfile,
   isProfileReady,
   onChange,
+  onStudyPlanFileSelect,
   profile,
   readyCount,
   readyItems
@@ -64,6 +67,7 @@ export function ProfileWizardStep({
   isLoadingProfile: boolean;
   isProfileReady: boolean;
   onChange: <Key extends keyof WizardSetupForm>(key: Key, value: WizardSetupForm[Key]) => void;
+  onStudyPlanFileSelect: (file: File) => void;
   profile: UserProfileDto | null;
   readyCount: number;
   readyItems: ReadyItem[];
@@ -136,11 +140,15 @@ export function ProfileWizardStep({
               }}
             />
             <TextInput label="Ngoại ngữ" value={form.otherLanguages} placeholder="Ví dụ: HSK 5, IELTS 6.5" onChange={(value) => onChange("otherLanguages", value)} />
-            <TextAreaInput
-              label="Study plan"
-              value={form.studyPlan}
-              placeholder="Mục tiêu học tập, kế hoạch theo từng năm/kỳ, định hướng sau tốt nghiệp."
-              onChange={(value) => onChange("studyPlan", value)}
+            <StudyPlanSourceBox
+              fileName={form.studyPlanFileName}
+              studyPlan={form.studyPlan}
+              onFileSelect={onStudyPlanFileSelect}
+              onRemove={() => {
+                onChange("studyPlan", "");
+                onChange("studyPlanFileContent", "");
+                onChange("studyPlanFileName", "");
+              }}
             />
           </div>
         )}
@@ -346,20 +354,6 @@ function TextInput({ label, onChange, placeholder, value }: { label: string; onC
   );
 }
 
-function TextAreaInput({ label, onChange, placeholder, value }: { label: string; onChange: (value: string) => void; placeholder: string; value: string }) {
-  return (
-    <label className="block">
-      <span className="text-sm font-black text-foreground">{label}</span>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="mt-2 min-h-28 w-full rounded-lg border border-border bg-background px-4 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-primary"
-      />
-    </label>
-  );
-}
-
 function NumberInput({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: number }) {
   return (
     <label className="block">
@@ -528,26 +522,121 @@ function modeLabel(mode: WizardSetupForm["mode"]) {
 
 export function StudyPlanWizardStep({
   form,
+  onFileSelect,
   onChange
 }: {
   form: WizardSetupForm;
+  onFileSelect: (file: File) => void;
   onChange: <Key extends keyof WizardSetupForm>(key: Key, value: WizardSetupForm[Key]) => void;
 }) {
   return (
     <section className="rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)]">
       <StepHeader eyebrow="Bước 4" icon={BookOpen} title="Kế hoạch học tập (Study Plan)" />
       <p className="text-xs text-muted-foreground mt-1">
-        Kế hoạch học tập đóng vai trò vô cùng quan trọng trong việc xét duyệt học bổng. Hãy viết chi tiết mục tiêu học tập và định hướng của bạn.
+        Study Plan lấy từ profile nếu học viên đã upload file. Nếu chưa có file, hãy upload PDF, DOCX hoặc TXT tại đây.
       </p>
       <div className="mt-4">
-        <TextAreaInput
-          label="Study Plan"
-          value={form.studyPlan}
-          placeholder="Viết kế hoạch học tập của bạn bằng tiếng Việt, Trung hoặc Anh (Tối thiểu 100 từ để phân tích AI đạt độ chính xác cao)..."
-          onChange={(value) => onChange("studyPlan", value)}
+        <StudyPlanSourceBox
+          fileName={form.studyPlanFileName}
+          studyPlan={form.studyPlan}
+          onFileSelect={onFileSelect}
+          onRemove={() => {
+            onChange("studyPlan", "");
+            onChange("studyPlanFileContent", "");
+            onChange("studyPlanFileName", "");
+          }}
         />
       </div>
     </section>
+  );
+}
+
+
+function StudyPlanSourceBox({
+  fileName,
+  onFileSelect,
+  onRemove,
+  studyPlan
+}: {
+  fileName: string;
+  onFileSelect: (file: File) => void;
+  onRemove: () => void;
+  studyPlan: string;
+}) {
+  const [dragActive, setDragActive] = useState(false);
+
+  function handleDrag(event: React.DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(event.type === "dragenter" || event.type === "dragover");
+  }
+
+  function handleDrop(event: React.DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) onFileSelect(file);
+  }
+
+  if (fileName) {
+    return (
+      <div className="rounded-lg border border-border bg-background p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <FileText size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="break-words text-sm font-black text-foreground">{fileName}</p>
+              <p className="mt-1 text-xs font-bold text-muted-foreground">Đã lấy Study Plan từ profile/file upload.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            aria-label="Xóa file Study Plan"
+            title="Xóa file Study Plan"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-border bg-muted/40 p-3">
+          <p className="text-xs font-black uppercase text-muted-foreground">Nội dung trích xuất</p>
+          <p className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap text-sm font-semibold leading-6 text-foreground">
+            {studyPlan || "Nội dung sẽ được trích xuất sau khi lưu profile."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onDragEnter={handleDrag}
+      onDragOver={handleDrag}
+      onDragLeave={handleDrag}
+      onDrop={handleDrop}
+      className={`relative flex min-h-44 flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition ${
+        dragActive ? "border-primary bg-primary/5" : "border-border bg-muted/35 hover:border-primary/60"
+      }`}
+    >
+      <Upload size={32} className="text-muted-foreground" />
+      <p className="mt-3 text-sm font-black text-foreground">Chưa có Study Plan trong profile</p>
+      <p className="mt-1 text-xs font-semibold text-muted-foreground">Upload PDF, DOCX hoặc TXT. Hệ thống sẽ trích xuất nội dung để AI phân tích.</p>
+      <input
+        type="file"
+        accept=".pdf,.docx,.txt"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onFileSelect(file);
+        }}
+        className="absolute inset-0 cursor-pointer opacity-0"
+        aria-label="Upload Study Plan"
+      />
+    </div>
   );
 }
 
@@ -659,4 +748,3 @@ export function StudyPlanAnalysisWizardStep({
     </section>
   );
 }
-
