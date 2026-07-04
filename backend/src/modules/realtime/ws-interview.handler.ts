@@ -4,8 +4,9 @@ import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { prisma } from "../../db/prisma.js";
 import { logger } from "../../config/logger.js";
-import { InterviewStatus, QuestionCategory } from "@prisma/client";
+import { InterviewStatus } from "@prisma/client";
 import { buildSessionAnalysis } from "../interviews/detailed-scoring.service.js";
+import { scoreInterviewAnswerForSession, type AnswerScoringResult } from "../interviews/answer-scoring.service.js";
 
 // Lưu trữ các kết nối đang hoạt động theo sessionId
 // Map<sessionId, WebSocket>
@@ -134,17 +135,67 @@ export async function wsInterviewHandler(socket: WebSocket, req: IncomingMessage
               }
             });
 
-            // Tắt typing indicator và gửi thông báo ghi nhận thành công
-            socket.send(JSON.stringify({ type: "interview:ai-typing", data: { isTyping: false } }));
             socket.send(JSON.stringify({
-              type: "interview:score-ready",
+              type: "interview:answer-recorded",
               data: {
                 questionId: sessionQuestionId,
                 answerId: answer.id,
                 answeredQuestions,
-                score: 8.0 // Mock score hoặc phản hồi mặc định trước khi có stream chấm điểm
+                scoringStatus: "pending",
+                source: "pending"
               }
             }));
+
+            const scoringResult: AnswerScoringResult = await scoreInterviewAnswerForSession({
+              answerId: answer.id,
+              sessionId: sessionId!,
+              userId: userId!
+            }).catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              logger.error(`WebSocket: AI scoring failed for answer ${answer.id}: ${message}`);
+              return {
+                answerId: answer.id,
+                reason: "AI chưa trả về điểm chính thức; câu trả lời đã được lưu và đang chờ chấm.",
+                reasonCode: "ai_unavailable",
+                sessionQuestionId,
+                source: "pending",
+                status: "pending"
+              };
+            });
+
+            // Tắt typing indicator và gửi kết quả chấm thật hoặc trạng thái chờ chấm
+            socket.send(JSON.stringify({ type: "interview:ai-typing", data: { isTyping: false } }));
+            if (scoringResult.status === "scored") {
+              socket.send(JSON.stringify({
+                type: "interview:score-ready",
+                data: {
+                  questionId: sessionQuestionId,
+                  answerId: answer.id,
+                  answeredQuestions,
+                  feedback: scoringResult.feedback,
+                  improvedAnswer: scoringResult.improvedAnswer,
+                  score: scoringResult.score,
+                  scores: scoringResult.scores,
+                  scoringStatus: "scored",
+                  source: scoringResult.source,
+                  strengths: scoringResult.strengths,
+                  weaknesses: scoringResult.weaknesses
+                }
+              }));
+            } else {
+              socket.send(JSON.stringify({
+                type: "interview:score-pending",
+                data: {
+                  questionId: sessionQuestionId,
+                  answerId: answer.id,
+                  answeredQuestions,
+                  reason: scoringResult.reason,
+                  reasonCode: scoringResult.reasonCode,
+                  scoringStatus: "pending",
+                  source: scoringResult.source
+                }
+              }));
+            }
             break;
           }
 

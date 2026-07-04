@@ -9,7 +9,7 @@ const BellIcon = ({ size = 19, className = "" }: { size?: number; className?: st
   </svg>
 );
 import Link from "next/link";
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { apiGet, apiPut } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
 
@@ -30,7 +30,7 @@ export function NotificationBell() {
 
   const token = getAuthToken();
 
-  const fetchUnreadCount = async () => {
+  const fetchUnreadCount = useCallback(async () => {
     if (!token) return;
     try {
       const data = await apiGet<{ count: number }>("/api/notifications/unread-count", { token });
@@ -38,9 +38,9 @@ export function NotificationBell() {
     } catch (error) {
       console.error("Error fetching unread count:", error);
     }
-  };
+  }, [token]);
 
-  const fetchRecentNotifications = async () => {
+  const fetchRecentNotifications = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
     try {
@@ -51,20 +51,20 @@ export function NotificationBell() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchUnreadCount();
     // Poll unread count every 30 seconds
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [fetchUnreadCount]);
 
   useEffect(() => {
     if (isOpen) {
       fetchRecentNotifications();
     }
-  }, [isOpen]);
+  }, [fetchRecentNotifications, isOpen]);
 
   // Close dropdown on click outside
   useEffect(() => {

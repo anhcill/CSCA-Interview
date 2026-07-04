@@ -23,11 +23,11 @@ const defaultWasmBasePath = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-visio
 
 function getMediaErrorMessage(error: unknown) {
   if (error instanceof DOMException) {
-    if (error.name === "NotAllowedError") return "Khong the truy cap camera/microphone";
-    if (error.name === "NotFoundError") return "Khong tim thay camera/microphone";
-    if (error.name === "NotReadableError") return "Camera hoac microphone dang duoc ung dung khac su dung";
+    if (error.name === "NotAllowedError") return "Không thể truy cập camera/microphone";
+    if (error.name === "NotFoundError") return "Không tìm thấy camera/microphone";
+    if (error.name === "NotReadableError") return "Camera hoặc microphone đang được ứng dụng khác sử dụng";
   }
-  return error instanceof Error ? error.message : "Khong the khoi tao nhan dien khuon mat";
+  return error instanceof Error ? error.message : "Không thể khởi tạo nhận diện khuôn mặt";
 }
 
 function flattenBlendshapes(result: FaceLandmarkerResult) {
@@ -83,7 +83,7 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
   const [status, setStatus] = useState<FaceAnalysisStatus>("idle");
   const [stream, setStream] = useState<MediaStream | null>(null);
 
-  const stop = useCallback(() => {
+  const stop = useCallback((nextStatus: FaceAnalysisStatus = "idle") => {
     if (frameRef.current !== null) {
       window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
@@ -101,7 +101,9 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
       videoRef.current.srcObject = null;
     }
 
-    setStatus("idle");
+    snapshotRef.current = emptyVisualAnalysis;
+    setSnapshot(emptyVisualAnalysis);
+    setStatus(nextStatus);
   }, []);
 
   const runFrame = useCallback(() => {
@@ -140,8 +142,10 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
 
   const start = useCallback(async () => {
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      const message = "Trình duyệt không hỗ trợ camera";
       setStatus("unsupported");
-      setError("Trinh duyet khong ho tro camera");
+      setError(message);
+      onError?.(message);
       return;
     }
 
@@ -190,9 +194,8 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
     } catch (err) {
       const message = getMediaErrorMessage(err);
       setError(message);
-      setStatus("error");
       onError?.(message);
-      stop();
+      stop("error");
     }
   }, [cameraConstraints, delegate, includeAudioCheck, modelAssetPath, onError, runFrame, stop, wasmBasePath]);
 

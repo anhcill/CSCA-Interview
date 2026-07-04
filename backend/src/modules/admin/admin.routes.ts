@@ -5,8 +5,16 @@ import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { requireAdmin } from "../../middleware/require-admin.js";
 import { paginatedResponse, parsePagination } from "../../utils/pagination.js";
+import {
+  aiModelPresetOptions,
+  aiModelProviderOptions,
+  aiModelRouterAgents,
+  aiModelRouterSettingKey,
+  testAiModelRoute
+} from "../ai/ai-model-router.service.js";
 import { requireAuth, type AuthenticatedUser } from "../auth/auth.middleware.js";
 import { passwordHashRounds } from "../auth/auth.utils.js";
+import { importQuestionMasterSheet, MasterSheetImportError, previewQuestionMasterSheet } from "../questions/master-sheet-import.service.js";
 import { importQuestionsFromCsv } from "../questions/questions.routes.js";
 import { writeAdminAuditLog } from "./audit.service.js";
 import {
@@ -126,6 +134,18 @@ const csvImportSchema = z.object({
   csv: z.string().min(1, "CSV không được để trống")
 });
 
+const masterSheetImportSchema = z.object({
+  createMissingMajors: z.boolean().optional(),
+  createMissingSchools: z.boolean().optional(),
+  csv: z.string().optional(),
+  sourceUrl: z.preprocess((value) => {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }, z.string().url("Link Google Sheet không hợp lệ").optional().nullable()),
+  updateExisting: z.boolean().optional()
+});
+
 const jsonStringSchema = z.preprocess((value) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -140,6 +160,12 @@ const jsonStringSchema = z.preprocess((value) => {
 const settingSchema = z.object({
   description: z.string().trim().max(2000).optional().nullable(),
   settingValue: z.any()
+});
+const aiProviderSchema = z.enum(["9router", "deepseek", "openai", "openrouter"]);
+const aiModelRouteTestSchema = z.object({
+  baseUrl: z.string().trim().url("Base URL không hợp lệ").optional().nullable(),
+  model: z.string().trim().min(1, "Model không được để trống"),
+  provider: aiProviderSchema
 });
 
 const promptTemplateSchema = z.object({
@@ -484,6 +510,12 @@ adminRouter.get("/users/:id/study-plan/download", async (req, res) => {
         contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       } else if (extension === "txt") {
         contentType = "text/plain; charset=utf-8";
+      } else if (extension === "png") {
+        contentType = "image/png";
+      } else if (extension === "jpg" || extension === "jpeg") {
+        contentType = "image/jpeg";
+      } else if (extension === "webp") {
+        contentType = "image/webp";
       }
 
       res.setHeader("Content-Type", contentType);
@@ -672,6 +704,38 @@ adminRouter.get("/settings", async (_req, res) => {
   }
 });
 
+adminRouter.get("/ai-model-router/options", async (_req, res) => {
+  try {
+    const setting = await prisma.system_settings.findUnique({
+      select: { setting_value: true, updated_at: true },
+      where: { setting_key: aiModelRouterSettingKey }
+    });
+
+    res.json({
+      agents: aiModelRouterAgents,
+      currentSetting: setting?.setting_value ?? null,
+      presets: aiModelPresetOptions,
+      providers: aiModelProviderOptions,
+      settingKey: aiModelRouterSettingKey,
+      updatedAt: setting?.updated_at ?? null
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Không thể tải cấu hình router AI" });
+  }
+});
+
+adminRouter.post("/ai-model-router/test", async (req, res) => {
+  const parsed = aiModelRouteTestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ message: "Cấu hình model không hợp lệ", errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const result = await testAiModelRoute(parsed.data);
+  res.status(result.ok ? 200 : 400).json(result);
+});
+
 adminRouter.get("/question-tags", async (_req, res) => {
   try {
     const tags = await prisma.question_tags.findMany({
@@ -708,6 +772,46 @@ adminRouter.post("/questions/import", async (req, res) => {
     }
     console.error(error);
     res.status(500).json({ message: "Không thể import CSV câu hỏi" });
+  }
+});
+
+adminRouter.post("/questions/master-sheet/preview", async (req, res) => {
+  const parsed = masterSheetImportSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ message: "Dữ liệu Google Sheet không hợp lệ", errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  try {
+    const result = await previewQuestionMasterSheet(parsed.data);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof MasterSheetImportError) {
+      res.status(error.status).json({ message: error.message });
+      return;
+    }
+    console.error(error);
+    res.status(500).json({ message: "Không thể kiểm tra Google Sheet câu hỏi chính" });
+  }
+});
+
+adminRouter.post("/questions/master-sheet/import", async (req, res) => {
+  const parsed = masterSheetImportSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ message: "Dữ liệu Google Sheet không hợp lệ", errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  try {
+    const result = await importQuestionMasterSheet(req, getAdmin(res), parsed.data);
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof MasterSheetImportError) {
+      res.status(error.status).json({ message: error.message });
+      return;
+    }
+    console.error(error);
+    res.status(500).json({ message: "Không thể import Google Sheet câu hỏi chính" });
   }
 });
 

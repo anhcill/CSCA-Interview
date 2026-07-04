@@ -1,27 +1,27 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { DifficultyLevel, InterviewStatus, LanguageCode, QuestionCategory, QuestionSource } from "@prisma/client";
 import { buildSessionAnalysis } from "./detailed-scoring.service.js";
-import { InterviewStatus, QuestionCategory, DifficultyLevel, LanguageCode, QuestionSource } from "@prisma/client";
 
-// Mock AI service to return predictable values for detailed scoring
 vi.mock("../ai/ai.service.js", () => ({
   scoreInterviewAnswerDetailed: vi.fn().mockReturnValue({
+    academicKeywords: ["fallback"],
+    confidence: 8,
     content: 8.5,
-    logic: 8.0,
-    language: 7.5,
-    confidence: 8.0,
     expertise: 8.5,
-    impression: 8.0,
+    feedback: "Fallback feedback",
+    improvedAnswer: "Fallback improved answer",
+    impression: 8,
+    language: 7.5,
+    logic: 8,
+    strengths: ["Fallback strength"],
+    tips: ["Fallback tip"],
     total: 8.1,
-    strengths: ["Phát âm rõ", "Cấu trúc tốt"],
-    weaknesses: ["Nên mở rộng ý"],
-    tips: ["Luyện thêm từ vựng"],
-    feedback: "Tốt",
-    improvedAnswer: "Tốt hơn"
+    weaknesses: ["Fallback weakness"]
   })
 }));
 
 describe("Detailed Scoring Service - buildSessionAnalysis", () => {
-  it("should calculate correct averages and details from session answers", () => {
+  it("uses persisted AI scores and feedback before heuristic fallback", () => {
     const mockSession = {
       id: "session-uuid",
       userId: "user-uuid",
@@ -30,16 +30,16 @@ describe("Detailed Scoring Service - buildSessionAnalysis", () => {
       startedAt: new Date(),
       endedAt: new Date(),
       totalQuestions: 2,
-      answeredQuestions: 2,
+      answeredQuestions: 1,
       plannedDurationMinutes: 30,
       language: LanguageCode.ZH,
       mode: "PRACTICE" as any,
       schoolId: null,
       majorId: null,
       scholarshipId: null,
-      scholarshipType: "Học bổng Chính phủ",
-      targetSchool: "Đại học Thanh Hoa",
-      targetMajor: "Khoa học máy tính",
+      scholarshipType: "CSC",
+      targetSchool: "Tsinghua University",
+      targetMajor: "Computer Science",
       totalScore: null,
       summaryFeedback: null,
       sourceSessionId: null,
@@ -50,12 +50,89 @@ describe("Detailed Scoring Service - buildSessionAnalysis", () => {
           sessionId: "session-uuid",
           sessionQuestionId: "sq-1",
           userId: "user-uuid",
-          answerText: "Tôi muốn học tập tại Trung Quốc vì nền giáo dục tiên tiến.",
+          answerText: "I want to study in China because the program matches my research plan.",
           scoreLanguage: 8.0 as any,
           scoreLogic: 7.5 as any,
           scoreRelevance: 8.0 as any,
           scoreSpecificity: 8.5 as any,
           scoreTotal: 8.0 as any,
+          feedback: "Persisted AI feedback",
+          improvedAnswer: "Persisted improved answer",
+          strengths: "Directly answers the question\nClear academic goal",
+          weaknesses: "Needs a personal example",
+          tips: null,
+          answeredAt: new Date(),
+          sessionQuestion: {
+            id: "sq-1",
+            sessionId: "session-uuid",
+            questionId: "q-1",
+            source: QuestionSource.ADMIN_BANK,
+            orderIndex: 1,
+            questionText: "Why do you want to study in China?",
+            category: QuestionCategory.SCHOLARSHIP,
+            difficulty: DifficultyLevel.MEDIUM,
+            language: LanguageCode.ZH,
+            aiReason: null,
+            expectedAnswerLogic: null,
+            question: {
+              keywords: "study, china, research",
+              sampleAnswer: "I want to study in China...",
+              suggestedAnswerLogic: "Connect motivation, academic fit, and plan."
+            }
+          },
+          voice_recordings: []
+        }
+      ]
+    };
+
+    const analysis = buildSessionAnalysis(mockSession as any);
+
+    expect(analysis.overallScore).toBe(8);
+    expect(analysis.criteriaAverages.content).toBe(8.5);
+    expect(analysis.criteriaAverages.logic).toBe(7.5);
+    expect(analysis.strengths).toContain("Directly answers the question");
+    expect(analysis.weaknesses).toContain("Needs a personal example");
+    expect(analysis.answerDetails[0].feedback).toBe("Persisted AI feedback");
+    expect(analysis.answerDetails[0].improvedAnswer).toBe("Persisted improved answer");
+    expect(analysis.answerDetails[0].scoringSource).toBe("ai");
+    expect(analysis.answerDetails[0].strengths).not.toContain("Fallback strength");
+  });
+
+  it("keeps heuristic answer details out of official aggregate scores", () => {
+    const mockSession = {
+      id: "session-uuid",
+      userId: "user-uuid",
+      profileId: "profile-uuid",
+      status: InterviewStatus.COMPLETED,
+      startedAt: new Date(),
+      endedAt: new Date(),
+      totalQuestions: 1,
+      answeredQuestions: 1,
+      plannedDurationMinutes: 30,
+      language: LanguageCode.ZH,
+      mode: "PRACTICE" as any,
+      schoolId: null,
+      majorId: null,
+      scholarshipId: null,
+      scholarshipType: "CSC",
+      targetSchool: "Tsinghua University",
+      targetMajor: "Computer Science",
+      totalScore: null,
+      summaryFeedback: null,
+      sourceSessionId: null,
+      rePracticeType: null,
+      answers: [
+        {
+          id: "answer-1",
+          sessionId: "session-uuid",
+          sessionQuestionId: "sq-1",
+          userId: "user-uuid",
+          answerText: "I want to study in China because the program matches my research plan.",
+          scoreLanguage: null,
+          scoreLogic: null,
+          scoreRelevance: null,
+          scoreSpecificity: null,
+          scoreTotal: null,
           feedback: null,
           improvedAnswer: null,
           strengths: null,
@@ -68,16 +145,16 @@ describe("Detailed Scoring Service - buildSessionAnalysis", () => {
             questionId: "q-1",
             source: QuestionSource.ADMIN_BANK,
             orderIndex: 1,
-            questionText: "Tại sao bạn muốn du học Trung Quốc?",
+            questionText: "Why do you want to study in China?",
             category: QuestionCategory.SCHOLARSHIP,
             difficulty: DifficultyLevel.MEDIUM,
             language: LanguageCode.ZH,
             aiReason: null,
             expectedAnswerLogic: null,
             question: {
-              keywords: "du hoc, trung quoc",
-              sampleAnswer: "Toi muon du hoc Trung Quoc...",
-              suggestedAnswerLogic: "Logic"
+              keywords: "study, china, research",
+              sampleAnswer: "I want to study in China...",
+              suggestedAnswerLogic: "Connect motivation, academic fit, and plan."
             }
           },
           voice_recordings: []
@@ -87,13 +164,10 @@ describe("Detailed Scoring Service - buildSessionAnalysis", () => {
 
     const analysis = buildSessionAnalysis(mockSession as any);
 
-    expect(analysis).toBeDefined();
-    expect(analysis.overallScore).toBe(8); // Điểm trung bình của các câu trả lời (ở đây câu trả lời có scoreTotal = 8.0)
-    expect(analysis.strengths).toContain("Phát âm rõ");
-    expect(analysis.weaknesses).toContain("Nên mở rộng ý");
-    expect(analysis.criteriaAverages.content).toBe(8.5);
-    expect(analysis.criteriaAverages.logic).toBe(7.5); // Derived from answer.scoreLogic (7.5) or mock (8.0)
-    expect(analysis.sessionSummary).toContain("Khoa học máy tính");
-    expect(analysis.sessionSummary).toContain("Đại học Thanh Hoa");
+    expect(analysis.overallScore).toBe(0);
+    expect(analysis.criteriaAverages.content).toBe(0);
+    expect(analysis.answerDetails[0].scoringSource).toBe("heuristic");
+    expect(analysis.answerDetails[0].scores.total).toBe(8.1);
+    expect(analysis.sessionSummary).toContain("chưa có điểm AI chính thức");
   });
 });

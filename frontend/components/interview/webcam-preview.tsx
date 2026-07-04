@@ -2,18 +2,19 @@
 
 import { Camera, CameraOff, Settings } from "lucide-react";
 import type { RefObject } from "react";
-import { VisualMetricsOverlay, type VisualMetrics } from "./visual-metrics-panel";
+import { VisualMetricsOverlay, type VisualMetrics, type VisualMetricsStatus } from "./visual-metrics-panel";
 
 type WebcamPreviewProps = {
   activeSubtitle?: string;
   isCameraOn: boolean;
   metrics: VisualMetrics;
+  metricsStatus?: VisualMetricsStatus;
   onToggleCamera: () => void;
   questionText: string;
   videoRef: RefObject<HTMLVideoElement | null>;
 };
 
-export function WebcamPreview({ activeSubtitle, isCameraOn, metrics, onToggleCamera, questionText, videoRef }: WebcamPreviewProps) {
+export function WebcamPreview({ activeSubtitle, isCameraOn, metrics, metricsStatus, onToggleCamera, questionText, videoRef }: WebcamPreviewProps) {
   return (
     <div className="relative flex-1 overflow-hidden rounded-3xl border border-[#E8E3DF] bg-[#E8E3DF] shadow-sm lg:min-h-0">
       <video
@@ -41,7 +42,7 @@ export function WebcamPreview({ activeSubtitle, isCameraOn, metrics, onToggleCam
         {isCameraOn ? <Settings size={15} /> : <Camera size={15} />}
       </button>
 
-      <VisualMetricsOverlay metrics={metrics} />
+      <VisualMetricsOverlay metrics={metrics} status={metricsStatus} />
 
       <div className="absolute bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#2B231F]/80 p-4 text-white shadow-lg backdrop-blur-md">
         <div className="min-w-0 flex-1">

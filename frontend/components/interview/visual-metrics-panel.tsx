@@ -11,6 +11,8 @@ export type VisualMetrics = {
   stress: number;
 };
 
+export type VisualMetricsStatus = "live" | "neutral" | "unavailable";
+
 type MetricKey = keyof VisualMetrics;
 
 type MetricConfig = {
@@ -59,13 +61,16 @@ const metricConfigs: MetricConfig[] = [
     Icon: Eye,
     barClassName: "bg-[#0EA5E9]",
     key: "eyeContact",
-    label: "Eye Contact",
+    label: "Giao tiếp mắt",
     softClassName: "bg-[#E0F2FE]",
     textClassName: "text-[#0284C7]"
   }
 ];
 
-export function getVisualMetricLabel(key: MetricKey, value: number) {
+export function getVisualMetricLabel(key: MetricKey, value: number, status: VisualMetricsStatus = "live") {
+  if (status === "unavailable") return "Không khả dụng";
+  if (status === "neutral") return "Trung tính";
+
   if (key === "stress") {
     if (value < 30) return "Thấp";
     if (value < 55) return "Vừa";
@@ -78,44 +83,57 @@ export function getVisualMetricLabel(key: MetricKey, value: number) {
   return "Cần cải thiện";
 }
 
-export function VisualMetricsPanel({ metrics }: { metrics: VisualMetrics }) {
+export function VisualMetricsPanel({ metrics, status }: { metrics: VisualMetrics; status?: VisualMetricsStatus }) {
+  const resolvedStatus = resolveMetricsStatus(metrics, status);
+
   return (
     <div className="flex flex-1 flex-col gap-4 rounded-3xl border border-[#F0EBE7] bg-white p-5 shadow-sm lg:h-[50%]">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-extrabold text-[#2B231F]">Phân tích biểu cảm</h3>
-        <span className="rounded-lg bg-[#EBFDF2] px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-[#28A745]">Realtime</span>
+        <span className={`rounded-lg px-2 py-0.5 text-[9px] font-extrabold tracking-wider ${getVisualMetricsBadgeClassName(resolvedStatus)}`}>
+          {getVisualMetricsStatusLabel(resolvedStatus)}
+        </span>
       </div>
 
       <div className="space-y-3">
         {metricConfigs.map((metric) => (
-          <MetricRow key={metric.key} config={metric} value={metrics[metric.key]} />
+          <MetricRow key={metric.key} config={metric} status={resolvedStatus} value={metrics[metric.key]} />
         ))}
       </div>
 
       <div className="mt-auto flex items-start gap-2.5 rounded-2xl border border-orange-100 bg-[#FFF5E6]/40 p-3">
         <Lightbulb size={16} className="mt-0.5 shrink-0 text-amber-500" />
         <p className="text-[11px] font-bold leading-relaxed text-[#8C837E]">
-          Hãy giữ bình tĩnh, nhìn vào camera và trả lời gọn ý để điểm giao tiếp ổn định hơn.
+          {getVisualMetricsHint(resolvedStatus)}
         </p>
       </div>
     </div>
   );
 }
 
-export function VisualMetricsSummary({ metrics }: { metrics: VisualMetrics }) {
+export function VisualMetricsSummary({ metrics, status }: { metrics: VisualMetrics; status?: VisualMetricsStatus }) {
+  const resolvedStatus = resolveMetricsStatus(metrics, status);
+
   return (
     <div className="rounded-3xl border border-[#F0EBE7] bg-white p-5 shadow-sm">
-      <h3 className="text-sm font-extrabold text-[#2B231F]">Phân tích tổng quan</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-extrabold text-[#2B231F]">Phân tích tổng quan</h3>
+        <span className={`rounded-lg px-2 py-0.5 text-[9px] font-extrabold tracking-wider ${getVisualMetricsBadgeClassName(resolvedStatus)}`}>
+          {getVisualMetricsStatusLabel(resolvedStatus)}
+        </span>
+      </div>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
         {metricConfigs.map((metric) => (
-          <SummaryTile key={metric.key} config={metric} value={metrics[metric.key]} />
+          <SummaryTile key={metric.key} config={metric} status={resolvedStatus} value={metrics[metric.key]} />
         ))}
       </div>
     </div>
   );
 }
 
-export function VisualMetricsOverlay({ metrics }: { metrics: VisualMetrics }) {
+export function VisualMetricsOverlay({ metrics, status }: { metrics: VisualMetrics; status?: VisualMetricsStatus }) {
+  const resolvedStatus = resolveMetricsStatus(metrics, status);
+
   return (
     <div className="absolute right-4 top-16 z-10 hidden w-[190px] flex-col gap-2.5 rounded-2xl border border-white/10 bg-[#2B231F]/70 p-4 text-white shadow-lg backdrop-blur-md transition-all duration-300 sm:flex">
       <div className="flex items-center gap-2">
@@ -124,7 +142,7 @@ export function VisualMetricsOverlay({ metrics }: { metrics: VisualMetrics }) {
         </div>
         <div>
           <p className="text-[10px] font-bold leading-3 text-white/60">Cảm xúc</p>
-          <p className="text-xs font-extrabold leading-4 text-white">{getVisualMetricLabel("confidence", metrics.confidence)}</p>
+          <p className="text-xs font-extrabold leading-4 text-white">{getVisualMetricLabel("confidence", metrics.confidence, resolvedStatus)}</p>
         </div>
       </div>
 
@@ -132,10 +150,10 @@ export function VisualMetricsOverlay({ metrics }: { metrics: VisualMetrics }) {
         <div key={metric.key} className="space-y-1">
           <div className="flex justify-between text-[9px] font-bold">
             <span>{metric.label}</span>
-            <span>{metrics[metric.key]}%</span>
+            <span>{formatMetricValue(metrics[metric.key], resolvedStatus)}</span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/20">
-            <div className={`h-full rounded-full transition-all duration-500 ${metric.barClassName}`} style={{ width: `${clampScore(metrics[metric.key])}%` }} />
+            <div className={`h-full rounded-full transition-all duration-500 ${metric.barClassName}`} style={{ width: `${getMetricBarWidth(metrics[metric.key], resolvedStatus)}%` }} />
           </div>
         </div>
       ))}
@@ -143,33 +161,70 @@ export function VisualMetricsOverlay({ metrics }: { metrics: VisualMetrics }) {
   );
 }
 
-function MetricRow({ config, value }: { config: MetricConfig; value: number }) {
+function MetricRow({ config, status, value }: { config: MetricConfig; status: VisualMetricsStatus; value: number }) {
   const Icon = config.Icon;
 
   return (
-    <div className="grid grid-cols-[28px_minmax(72px,1fr)_minmax(92px,1.7fr)_52px] items-center gap-3">
+    <div className="grid grid-cols-[28px_minmax(72px,1fr)_minmax(92px,1.5fr)_minmax(76px,auto)] items-center gap-3">
       <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${config.softClassName} ${config.textClassName}`}>
         <Icon size={13} />
       </div>
       <span className="min-w-0 text-xs font-bold text-[#2B231F]">{config.label}</span>
       <div className={`h-2 overflow-hidden rounded-full ${config.softClassName}`}>
-        <div className={`h-full rounded-full transition-all duration-500 ${config.barClassName}`} style={{ width: `${clampScore(value)}%` }} />
+        <div className={`h-full rounded-full transition-all duration-500 ${config.barClassName}`} style={{ width: `${getMetricBarWidth(value, status)}%` }} />
       </div>
-      <span className={`text-right text-xs font-extrabold ${config.textClassName}`}>{getVisualMetricLabel(config.key, value)}</span>
+      <span className={`text-right text-xs font-extrabold ${config.textClassName}`}>{getVisualMetricLabel(config.key, value, status)}</span>
     </div>
   );
 }
 
-function SummaryTile({ config, value }: { config: MetricConfig; value: number }) {
+function SummaryTile({ config, status, value }: { config: MetricConfig; status: VisualMetricsStatus; value: number }) {
   return (
     <div className="flex min-h-[78px] flex-col items-center justify-between rounded-2xl border border-[#F0EBE7]/60 bg-[#FCF9F7] p-2 text-center">
       <span className="text-[9px] font-bold text-[#8C837E]">{config.label}</span>
-      <span className={`text-sm font-extrabold ${config.textClassName}`}>{value}%</span>
+      <span className={`text-sm font-extrabold ${config.textClassName}`}>{formatMetricValue(value, status)}</span>
       <span className={`rounded-full px-1.5 py-0.5 text-[8px] font-extrabold ${config.softClassName} ${config.textClassName}`}>
-        {getVisualMetricLabel(config.key, value)}
+        {getVisualMetricLabel(config.key, value, status)}
       </span>
     </div>
   );
+}
+
+function resolveMetricsStatus(metrics: VisualMetrics, status?: VisualMetricsStatus) {
+  if (status) return status;
+  return Object.values(metrics).some((value) => value > 0) ? "live" : "neutral";
+}
+
+function getVisualMetricsStatusLabel(status: VisualMetricsStatus) {
+  if (status === "live") return "Realtime";
+  if (status === "unavailable") return "Không khả dụng";
+  return "Trung tính";
+}
+
+function getVisualMetricsBadgeClassName(status: VisualMetricsStatus) {
+  if (status === "live") return "bg-[#EBFDF2] text-[#28A745]";
+  if (status === "unavailable") return "bg-[#FDECEC] text-[#D92C3D]";
+  return "bg-[#F3F0ED] text-[#8C837E]";
+}
+
+function getVisualMetricsHint(status: VisualMetricsStatus) {
+  if (status === "live") {
+    return "Hãy giữ bình tĩnh, nhìn vào camera và trả lời gọn ý để điểm giao tiếp ổn định hơn.";
+  }
+
+  if (status === "unavailable") {
+    return "Camera hoặc MediaPipe chưa khả dụng, hệ thống sẽ không tự tạo điểm đánh giá.";
+  }
+
+  return "Bật camera và chờ nhận diện khuôn mặt để bắt đầu phân tích bằng dữ liệu thật.";
+}
+
+function formatMetricValue(value: number, status: VisualMetricsStatus) {
+  return status === "live" ? `${value}%` : "--";
+}
+
+function getMetricBarWidth(value: number, status: VisualMetricsStatus) {
+  return status === "live" ? clampScore(value) : 0;
 }
 
 function clampScore(value: number) {

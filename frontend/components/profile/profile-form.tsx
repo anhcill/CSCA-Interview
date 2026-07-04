@@ -116,10 +116,10 @@ export function ProfileForm() {
       return;
     }
 
-    const allowedExtensions = ["pdf", "docx", "txt"];
+    const allowedExtensions = ["pdf", "docx", "txt", "png", "jpg", "jpeg", "webp"];
     const extension = file.name.split(".").pop()?.toLowerCase();
     if (!extension || !allowedExtensions.includes(extension)) {
-      setError("Định dạng tệp không được hỗ trợ. Vui lòng tải lên file PDF, DOCX hoặc TXT.");
+      setError("Định dạng tệp không được hỗ trợ. Vui lòng tải lên file PDF, DOCX, TXT hoặc ảnh PNG/JPG/WEBP.");
       return;
     }
 
@@ -314,7 +314,7 @@ export function ProfileForm() {
               </div>
             </FormSection>
 
-            <FormSection title="Kế hoạch học tập" description="Tải lên kế hoạch học tập của bạn (PDF, DOCX hoặc TXT, tối đa 15MB).">
+            <FormSection title="Kế hoạch học tập" description="Tải lên kế hoạch học tập của bạn (PDF, DOCX, TXT hoặc ảnh scan, tối đa 15MB).">
               <div className="space-y-4">
                 <span className="block text-sm font-bold text-slate-700 dark:text-slate-300">
                   Tệp Study Plan <span className="text-red-500">*</span>
@@ -354,10 +354,10 @@ export function ProfileForm() {
                   >
                     <Upload className="text-slate-400 dark:text-slate-500" size={32} />
                     <p className="mt-3 text-sm font-black text-slate-900 dark:text-white">Kéo thả tệp vào đây, hoặc click để chọn</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">Chấp nhận PDF, Word (.docx) hoặc Text (.txt), tối đa 15MB</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Chấp nhận PDF, Word (.docx), Text (.txt) hoặc ảnh scan, tối đa 15MB</p>
                     <input
                       type="file"
-                      accept=".pdf,.docx,.txt"
+                      accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp"
                       onChange={handleFileSelect}
                       className="absolute inset-0 cursor-pointer opacity-0"
                     />

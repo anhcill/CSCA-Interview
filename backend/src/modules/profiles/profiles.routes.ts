@@ -3,7 +3,16 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth, type AuthenticatedUser } from "../auth/auth.middleware.js";
-import { extractTextFromDocument, uploadToCloudinary } from "./document-parser.js";
+import {
+  cleanStudyPlanText,
+  createStudyPlanParseMetadata,
+  decodeBase64DocumentPayload,
+  extractTextFromDocument,
+  minimumStudyPlanTextLength,
+  stripBase64DataUrl,
+  type StudyPlanParseMetadata,
+  uploadToCloudinary
+} from "./document-parser.js";
 
 export const profilesRouter = Router();
 const cloudinaryRawUploadLimitBytes = 10 * 1024 * 1024;
@@ -63,23 +72,28 @@ profilesRouter.put("/me", async (req, res) => {
     where: { userId: user.id }
   });
 
-  let studyPlanText = parsed.data.studyPlan || existingProfile?.studyPlan || "";
+  let studyPlanText = cleanStudyPlanText(parsed.data.studyPlan || existingProfile?.studyPlan || "").text;
   let studyPlanFileName = parsed.data.studyPlanFileName !== undefined ? parsed.data.studyPlanFileName : existingProfile?.studyPlanFileName;
   let studyPlanFileContent = existingProfile?.studyPlanFileContent || null;
   let studyPlanFileUrl = existingProfile?.studyPlanFileUrl || null;
+  let studyPlanParseMetadata: StudyPlanParseMetadata | null = null;
 
   // Nếu người dùng tải lên tệp mới
   if (parsed.data.studyPlanFileContent && parsed.data.studyPlanFileName) {
     try {
-      const base64Data = parsed.data.studyPlanFileContent.replace(/^data:[^;]+;base64,/, "");
-      const buffer = Buffer.from(base64Data, "base64");
+      const base64Data = stripBase64DataUrl(parsed.data.studyPlanFileContent);
+      const buffer = decodeBase64DocumentPayload(parsed.data.studyPlanFileContent);
       const fileSize = buffer.byteLength;
 
       // 1. Trích xuất văn bản từ tệp để AI đọc
-      studyPlanText = await extractTextFromDocument(buffer, parsed.data.studyPlanFileName);
-      if (studyPlanText.trim().length < 10) {
+      const parsedDocument = await extractTextFromDocument(buffer, parsed.data.studyPlanFileName);
+      studyPlanText = parsedDocument.text;
+      studyPlanParseMetadata = parsedDocument.metadata;
+
+      if (studyPlanText.trim().length < minimumStudyPlanTextLength || studyPlanParseMetadata.parseStatus === "failed") {
         res.status(400).json({
-          message: "Nội dung văn bản trích xuất được từ tệp quá ngắn (tối thiểu 10 ký tự)."
+          message: buildParseErrorMessage(studyPlanParseMetadata),
+          studyPlanParseMetadata
         });
         return;
       }
@@ -109,7 +123,7 @@ profilesRouter.put("/me", async (req, res) => {
   }
 
   // Bắt buộc phải có Kế hoạch học tập (hoặc qua file, hoặc qua text)
-  if (!studyPlanText || studyPlanText.trim().length < 10) {
+  if (!studyPlanText || studyPlanText.trim().length < minimumStudyPlanTextLength) {
     res.status(400).json({
       message: "Vui lòng tải lên tệp Kế hoạch học tập (Study Plan) hợp lệ."
     });
@@ -138,7 +152,8 @@ profilesRouter.put("/me", async (req, res) => {
 
   res.json({
     message: "Cập nhật profile thành công",
-    profile: toProfileDto(profile)
+    profile: toProfileDto(profile, studyPlanParseMetadata),
+    studyPlanParseMetadata: studyPlanParseMetadata ?? toStudyPlanParseMetadata(profile)
   });
 });
 
@@ -180,6 +195,20 @@ function normalizeProfileInput(input: ProfileInput) {
   };
 }
 
-function toProfileDto(profile: any) {
-  return profile;
+function toProfileDto(profile: any, studyPlanParseMetadata?: StudyPlanParseMetadata | null) {
+  return {
+    ...profile,
+    studyPlanParseMetadata: studyPlanParseMetadata ?? toStudyPlanParseMetadata(profile)
+  };
+}
+
+function toStudyPlanParseMetadata(profile: any) {
+  return createStudyPlanParseMetadata({
+    fileName: profile.studyPlanFileName ?? null,
+    text: profile.studyPlan ?? ""
+  });
+}
+
+function buildParseErrorMessage(metadata: StudyPlanParseMetadata) {
+  return metadata.warnings[0] ?? "Không thể trích xuất nội dung Study Plan từ file. Vui lòng upload PDF/DOCX/TXT có text hoặc OCR file scan.";
 }

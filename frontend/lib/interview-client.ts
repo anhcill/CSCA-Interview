@@ -53,6 +53,7 @@ export type AnswerDetailedAnalysisDto = {
   sessionQuestionId: string;
   questionText: string;
   answerText: string;
+  scoringSource?: "ai" | "heuristic";
   scores: {
     content: number;
     logic: number;

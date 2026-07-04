@@ -3,6 +3,31 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const isProd = process.env.NODE_ENV === "production";
+const usesOpenAiNamespace = process.env.OPENAI_BASE_URL?.includes("beeknoee");
+
+export const openAiTtsVoiceOptions = [
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "onyx",
+  "nova",
+  "sage",
+  "shimmer",
+  "verse"
+] as const;
+
+export type OpenAiTtsVoice = typeof openAiTtsVoiceOptions[number];
+
+function defaultOpenAiProviderModel(model: string) {
+  return usesOpenAiNamespace ? `openai/${model}` : model;
+}
+
+function optionalOpenAiTtsVoice(value: string | undefined): OpenAiTtsVoice {
+  return openAiTtsVoiceOptions.includes(value as OpenAiTtsVoice) ? (value as OpenAiTtsVoice) : "nova";
+}
 
 // Require JWT_SECRET in production - no weak defaults
 const jwtSecret = process.env.JWT_SECRET;
@@ -47,7 +72,20 @@ export const env = {
   openAiInputCostPer1M: optionalNumber(process.env.OPENAI_INPUT_COST_PER_1M),
   openAiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
   openAiOutputCostPer1M: optionalNumber(process.env.OPENAI_OUTPUT_COST_PER_1M),
-  openAiTtsModel: process.env.OPENAI_TTS_MODEL ?? (process.env.OPENAI_BASE_URL?.includes("beeknoee") ? "openai/gpt-4o-mini-tts" : "tts-1"),
+  openAiSttModel: process.env.OPENAI_STT_MODEL?.trim() || defaultOpenAiProviderModel("gpt-4o-transcribe"),
+  openAiTtsModel: process.env.OPENAI_TTS_MODEL?.trim() || defaultOpenAiProviderModel("gpt-4o-mini-tts"),
+  openAiTtsVoice: optionalOpenAiTtsVoice(process.env.OPENAI_TTS_VOICE),
+  backendPublicUrl: process.env.BACKEND_PUBLIC_URL,
+  bankAccountName: process.env.BANK_ACCOUNT_NAME,
+  bankAccountNumber: process.env.BANK_ACCOUNT_NUMBER,
+  bankCode: process.env.BANK_CODE,
+  sepayWebhookApiKey: process.env.SEPAY_WEBHOOK_API_KEY,
+  openRouterApiKey: process.env.OPENROUTER_API_KEY,
+  openRouterBaseUrl: process.env.OPENROUTER_BASE_URL,
+  openRouterModel: process.env.OPENROUTER_MODEL,
+  nineRouterApiKey: process.env.NINEROUTER_API_KEY,
+  nineRouterBaseUrl: process.env.NINEROUTER_BASE_URL,
+  nineRouterModel: process.env.NINEROUTER_MODEL,
   deepseekApiKey: process.env.DEEPSEEK_API_KEY,
   deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL,
   deepseekFlashModel: process.env.DEEPSEEK_FLASH_MODEL ?? process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash",

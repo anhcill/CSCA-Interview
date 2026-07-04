@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import OpenAI from "openai";
-import { env } from "../../config/env.js";
+import { env, type OpenAiTtsVoice } from "../../config/env.js";
 
 const openai = env.openAiApiKey
   ? new OpenAI({
@@ -113,8 +113,16 @@ export type SynthesizeResult = {
   contentType: string;
 };
 
+function isWhisperTranscriptionModel(model: string) {
+  return model.toLowerCase().endsWith("whisper-1");
+}
+
+function supportsTtsSpeed(model: string) {
+  return !model.toLowerCase().endsWith("gpt-4o-mini-tts");
+}
+
 /**
- * Transcribe audio using OpenAI Whisper API.
+ * Transcribe audio using OpenAI audio transcription API.
  * Accepts a base64-encoded audio string + mime type.
  */
 export async function transcribeAudio(
@@ -124,7 +132,7 @@ export async function transcribeAudio(
 ): Promise<TranscribeResult> {
   const client = requireOpenAi();
 
-  // Write base64 to temp file (Whisper API needs a file)
+  // Write base64 to temp file (OpenAI transcription API needs a file)
   const ext = mimeType.includes("wav") ? "wav" : mimeType.includes("mp3") ? "mp3" : "webm";
   const tmpFile = path.join(os.tmpdir(), `speech_${Date.now()}.${ext}`);
 
@@ -140,14 +148,18 @@ export async function transcribeAudio(
 
     const startedAt = Date.now();
     const createTranscription = client.audio.transcriptions.create as unknown as (body: Record<string, unknown>) => Promise<VerboseTranscriptionResponse>;
-    const transcription = await createTranscription({
+    const transcriptionModel = env.openAiSttModel;
+    const transcriptionInput: Record<string, unknown> = {
       file: fs.createReadStream(tmpFile),
-      model: "whisper-1",
+      model: transcriptionModel,
       ...(language ? { language } : {}),
-      response_format: "verbose_json",
-      timestamp_granularities: ["word"]
-    });
-    console.log(`[AI] whisper.transcribe ${Date.now() - startedAt}ms`);
+      response_format: isWhisperTranscriptionModel(transcriptionModel) ? "verbose_json" : "json"
+    };
+    if (isWhisperTranscriptionModel(transcriptionModel)) {
+      transcriptionInput.timestamp_granularities = ["word"];
+    }
+    const transcription = await createTranscription(transcriptionInput);
+    console.log(`[AI] stt.transcribe model=${transcriptionModel} ${Date.now() - startedAt}ms`);
 
     const detectedLang = transcription.language ?? language ?? "unknown";
     const duration = transcription.duration ?? undefined;
@@ -182,7 +194,7 @@ export async function transcribeAudio(
  */
 export async function synthesizeSpeech(
   text: string,
-  voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "nova",
+  voice: OpenAiTtsVoice = env.openAiTtsVoice,
   speed: number = 1.0
 ): Promise<SynthesizeResult> {
   const client = requireOpenAi();
@@ -195,17 +207,18 @@ export async function synthesizeSpeech(
   const trimmedText = text.slice(0, 4096);
 
   const startedAt = Date.now();
+  const ttsModel = env.openAiTtsModel;
   const response = await client.audio.speech.create({
-    model: env.openAiTtsModel,
+    model: ttsModel,
     voice,
     input: trimmedText,
-    speed: Math.max(0.25, Math.min(4.0, speed)),
+    ...(supportsTtsSpeed(ttsModel) ? { speed: Math.max(0.25, Math.min(4.0, speed)) } : {}),
     response_format: "mp3"
   });
 
   const arrayBuffer = await response.arrayBuffer();
   const audioBuffer = Buffer.from(arrayBuffer);
-  console.log(`[AI] tts.synthesize model=${env.openAiTtsModel} ${Date.now() - startedAt}ms`);
+  console.log(`[AI] tts.synthesize model=${ttsModel} voice=${voice} ${Date.now() - startedAt}ms`);
 
   return {
     audioBuffer,

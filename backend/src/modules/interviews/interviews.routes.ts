@@ -33,6 +33,17 @@ import { paginatedResponse, parsePagination } from "../../utils/pagination.js";
 import { normalizeSearchText, rankSearchCandidate } from "../../utils/search-normalize.js";
 import { getScoreProgressTimeline, getSkillProgressTimeline, compareSessionScores, getWeakAreas } from "./interview-stats.service.js";
 import { analyzeStudyPlan } from "./study-plan-analysis.service.js";
+import { consumeInterviewPayment, getInterviewPaymentEntitlement, paymentRequiredPayload } from "../payments/payments.service.js";
+import {
+  cleanStudyPlanText,
+  createStudyPlanParseMetadata,
+  decodeBase64DocumentPayload,
+  extractTextFromDocument,
+  minimumStudyPlanTextLength,
+  type StudyPlanParseMetadata,
+  type StudyPlanParseStatus,
+  type SupportedDocumentType
+} from "../profiles/document-parser.js";
 
 export const interviewsRouter = Router();
 
@@ -284,8 +295,15 @@ interviewsRouter.post("/", async (req, res) => {
     targetMajor,
     targetSchool
   } = parsed.data;
+  const requiredPaymentMinutes = plannedDurationMinutes ?? 30;
 
   try {
+    const entitlement = await getInterviewPaymentEntitlement(user.id, requiredPaymentMinutes);
+    if (!entitlement.hasAccess) {
+      res.status(402).json(entitlement);
+      return;
+    }
+
     let profile = await prisma.userProfile.findUnique({
       where: { userId: user.id }
     });
@@ -422,6 +440,18 @@ interviewsRouter.post("/", async (req, res) => {
         }
       }
     });
+    const consumedPayment = await consumeInterviewPayment(user.id, session.id, requiredPaymentMinutes);
+    if (!consumedPayment) {
+      await prisma.interviewSession.update({
+        data: {
+          endedAt: new Date(),
+          status: InterviewStatus.CANCELLED
+        },
+        where: { id: session.id }
+      });
+      res.status(402).json(paymentRequiredPayload(requiredPaymentMinutes));
+      return;
+    }
 
     res.status(201).json({ session: toSessionDto(session) });
   } catch (error) {
@@ -681,6 +711,9 @@ interviewsRouter.post("/analyze-study-plan", async (req, res) => {
   const user = res.locals.user as AuthenticatedUser;
   const {
     studyPlan,
+    studyPlanFileContent,
+    studyPlanFileName,
+    studyPlanParseMetadata,
     schoolId,
     majorId,
     scholarshipId,
@@ -690,22 +723,33 @@ interviewsRouter.post("/analyze-study-plan", async (req, res) => {
     degreeLevel
   } = req.body ?? {};
 
-  if (!studyPlan || typeof studyPlan !== "string" || studyPlan.trim().length < 10) {
-    res.status(400).json({ message: "Kế hoạch học tập quá ngắn hoặc không hợp lệ" });
-    return;
-  }
-
   try {
+    const resolvedStudyPlan = await resolveStudyPlanAnalysisInput({
+      studyPlan,
+      studyPlanFileContent,
+      studyPlanFileName,
+      studyPlanParseMetadata
+    });
+
+    if (resolvedStudyPlan.studyPlan.trim().length < minimumStudyPlanTextLength || resolvedStudyPlan.parseMetadata.parseStatus === "failed") {
+      res.status(400).json({
+        message: resolvedStudyPlan.parseMetadata.warnings[0] ?? "Kế hoạch học tập quá ngắn hoặc không hợp lệ",
+        parseMetadata: resolvedStudyPlan.parseMetadata
+      });
+      return;
+    }
+
     const result = await analyzeStudyPlan(
       user.id,
-      studyPlan,
+      resolvedStudyPlan.studyPlan,
       schoolId,
       majorId,
       scholarshipId,
       scholarshipType,
       targetSchool,
       targetMajor,
-      degreeLevel
+      degreeLevel,
+      resolvedStudyPlan.parseMetadata
     );
     res.json(result);
   } catch (error: any) {
@@ -713,6 +757,80 @@ interviewsRouter.post("/analyze-study-plan", async (req, res) => {
     res.status(500).json({ message: error.message || "Lỗi khi phân tích kế hoạch học tập" });
   }
 });
+
+async function resolveStudyPlanAnalysisInput(input: {
+  studyPlan: unknown;
+  studyPlanFileContent: unknown;
+  studyPlanFileName: unknown;
+  studyPlanParseMetadata: unknown;
+}) {
+  const fileName = typeof input.studyPlanFileName === "string" ? input.studyPlanFileName.trim() : "";
+
+  if (typeof input.studyPlanFileContent === "string" && input.studyPlanFileContent.trim()) {
+    if (!fileName) {
+      throw new Error("Thiếu tên file Study Plan để phân tích.");
+    }
+
+    const parsedDocument = await extractTextFromDocument(
+      decodeBase64DocumentPayload(input.studyPlanFileContent),
+      fileName
+    );
+
+    return {
+      parseMetadata: parsedDocument.metadata,
+      studyPlan: parsedDocument.text
+    };
+  }
+
+  const cleaned = cleanStudyPlanText(typeof input.studyPlan === "string" ? input.studyPlan : "");
+  const incomingMetadata = coerceStudyPlanParseMetadata(input.studyPlanParseMetadata);
+  const parseMetadata = createStudyPlanParseMetadata({
+    fileName: incomingMetadata?.fileName ?? (fileName || null),
+    fileType: incomingMetadata?.fileType,
+    originalTextLength: incomingMetadata?.originalTextLength ?? cleaned.originalLength,
+    pageCount: incomingMetadata?.pageCount,
+    text: cleaned.text,
+    truncated: Boolean(incomingMetadata?.truncated || cleaned.truncated),
+    warnings: incomingMetadata?.warnings ?? []
+  });
+
+  return {
+    parseMetadata,
+    studyPlan: cleaned.text
+  };
+}
+
+function coerceStudyPlanParseMetadata(value: unknown): StudyPlanParseMetadata | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const fileName = typeof record.fileName === "string" ? record.fileName : null;
+  const extractedTextLength = typeof record.extractedTextLength === "number" ? record.extractedTextLength : 0;
+
+  return {
+    extractedTextLength,
+    fileName,
+    fileType: coerceSupportedDocumentType(record.fileType),
+    ocrPageCount: typeof record.ocrPageCount === "number" ? record.ocrPageCount : undefined,
+    ocrProvider: record.ocrProvider === "openai" ? "openai" : undefined,
+    ocrUsed: typeof record.ocrUsed === "boolean" ? record.ocrUsed : undefined,
+    originalTextLength: typeof record.originalTextLength === "number" ? record.originalTextLength : undefined,
+    pageCount: typeof record.pageCount === "number" ? record.pageCount : undefined,
+    parseStatus: coerceParseStatus(record.parseStatus),
+    truncated: typeof record.truncated === "boolean" ? record.truncated : undefined,
+    warnings: Array.isArray(record.warnings) ? record.warnings.map(String).filter(Boolean) : []
+  };
+}
+
+function coerceParseStatus(value: unknown): StudyPlanParseStatus {
+  return value === "failed" || value === "warning" || value === "success" ? value : "success";
+}
+
+function coerceSupportedDocumentType(value: unknown): SupportedDocumentType | undefined {
+  return value === "pdf" || value === "docx" || value === "txt" || value === "image" ? value : undefined;
+}
 
 interviewsRouter.get("/stats-legacy", async (_req, res) => {
   const user = res.locals.user as AuthenticatedUser;
@@ -1594,6 +1712,10 @@ interviewsRouter.post("/:sessionId/complete", async (req, res) => {
       targetSchool: sourceQuestion?.school?.name ?? session.targetSchool,
       userId: user.id
     });
+
+    if (evaluation.scoringSource !== "ai") {
+      continue;
+    }
 
     await prisma.interviewAnswer.update({
       where: { id: answer.id },

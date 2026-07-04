@@ -172,6 +172,9 @@ export function AnswerFeedbackPanel({
               </div>
               <div className="flex items-center gap-2 ml-2 shrink-0">
                 <ScoreBadge label="Tổng" score={d.scores.total} />
+                <span className={`rounded border px-2 py-0.5 text-[10px] font-black ${d.scoringSource === "heuristic" ? "border-amber-700 bg-amber-900/40 text-amber-200" : "border-emerald-700 bg-emerald-900/40 text-emerald-200"}`}>
+                  {d.scoringSource === "heuristic" ? "Phụ trợ" : "AI"}
+                </span>
                 <span className="text-gray-400 text-xs">
                   {expanded ? "▲" : "▼"}
                 </span>

@@ -68,6 +68,7 @@
       "dashboard": "Dashboard",
       "interview": "Phỏng vấn",
       "history": "Lịch sử",
+      "payment": "Thanh toán",
       "profile": "Profile",
       "admin": "Admin"
     },
@@ -76,6 +77,7 @@
       "dashboard": "Dashboard",
       "history": "Lịch sử",
       "interview": "Phỏng vấn",
+      "payment": "Thanh toán",
       "profile": "Profile",
       "result": "Báo cáo",
       "setup": "Thiết lập"

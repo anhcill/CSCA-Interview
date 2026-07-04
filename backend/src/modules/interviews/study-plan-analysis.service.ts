@@ -1,6 +1,12 @@
 import { DegreeLevel } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { analyzeStudyPlanWithAi } from "../ai/ai.service.js";
+import {
+  cleanStudyPlanText,
+  createStudyPlanParseMetadata,
+  minimumStudyPlanTextLength,
+  type StudyPlanParseMetadata
+} from "../profiles/document-parser.js";
 import { buildInterviewRagContext } from "./rag-context.service.js";
 
 export interface StudyPlanAnalysisResult {
@@ -10,6 +16,7 @@ export interface StudyPlanAnalysisResult {
   suggestions: string[];
   alignmentScore: number;
   generatedQuestions: string[];
+  parseMetadata?: StudyPlanParseMetadata;
 }
 
 export async function analyzeStudyPlan(
@@ -21,7 +28,8 @@ export async function analyzeStudyPlan(
   scholarshipType?: string | null,
   targetSchool?: string | null,
   targetMajor?: string | null,
-  degreeLevel?: DegreeLevel | null
+  degreeLevel?: DegreeLevel | null,
+  parseMetadata?: StudyPlanParseMetadata | null
 ): Promise<StudyPlanAnalysisResult> {
   // 1. Lấy thông tin profile và các đối tượng liên quan để sinh context RAG
   const profile = await prisma.userProfile.findUnique({
@@ -39,6 +47,20 @@ export async function analyzeStudyPlan(
   const finalSchoolName = targetSchool || profile.targetSchool || "";
   const finalMajorName = targetMajor || profile.targetMajor || "";
   const finalScholarshipType = scholarshipType || profile.scholarshipType || "";
+  const cleanedStudyPlan = cleanStudyPlanText(studyPlan);
+  const finalParseMetadata = createStudyPlanParseMetadata({
+    fileName: parseMetadata?.fileName ?? profile.studyPlanFileName ?? null,
+    fileType: parseMetadata?.fileType,
+    originalTextLength: parseMetadata?.originalTextLength ?? cleanedStudyPlan.originalLength,
+    pageCount: parseMetadata?.pageCount,
+    text: cleanedStudyPlan.text,
+    truncated: Boolean(parseMetadata?.truncated || cleanedStudyPlan.truncated),
+    warnings: parseMetadata?.warnings ?? []
+  });
+
+  if (cleanedStudyPlan.text.length < minimumStudyPlanTextLength) {
+    throw new Error(finalParseMetadata.warnings[0] ?? "Kế hoạch học tập quá ngắn hoặc không hợp lệ");
+  }
 
   // 2. Build RAG Context
   const ragContext = await buildInterviewRagContext({
@@ -52,7 +74,7 @@ export async function analyzeStudyPlan(
 
   // 3. Gọi OpenAI GPT thông qua ai.service
   const aiResult = await analyzeStudyPlanWithAi({
-    studyPlan,
+    studyPlan: cleanedStudyPlan.text,
     degreeLevel: finalDegreeLevel,
     targetSchool: finalSchoolName,
     targetMajor: finalMajorName,
@@ -74,5 +96,8 @@ export async function analyzeStudyPlan(
     }
   });
 
-  return aiResult;
+  return {
+    ...aiResult,
+    parseMetadata: finalParseMetadata
+  };
 }

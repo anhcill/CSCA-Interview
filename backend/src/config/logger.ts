@@ -5,7 +5,16 @@ export const logger = pino({
   level: env.isProd ? "info" : "debug",
   transport:
     !env.isProd
-      ? { target: "pino/file", options: { destination: 1 } }
+      ? {
+          target: "pino-pretty",
+          options: {
+            colorize: true,
+            ignore: "pid,hostname,service",
+            levelFirst: true,
+            singleLine: true,
+            translateTime: "HH:MM:ss.l"
+          }
+        }
       : undefined,
   formatters: {
     level(label) {

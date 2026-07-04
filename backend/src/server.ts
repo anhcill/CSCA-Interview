@@ -25,10 +25,11 @@ import { schoolsRouter } from "./modules/schools/schools.routes.js";
 import { speechRouter } from "./modules/speech/speech.routes.js";
 import { gamificationRouter } from "./modules/gamification/gamification.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
+import { paymentsRouter } from "./modules/payments/payments.routes.js";
 import { wsInterviewHandler } from "./modules/realtime/ws-interview.handler.js";
 
 const app = express();
-app.set("trust proxy", true);
+app.set("trust proxy", env.isProd ? 1 : false);
 
 const startedAt = new Date();
 const realtimeState = {
@@ -338,6 +339,7 @@ app.use("/api/scholarships", cachePublic(5 * 60_000) as any, cachePrivate(30_000
 app.use("/api/gamification", wrapAsyncRouter(gamificationRouter));
 app.use("/api/interviews", cachePrivate(30_000) as any, wrapAsyncRouter(interviewsRouter));
 app.use("/api/notifications", wrapAsyncRouter(notificationsRouter));
+app.use("/api/payments", wrapAsyncRouter(paymentsRouter));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use("/api/speech", speechLimiter as any, wrapAsyncRouter(speechRouter));
 

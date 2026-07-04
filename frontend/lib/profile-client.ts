@@ -1,6 +1,20 @@
 import { apiGet, apiPut } from "./api";
 import { getAuthToken } from "./auth-client";
 
+export type StudyPlanParseMetadata = {
+  extractedTextLength: number;
+  fileName: string | null;
+  fileType?: "pdf" | "docx" | "txt" | "image";
+  ocrPageCount?: number;
+  ocrProvider?: "openai";
+  ocrUsed?: boolean;
+  originalTextLength?: number;
+  pageCount?: number;
+  parseStatus: "success" | "warning" | "failed";
+  truncated?: boolean;
+  warnings: string[];
+};
+
 export type UserProfileDto = {
   additionalNotes: string | null;
   age: number | null;
@@ -25,6 +39,7 @@ export type UserProfileDto = {
   studyPlanFileName: string | null;
   studyPlanFileContent: string | null;
   studyPlanFileUrl: string | null;
+  studyPlanParseMetadata?: StudyPlanParseMetadata | null;
   targetMajor: string;
   targetSchool: string;
   toeflScore: string | null;
@@ -69,6 +84,7 @@ type ProfileResponse = {
 type UpdateProfileResponse = {
   message: string;
   profile: UserProfileDto;
+  studyPlanParseMetadata?: StudyPlanParseMetadata | null;
 };
 
 function getRequiredToken() {

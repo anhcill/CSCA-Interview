@@ -311,27 +311,26 @@ function buildReport(session: InterviewSessionDto | null) {
     .filter((score) => score > 0);
   const average = scores.length ? scores.reduce((total, score) => total + score, 0) / scores.length : 0;
   const overall = Math.round(average * 10);
-  const normalized = average || 6.5;
+  const normalized = average || 0;
 
   return {
     criteria: [
       { label: "Nội dung", value: normalized },
-      { label: "Logic", value: Math.max(0, normalized - 0.5) },
-      { label: "Chuyên ngành", value: Math.min(10, normalized + 0.5) },
-      { label: "Ngôn ngữ", value: Math.max(0, normalized - 1) },
+      { label: "Logic", value: normalized },
+      { label: "Chuyên ngành", value: normalized },
+      { label: "Ngôn ngữ", value: normalized },
       { label: "Tự tin", value: normalized }
     ],
     label: overall >= 80 ? "Tốt" : overall >= 65 ? "Khá" : "Cần luyện thêm",
     overall,
-    progressHint: "Ưu tiên luyện lại các câu điểm thấp và thêm ví dụ cá nhân cụ thể.",
-    suggestions: [
-      "Nêu rõ lý do chọn ngành và trường.",
-      "Liên hệ ngành học với kinh nghiệm cá nhân.",
-      "Kể thêm ví dụ thực tế để câu trả lời thuyết phục hơn.",
-      "Trình bày kế hoạch cụ thể theo từng giai đoạn."
-    ],
+    progressHint: scores.length
+      ? "Điểm tổng được lấy từ kết quả đã lưu. Chi tiết từng tiêu chí sẽ hiển thị sau khi tải phân tích AI."
+      : "Chưa có điểm AI đã lưu cho buổi này. Hãy hoàn tất chấm điểm trước khi xem báo cáo.",
+    suggestions: scores.length
+      ? ["Mở lại tab chi tiết sau khi phân tích AI tải xong để xem điểm mạnh, điểm yếu và câu trả lời cải thiện."]
+      : ["Hoàn tất buổi phỏng vấn và chờ hệ thống AI chấm điểm trước khi xem gợi ý cải thiện."],
     summary: scores.length
-      ? "Bạn trả lời khá tốt và diễn đạt rõ ràng. Một số ý còn chung, cần thêm ví dụ cụ thể để hội đồng thấy rõ sự phù hợp với ngành học."
-      : "Bạn chưa có đủ câu trả lời để hệ thống đánh giá chính xác. Hãy luyện một lượt phỏng vấn rồi quay lai xem báo cáo chi tiết."
+      ? "Đã có điểm tổng từ dữ liệu đã lưu, nhưng phân tích AI chi tiết chưa tải được."
+      : "Chưa có đủ dữ liệu chấm điểm AI để tạo báo cáo chính xác."
   };
 }

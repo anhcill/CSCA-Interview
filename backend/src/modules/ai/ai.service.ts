@@ -1,24 +1,8 @@
 import { ai_task_type } from "@prisma/client";
-import OpenAI from "openai";
-import { env } from "../../config/env.js";
+import type OpenAI from "openai";
+import { resolveAiModelRoutes } from "./ai-model-router.service.js";
 import { extractOpenAiTokenUsage, logAiUsage } from "./ai-usage.service.js";
 import { promptTemplateNames, renderPromptTemplate, resolvePromptTemplate } from "./prompt-templates.js";
-
-const deepseek = env.deepseekApiKey
-  ? new OpenAI({
-      apiKey: env.deepseekApiKey,
-      baseURL: env.deepseekBaseUrl || "https://api.deepseek.com/v1"
-    })
-  : null;
-
-const openai = deepseek || (env.openAiApiKey
-  ? new OpenAI({
-      apiKey: env.openAiApiKey,
-      ...(env.openAiBaseUrl ? { baseURL: env.openAiBaseUrl } : {})
-    })
-  : null);
-
-const activeProvider = env.deepseekApiKey ? "deepseek" : "openai";
 
 export type InterviewQuestionInput = {
   degreeLevel: string;
@@ -176,6 +160,7 @@ function sanitizeQuestionText(value: unknown) {
 }
 
 async function completeJson<T>(input: {
+  agentKey?: string | null;
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
   operation: string;
   promptTemplateId?: string | null;
@@ -185,71 +170,88 @@ async function completeJson<T>(input: {
   userId?: string | null;
 }): Promise<T | null> {
   const startedAt = Date.now();
-  if (!openai) {
+  const routes = await resolveAiModelRoutes({
+    agentKey: input.agentKey ?? null,
+    operation: input.operation,
+    taskType: input.taskType
+  });
+
+  const missingRoute = routes.find((route) => !route.client || !route.model);
+  if (missingRoute) {
     const latencyMs = Date.now() - startedAt;
+    const errorMessage = `${missingRoute.errorMessage ?? "AI provider/model missing"}; deterministic fallback used`;
     await logAiUsage({
-      errorMessage: "OPENAI_API_KEY missing; deterministic fallback used",
+      errorMessage,
       latencyMs,
-      model: null,
+      model: missingRoute.model,
       promptTemplateId: input.promptTemplateId ?? null,
-      provider: "fallback",
+      provider: missingRoute.provider,
       requestPayload: input.requestPayload ?? { messages: input.messages },
       taskType: input.taskType,
       userId: input.userId ?? null
     });
-    console.warn(`[AI] ${input.operation} skipped: OPENAI_API_KEY missing; using deterministic fallback`);
+    console.warn(`[AI] ${input.operation} skipped: ${errorMessage}`);
     return null;
   }
 
-  const isScoringOrAnalysis = input.taskType === ai_task_type.SCORE_ANSWER || input.taskType === ai_task_type.ANALYZE_STUDY_PLAN;
-  const modelToUse = env.deepseekApiKey
-    ? (isScoringOrAnalysis ? env.deepseekProModel : env.deepseekFlashModel)
-    : env.openAiModel;
+  for (const route of routes) {
+    if (!route.client || !route.model) continue;
+    const routeStartedAt = Date.now();
 
-  try {
-    const response = await openai.chat.completions.create({
-      messages: input.messages,
-      model: modelToUse,
-      response_format: { type: "json_object" },
-      temperature: input.temperature ?? 0.3
-    });
-    const latencyMs = Date.now() - startedAt;
-    const rawContent = response.choices[0]?.message?.content ?? "";
-    const parsed = parseJsonObject<T>(rawContent);
+    try {
+      const response = await route.client.chat.completions.create({
+        messages: input.messages,
+        model: route.model,
+        response_format: { type: "json_object" },
+        temperature: input.temperature ?? 0.3
+      });
+      const latencyMs = Date.now() - routeStartedAt;
+      const rawContent = response.choices[0]?.message?.content ?? "";
+      const parsed = parseJsonObject<T>(rawContent);
+      const parseError = parsed ? null : "AI returned invalid JSON; trying next route";
 
-    await logAiUsage({
-      latencyMs,
-      model: modelToUse,
-      promptTemplateId: input.promptTemplateId ?? null,
-      provider: activeProvider,
-      requestPayload: input.requestPayload ?? { messages: input.messages },
-      responsePayload: {
-        id: response.id,
-        parsed,
-        rawContent: parsed ? undefined : rawContent.slice(0, 2000)
-      },
-      taskType: input.taskType,
-      tokenUsage: extractOpenAiTokenUsage(response.usage),
-      userId: input.userId ?? null
-    });
+      await logAiUsage({
+        errorMessage: parseError,
+        latencyMs,
+        model: route.model,
+        promptTemplateId: input.promptTemplateId ?? null,
+        provider: route.provider,
+        requestPayload: input.requestPayload ?? { messages: input.messages },
+        responsePayload: {
+          id: response.id,
+          parsed,
+          rawContent: parsed ? undefined : rawContent.slice(0, 2000),
+          routeSource: route.source
+        },
+        taskType: input.taskType,
+        tokenUsage: extractOpenAiTokenUsage(response.usage),
+        userId: input.userId ?? null
+      });
 
-    console.log(`[AI] ${input.operation} ${activeProvider} ${latencyMs}ms model=${modelToUse}`);
-    return parsed;
-  } catch (error) {
-    const latencyMs = Date.now() - startedAt;
-    await logAiUsage({
-      errorMessage: error instanceof Error ? error.message : String(error),
-      latencyMs,
-      model: modelToUse,
-      promptTemplateId: input.promptTemplateId ?? null,
-      provider: activeProvider,
-      requestPayload: input.requestPayload ?? { messages: input.messages },
-      taskType: input.taskType,
-      userId: input.userId ?? null
-    });
-    console.error(`[AI] ${input.operation} ${activeProvider} failed; using fallback`, error);
-    return null;
+      if (parsed) {
+        console.log(`[AI] ${input.operation} ${route.provider} ${latencyMs}ms model=${route.model} source=${route.source}`);
+        return parsed;
+      }
+
+      console.warn(`[AI] ${input.operation} ${route.provider} invalid JSON; trying next route model=${route.model} source=${route.source}`);
+    } catch (error) {
+      const latencyMs = Date.now() - routeStartedAt;
+      await logAiUsage({
+        errorMessage: error instanceof Error ? error.message : String(error),
+        latencyMs,
+        model: route.model,
+        promptTemplateId: input.promptTemplateId ?? null,
+        provider: route.provider,
+        requestPayload: input.requestPayload ?? { messages: input.messages },
+        taskType: input.taskType,
+        userId: input.userId ?? null
+      });
+      console.error(`[AI] ${input.operation} ${route.provider} failed; trying next route`, error);
+    }
   }
+
+  console.error(`[AI] ${input.operation} all model routes failed; deterministic fallback used`);
+  return null;
 }
 
 function languageInstruction(language: "VI" | "ZH" | "EN") {
@@ -463,6 +465,7 @@ export async function generateInterviewQuestions(
     };
 
     const payload = await completeJson<QuestionPayload>({
+      agentKey: "interview_question_generator",
       messages: [
         {
           role: "system",
@@ -643,6 +646,7 @@ export async function generateAdaptiveFollowUpQuestion(input: FollowUpInput & {
   };
 
   const payload = await completeJson<FollowUpPayload>({
+    agentKey: "adaptive_follow_up_generator",
     messages: [
       {
         role: "system",
@@ -670,7 +674,7 @@ export async function generateAdaptiveFollowUpQuestion(input: FollowUpInput & {
   return {
     aiReason: typeof payload?.aiReason === "string" && payload.aiReason.trim()
       ? payload.aiReason.trim().slice(0, 300)
-      : "Adaptive OpenAI follow-up based on latest answer and session memory.",
+      : "Adaptive AI follow-up based on latest answer and session memory.",
     category: safeCategory(payload?.category),
     followUpDepth: typeof payload?.followUpDepth === "number" ? Math.max(0, Math.min(3, payload.followUpDepth)) : followUpDepth + 1,
     isFollowUp: payload?.isFollowUp ?? true,
@@ -871,6 +875,7 @@ export type DetailedScore = {
   feedback: string;
   improvedAnswer: string;
   academicKeywords: string[];
+  scoringSource?: "ai" | "heuristic";
 };
 
 export function scoreInterviewAnswer(answerText: string) {
@@ -968,6 +973,7 @@ export function scoreInterviewAnswerDetailed(answerText: string): DetailedScore 
     improvedAnswer: buildImprovedAnswer(trimmed, langAnalysis, structureAnalysis),
     language,
     logic,
+    scoringSource: "heuristic",
     strengths,
     tips,
     total,
@@ -998,6 +1004,7 @@ export async function scoreInterviewAnswerWithAi(input: AiScoreInput): Promise<D
     targetSchool: input.targetSchool ?? null
   };
   const payload = await completeJson<ScorePayload>({
+    agentKey: "answer_scoring_evaluator",
     messages: [
       {
         role: "system",
@@ -1017,7 +1024,7 @@ export async function scoreInterviewAnswerWithAi(input: AiScoreInput): Promise<D
   });
 
   if (!payload || typeof payload.feedback !== "string" || typeof payload.improvedAnswer !== "string") {
-    return fallback;
+    return { ...fallback, scoringSource: "heuristic" };
   }
 
   const content = normalizeScore(payload.content, fallback.content);
@@ -1041,6 +1048,7 @@ export async function scoreInterviewAnswerWithAi(input: AiScoreInput): Promise<D
     impression,
     language: languageScore,
     logic,
+    scoringSource: "ai",
     strengths: normalizeStringArray(payload.strengths, fallback.strengths).slice(0, 4),
     tips: normalizeStringArray(payload.tips, fallback.tips).slice(0, 5),
     total,
@@ -1254,67 +1262,66 @@ export async function analyzeStudyPlanWithAi(
   const scholarshipType = input.scholarshipType || "học bổng mục tiêu";
   const degreeLevel = input.degreeLevel || "BACHELOR";
 
-  if (openai) {
-    const requestPayload = {
-      studyPlan: input.studyPlan,
-      degreeLevel,
-      targetSchool,
-      targetMajor,
-      scholarshipType,
-      ragContext: input.ragContext?.slice(0, 6000) ?? null
+  const requestPayload = {
+    studyPlan: input.studyPlan,
+    degreeLevel,
+    targetSchool,
+    targetMajor,
+    scholarshipType,
+    ragContext: input.ragContext?.slice(0, 6000) ?? null
+  };
+
+  const payload = await completeJson<StudyPlanAnalysisAiResult>({
+    agentKey: "study_plan_analyzer",
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You are Professor Wang (王教授), an expert academic evaluator analyzing a student's Study Plan for scholarship application in China.",
+          `School: ${targetSchool}, Major: ${targetMajor}, Degree: ${degreeLevel}, Scholarship: ${scholarshipType}.`,
+          input.ragContext ? `Database context/requirements:\n${input.ragContext}` : "",
+          "",
+          "Rules:",
+          "- Analyze the study plan's content, logic, and grammar.",
+          "- Determine a quantitative alignment score (0 to 100) based on how well it fits the targeted school/major requirements.",
+          "- Extract strengths (what is good), weaknesses (what is poor), missing points (what is required but omitted), and suggestions (actionable tips for improvement).",
+          "- Generate 3-5 specific, high-fidelity interview questions that a professor might ask based on this study plan.",
+          "- Feedback and output MUST be in Vietnamese.",
+          "- Return strict JSON matching the schema below.",
+          "",
+          "Schema:",
+          "{",
+          '  "strengths": ["điểm mạnh 1", "điểm mạnh 2"],',
+          '  "weaknesses": ["điểm yếu 1", "điểm yếu 2"],',
+          '  "missingPoints": ["điểm thiếu 1", "điểm thiếu 2"],',
+          '  "suggestions": ["gợi ý 1", "gợi ý 2"],',
+          '  "alignmentScore": 85,',
+          '  "generatedQuestions": ["câu hỏi 1", "câu hỏi 2"]',
+          "}"
+        ].join("\n")
+      },
+      {
+        role: "user",
+        content: `Hãy phân tích kế hoạch học tập dưới đây:\n\n${input.studyPlan}`
+      }
+    ],
+    operation: "analyzeStudyPlan",
+    promptTemplateId: null,
+    requestPayload,
+    taskType: ai_task_type.ANALYZE_STUDY_PLAN,
+    temperature: 0.3,
+    userId: input.userId ?? null
+  });
+
+  if (payload) {
+    return {
+      strengths: Array.isArray(payload.strengths) ? payload.strengths.map(String) : [],
+      weaknesses: Array.isArray(payload.weaknesses) ? payload.weaknesses.map(String) : [],
+      missingPoints: Array.isArray(payload.missingPoints) ? payload.missingPoints.map(String) : [],
+      suggestions: Array.isArray(payload.suggestions) ? payload.suggestions.map(String) : [],
+      alignmentScore: typeof payload.alignmentScore === "number" ? Math.min(100, Math.max(0, payload.alignmentScore)) : 70,
+      generatedQuestions: Array.isArray(payload.generatedQuestions) ? payload.generatedQuestions.map(String) : []
     };
-
-    const payload = await completeJson<StudyPlanAnalysisAiResult>({
-      messages: [
-        {
-          role: "system",
-          content: [
-            "You are Professor Wang (王教授), an expert academic evaluator analyzing a student's Study Plan for scholarship application in China.",
-            `School: ${targetSchool}, Major: ${targetMajor}, Degree: ${degreeLevel}, Scholarship: ${scholarshipType}.`,
-            input.ragContext ? `Database context/requirements:\n${input.ragContext}` : "",
-            "",
-            "Rules:",
-            "- Analyze the study plan's content, logic, and grammar.",
-            "- Determine a quantitative alignment score (0 to 100) based on how well it fits the targeted school/major requirements.",
-            "- Extract strengths (what is good), weaknesses (what is poor), missing points (what is required but omitted), and suggestions (actionable tips for improvement).",
-            "- Generate 3-5 specific, high-fidelity interview questions that a professor might ask based on this study plan.",
-            "- Feedback and output MUST be in Vietnamese.",
-            "- Return strict JSON matching the schema below.",
-            "",
-            "Schema:",
-            "{",
-            '  "strengths": ["điểm mạnh 1", "điểm mạnh 2"],',
-            '  "weaknesses": ["điểm yếu 1", "điểm yếu 2"],',
-            '  "missingPoints": ["điểm thiếu 1", "điểm thiếu 2"],',
-            '  "suggestions": ["gợi ý 1", "gợi ý 2"],',
-            '  "alignmentScore": 85,',
-            '  "generatedQuestions": ["câu hỏi 1", "câu hỏi 2"]',
-            "}"
-          ].join("\n")
-        },
-        {
-          role: "user",
-          content: `Hãy phân tích kế hoạch học tập dưới đây:\n\n${input.studyPlan}`
-        }
-      ],
-      operation: "analyzeStudyPlan",
-      promptTemplateId: null,
-      requestPayload,
-      taskType: ai_task_type.ANALYZE_STUDY_PLAN,
-      temperature: 0.3,
-      userId: input.userId ?? null
-    });
-
-    if (payload) {
-      return {
-        strengths: Array.isArray(payload.strengths) ? payload.strengths.map(String) : [],
-        weaknesses: Array.isArray(payload.weaknesses) ? payload.weaknesses.map(String) : [],
-        missingPoints: Array.isArray(payload.missingPoints) ? payload.missingPoints.map(String) : [],
-        suggestions: Array.isArray(payload.suggestions) ? payload.suggestions.map(String) : [],
-        alignmentScore: typeof payload.alignmentScore === "number" ? Math.min(100, Math.max(0, payload.alignmentScore)) : 70,
-        generatedQuestions: Array.isArray(payload.generatedQuestions) ? payload.generatedQuestions.map(String) : []
-      };
-    }
   }
 
   // Fallback

@@ -1,7 +1,6 @@
 "use client";
 
 import { useReducedMotion } from "framer-motion";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,7 +19,7 @@ import {
   Square,
   Timer,
   Video,
-  Volume2
+  Volume2,
 } from "lucide-react";
 import { ApiError } from "@/lib/api";
 import {
@@ -50,11 +49,13 @@ import {
   type Locale
 } from "@/lib/i18n";
 import { type VoiceRecorderResult, useVoiceRecorder } from "@/lib/hooks/use-voice-recorder";
+import { type FaceAnalysisStatus, useFaceAnalysis } from "@/lib/hooks/use-face-analysis";
 import { assessPronunciation, playBase64Audio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
-import { CameraCheckPanel, type CameraSystemChecks } from "./camera-check-panel";
+import type { VisualCheckState } from "@/lib/visual-analysis";
+import { CameraCheckPanel, type CameraCheckStatus, type CameraSystemChecks } from "./camera-check-panel";
 import { ChatMessage, interviewQuestions } from "./interview-data";
 import { PronunciationPanel, SpeechMetricsPanel } from "./speech-metrics-panel";
-import { VisualMetricsPanel, VisualMetricsSummary, type VisualMetrics } from "./visual-metrics-panel";
+import { VisualMetricsPanel, VisualMetricsSummary, type VisualMetricsStatus } from "./visual-metrics-panel";
 import { WebcamPreview } from "./webcam-preview";
 
 type RoomQuestion = {
@@ -129,7 +130,6 @@ export function InterviewRoom() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [interviewMode, setInterviewMode] = useState<"TEXT" | "VOICE" | "HYBRID">("HYBRID");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [showHint, setShowHint] = useState(false);
   const [displayedQuestion, setDisplayedQuestion] = useState("");
   const [error, setError] = useState("");
   const [liveTranscript, setLiveTranscript] = useState("");
@@ -144,91 +144,29 @@ export function InterviewRoom() {
   const [selectedSpeechRate, setSelectedSpeechRate] = useState<SpeechRate>(1);
   const [showChat, setShowChat] = useState(true);
 
-  // Custom camera and emotion states
-  const [isCameraOn, setIsCameraOn] = useState(false);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const handleFaceAnalysisError = useCallback((message: string) => {
+    setError(message);
+  }, []);
 
-  const [emotions, setEmotions] = useState<VisualMetrics>({
-    confidence: 85,
-    eyeContact: 91,
-    focus: 78,
-    communication: 82,
-    stress: 22
+  const faceAnalysis = useFaceAnalysis({
+    autoStart: mounted && !isLoadingSession,
+    includeAudioCheck: false,
+    onError: handleFaceAnalysisError
   });
+  const visualMetrics = faceAnalysis.snapshot.scores;
+  const visualMetricsStatus = getVisualMetricsStatus(faceAnalysis.status, faceAnalysis.snapshot.timestamp);
+  const isCameraOn = Boolean(faceAnalysis.stream);
+  const isCameraBusy = faceAnalysis.status === "loading" || faceAnalysis.status === "ready";
+  const cameraButtonLabel = isCameraBusy ? "Đang bật camera" : isCameraOn ? "Tắt camera" : "Bật camera";
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: false
-      });
-      setCameraStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setIsCameraOn(true);
-    } catch (err: any) {
-      console.error("Camera permission error: ", err);
-      setError("Không thể bật camera. Vui lòng kiểm tra lại thiết bị hoặc quyền trình duyệt.");
-      setIsCameraOn(false);
-    }
-  };
-
-  const stopCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraOn(false);
-  };
-
-  const toggleCamera = () => {
+  const toggleCamera = useCallback(() => {
+    if (isCameraBusy) return;
     if (isCameraOn) {
-      stopCamera();
+      faceAnalysis.stop();
     } else {
-      void startCamera();
+      void faceAnalysis.start();
     }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [cameraStream]);
-
-  useEffect(() => {
-    if (isPaused || isLoadingSession) return;
-    const interval = setInterval(() => {
-      setEmotions((prev) => {
-        const fluctuate = (val: number, min: number, max: number) => {
-          const delta = Math.floor(Math.random() * 5) - 2;
-          const next = val + delta;
-          return Math.max(min, Math.min(max, next));
-        };
-        return {
-          confidence: fluctuate(prev.confidence, 80, 92),
-          eyeContact: fluctuate(prev.eyeContact, 84, 96),
-          focus: fluctuate(prev.focus, 72, 85),
-          communication: fluctuate(prev.communication, 75, 88),
-          stress: fluctuate(prev.stress, 18, 28)
-        };
-      });
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [isPaused, isLoadingSession]);
-
-  useEffect(() => {
-    if (mounted && !isLoadingSession && !isCameraOn) {
-      void startCamera();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, isLoadingSession]);
+  }, [faceAnalysis, isCameraBusy, isCameraOn]);
 
   const isCompletingRef = useRef(false);
   const lastAutoSpokenQuestionIdRef = useRef<string | null>(null);
@@ -277,29 +215,28 @@ export function InterviewRoom() {
     }
   });
 
-  const totalQuestions = questions.length;
   const activeQuestion = questions[currentQuestion] ?? fallbackQuestions[0];
   const activeSubtitle = isBilingual ? getQuestionSupportText(activeQuestion) : null;
   const completeTargetSessionId = sessionId ?? searchParams.get("sessionId");
   const cameraChecks = useMemo<CameraSystemChecks>(() => {
-    const liveStatus = isCameraOn ? "ok" : "idle";
+    const checks = faceAnalysis.snapshot.checks;
 
     return {
-      camera: liveStatus,
-      centerFace: isCameraOn && emotions.eyeContact < 72 ? "warning" : liveStatus,
-      faceVisible: liveStatus,
-      lighting: isCameraOn && emotions.focus < 74 ? "warning" : liveStatus,
+      camera: mapVisualCheckToCameraStatus(checks.camera, faceAnalysis.status),
+      centerFace: mapVisualCheckToCameraStatus(checks.centered, faceAnalysis.status),
+      faceVisible: mapVisualCheckToCameraStatus(checks.faceVisible, faceAnalysis.status),
+      lighting: mapVisualCheckToCameraStatus(checks.lighting, faceAnalysis.status),
       mic: voiceRecorder.isRecording ? "ok" : "idle"
     };
-  }, [emotions.eyeContact, emotions.focus, isCameraOn, voiceRecorder.isRecording]);
+  }, [faceAnalysis.snapshot.checks, faceAnalysis.status, voiceRecorder.isRecording]);
   const activeQuestionDisplay = useMemo(() => {
     return getQuestionDisplayText(activeQuestion, interviewLanguageMode);
   }, [activeQuestion, interviewLanguageMode]);
+  const totalQuestions = questions.length;
   const plannedDurationSeconds = plannedDurationMinutes ? plannedDurationMinutes * 60 : null;
   const remainingSeconds = plannedDurationSeconds === null ? null : Math.max(0, plannedDurationSeconds - elapsedSeconds);
   const progress = useMemo(() => ((currentQuestion + 1) / totalQuestions) * 100, [currentQuestion, totalQuestions]);
   const progressLabel = interpolate(t.questionProgress, { current: currentQuestion + 1, total: totalQuestions });
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [error, isThinking, liveTranscript, messagesList]);
@@ -380,7 +317,6 @@ export function InterviewRoom() {
   }, [isPaused]);
 
   useEffect(() => {
-    setShowHint(false);
     setDisplayedQuestion("");
 
     if (prefersReducedMotion) {
@@ -501,6 +437,11 @@ export function InterviewRoom() {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : messages[getStoredLocale()].interview.createFailed;
+        if (err instanceof ApiError && err.status === 402) {
+          router.replace(`/payment?next=${encodeURIComponent("/interview/setup")}&duration=30`);
+          return;
+        }
+
         setError(message);
 
         if (message.toLowerCase().includes("dang nhap") || message.toLowerCase().includes("\u0111\u0103ng nh\u1eadp")) {
@@ -891,14 +832,15 @@ export function InterviewRoom() {
         {/* Left Column (Webcam stream, controls, general info) */}
         <section className={`flex flex-col min-h-0 gap-4 ${showChat ? "lg:col-span-8" : "lg:col-span-12"}`}>
           {/* Camera Feed Container */}
-          <WebcamPreview
-            activeSubtitle={activeSubtitle ?? undefined}
-            isCameraOn={isCameraOn}
-            metrics={emotions}
-            onToggleCamera={toggleCamera}
-            questionText={displayedQuestion || activeQuestion.questionText}
-            videoRef={videoRef}
-          />
+            <WebcamPreview
+              activeSubtitle={activeSubtitle ?? undefined}
+              isCameraOn={isCameraOn}
+              metrics={visualMetrics}
+              metricsStatus={visualMetricsStatus}
+              onToggleCamera={toggleCamera}
+              questionText={displayedQuestion || activeQuestion.questionText}
+              videoRef={faceAnalysis.videoRef}
+            />
 
           {/* Action Control Buttons */}
           <div className="flex flex-wrap items-center justify-center gap-3.5 py-1">
@@ -919,6 +861,7 @@ export function InterviewRoom() {
             <button
               type="button"
               onClick={toggleCamera}
+              disabled={isCameraBusy}
               className={`px-6 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 shadow-sm border ${
                 isCameraOn
                   ? 'bg-[#EBFDF2] border-[#D1F7E2] text-[#28A745]'
@@ -926,7 +869,7 @@ export function InterviewRoom() {
               }`}
             >
               <Video size={16} />
-              <span>{isCameraOn ? 'Tắt camera' : 'Bật camera'}</span>
+              <span>{cameraButtonLabel}</span>
             </button>
 
             <button
@@ -938,13 +881,149 @@ export function InterviewRoom() {
               <Phone size={15} className="mr-1" />
               <span>{isCompleting ? 'Đang gửi...' : 'Kết thúc'}</span>
             </button>
+
+            <button
+              type="button"
+              onClick={handleSpeakQuestion}
+              disabled={isSpeaking || !activeQuestionDisplay}
+              className="px-4 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 shadow-sm border border-[#E8E3DF] bg-white text-[#2B231F] hover:bg-[#FDF8F5] disabled:opacity-50"
+            >
+              <Volume2 size={16} />
+              <span>{isSpeaking ? t.speaking : t.speakQuestion}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRetryQuestion}
+              disabled={isSubmitting || isPaused || isCompleting}
+              className="px-4 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 shadow-sm border border-[#E8E3DF] bg-white text-[#2B231F] hover:bg-[#FDF8F5] disabled:opacity-50"
+            >
+              <RotateCcw size={16} />
+              <span>{t.retry}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSkipQuestion}
+              disabled={!sessionId || isThinking || isSubmitting || isPaused || isCompleting}
+              className="px-4 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 shadow-sm border border-[#E8E3DF] bg-white text-[#2B231F] hover:bg-[#FDF8F5] disabled:opacity-50"
+            >
+              <SkipForward size={16} />
+              <span>{t.skip}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 rounded-2xl border border-[#F0EBE7] bg-white/80 p-3 shadow-sm md:grid-cols-[1fr_auto_auto] md:items-center">
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#F6F1EE] p-1 text-[11px] font-extrabold">
+              {(["TEXT", "VOICE", "HYBRID"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setInterviewMode(mode)}
+                  className={`min-h-9 rounded-lg px-2 transition ${interviewMode === mode ? "bg-white text-[#D92C3D] shadow-sm" : "text-[#8C837E] hover:text-[#2B231F]"}`}
+                  aria-pressed={interviewMode === mode}
+                >
+                  {mode === "TEXT" ? t.textMode : mode === "VOICE" ? t.voiceMode : t.hybridMode}
+                </button>
+              ))}
+            </div>
+
+            <label className="flex items-center gap-2 text-[11px] font-extrabold text-[#8C837E]">
+              <span>{t.voiceLabel}</span>
+              <select
+                value={selectedVoicePreset}
+                onChange={(event) => {
+                  const next = event.target.value as SpeechVoicePreset;
+                  setSelectedVoicePreset(next);
+                  localStorage.setItem(speechVoiceStorageKey, next);
+                }}
+                className="rounded-xl border border-[#E8E3DF] bg-white px-3 py-2 text-xs font-extrabold text-[#2B231F] outline-none"
+              >
+                {voicePresets.map((preset) => (
+                  <option key={preset} value={preset}>
+                    {getVoicePresetLabel(preset, t)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-[11px] font-extrabold text-[#8C837E]">
+              <span>Tốc độ</span>
+              <select
+                value={selectedSpeechRate}
+                onChange={(event) => {
+                  const next = Number(event.target.value) as SpeechRate;
+                  setSelectedSpeechRate(next);
+                  localStorage.setItem(speechRateStorageKey, String(next));
+                }}
+                className="rounded-xl border border-[#E8E3DF] bg-white px-3 py-2 text-xs font-extrabold text-[#2B231F] outline-none"
+              >
+                {speechRates.map((rate) => (
+                  <option key={rate} value={rate}>
+                    {rate}x
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           {/* System Check & Summary */}
           <div className="grid grid-cols-1 gap-4 mt-1 xl:grid-cols-[1fr_1.2fr]">
             <CameraCheckPanel checks={cameraChecks} />
-            <VisualMetricsSummary metrics={emotions} />
+            <VisualMetricsSummary metrics={visualMetrics} status={visualMetricsStatus} />
           </div>
+
+          <section className="grid gap-3 md:grid-cols-3" aria-label={t.answerControls}>
+            <div className="rounded-2xl border border-[#F0EBE7] bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-extrabold uppercase text-[#8C837E]">{t.timer}</p>
+              <p className="mt-2 text-2xl font-black tabular-nums text-[#D92C3D]">{formatElapsed(elapsedSeconds)}</p>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#F6F1EE]" role="progressbar" aria-label={progressLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+                <div className="h-full rounded-full bg-[#D92C3D]" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="mt-2 text-[11px] font-bold text-[#8C837E]">{progressLabel}</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#F0EBE7] bg-white p-4 shadow-sm" aria-live="polite">
+              <p className="text-[10px] font-extrabold uppercase text-[#8C837E]">Thời lượng phỏng vấn</p>
+              <p className="mt-2 text-2xl font-black tabular-nums text-[#2B231F]">{formatDuration(plannedDurationMinutes)}</p>
+              <p className={`mt-2 text-[11px] font-bold ${remainingSeconds === 0 ? "text-red-600" : "text-[#8C837E]"}`}>
+                {remainingSeconds === null ? "Chưa đặt giới hạn" : `Còn ${formatElapsed(remainingSeconds)}`}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-[#D1F7E2] bg-[#F4FFF8] p-4 shadow-sm" aria-live="polite">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-extrabold uppercase text-[#246345]">{t.latestFeedback}</p>
+                {lastFeedback?.scoreTotal ? <span className="rounded-full bg-white px-2 py-1 text-xs font-black text-[#0a6b45]">{lastFeedback.scoreTotal}/10</span> : null}
+              </div>
+              <p className="mt-2 line-clamp-3 text-sm font-bold leading-6 text-[#1f5138]">
+                {lastFeedback?.feedback || t.noFeedbackYet}
+              </p>
+              {lastFeedback?.improvedAnswer ? (
+                <details className="mt-2 text-xs font-bold text-[#246345]">
+                  <summary className="cursor-pointer">{t.improvedAnswer}</summary>
+                  <p className="mt-2 leading-5">{lastFeedback.improvedAnswer}</p>
+                </details>
+              ) : null}
+            </div>
+          </section>
+
+          {(lastSpeechMetrics || lastPronunciation || isAssessingPronunciation || speechNotice) && (
+            <section className="grid gap-4 xl:grid-cols-2" aria-live="polite">
+              {lastSpeechMetrics ? <SpeechMetricsPanel metrics={lastSpeechMetrics} /> : null}
+              {lastPronunciation ? <PronunciationPanel result={lastPronunciation} /> : null}
+              {isAssessingPronunciation ? (
+                <div className="rounded-2xl border border-[#F0EBE7] bg-white p-4 text-sm font-bold text-[#8C837E] shadow-sm">
+                  Đang chấm phát âm...
+                </div>
+              ) : null}
+              {speechNotice ? (
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold text-amber-700 shadow-sm">
+                  {speechNotice}
+                </div>
+              ) : null}
+            </section>
+          )}
         </section>
 
         {/* Right Column (Chat & Realtime facial metrics) */}
@@ -975,7 +1054,7 @@ export function InterviewRoom() {
                   </div>
                 )}
                 {messagesList.map((message) => (
-                  <ChatBubble key={message.id} message={message} t={t} />
+                  <ChatBubble key={message.id} message={message} />
                 ))}
                 {liveTranscript && (
                   <ChatBubble
@@ -986,7 +1065,6 @@ export function InterviewRoom() {
                       time: getClockTime(),
                       translation: autoSubmitCountdown ? interpolate(t.sendingIn, { seconds: autoSubmitCountdown }) : t.listeningStatus
                     }}
-                    t={t}
                   />
                 )}
                 {autoSubmitCountdown && !liveTranscript && (
@@ -1024,7 +1102,7 @@ export function InterviewRoom() {
             </div>
 
             {/* Realtime facial analysis panel */}
-            <VisualMetricsPanel metrics={emotions} />
+            <VisualMetricsPanel metrics={visualMetrics} status={visualMetricsStatus} />
           </section>
         )}
       </div>
@@ -1404,7 +1482,7 @@ function AnswerComposer({
   );
 }
 
-function ChatBubble({ message, t }: { message: ChatMessage; t: (typeof messages)["vi"]["interview"] }) {
+function ChatBubble({ message }: { message: ChatMessage }) {
   const isAi = message.author === "ai";
   return (
     <div className={`flex gap-3 items-start ${isAi ? '' : 'flex-row-reverse animate-[fade-in_250ms_ease]'}`}>
@@ -1434,6 +1512,17 @@ function ChatBubble({ message, t }: { message: ChatMessage; t: (typeof messages)
       </div>
     </div>
   );
+}
+
+function getVisualMetricsStatus(status: FaceAnalysisStatus, timestamp: number): VisualMetricsStatus {
+  if (status === "error" || status === "unsupported") return "unavailable";
+  if (status === "running" && timestamp > 0) return "live";
+  return "neutral";
+}
+
+function mapVisualCheckToCameraStatus(check: VisualCheckState, status: FaceAnalysisStatus): CameraCheckStatus {
+  if (status === "error" || status === "unsupported") return "unavailable";
+  return check;
 }
 
 function inferSpeechLang(text: string, fallback: string) {

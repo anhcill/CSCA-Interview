@@ -5,6 +5,7 @@ export type AnswerDetailedAnalysis = {
   sessionQuestionId: string;
   questionText: string;
   answerText: string;
+  scoringSource: "ai" | "heuristic";
   scores: {
     content: number;
     logic: number;
@@ -78,17 +79,57 @@ export function buildSessionAnalysis(
   const answerDetails: AnswerDetailedAnalysis[] = answers
     .filter((a) => a.answerText && a.answerText.trim().length > 0)
     .map((answer) => {
-      const detailed: DetailedScore = scoreInterviewAnswerDetailed(answer.answerText ?? "");
       const sampleComparison = compareWithSampleAnswer(
         answer.answerText ?? "",
         answer.sessionQuestion?.question?.sampleAnswer ?? null,
         answer.sessionQuestion?.question?.keywords ?? answer.sessionQuestion?.question?.suggestedAnswerLogic ?? null
       );
       const speech = buildSpeechDetail(answer);
+      const persistedTotal = toNumber(answer.scoreTotal);
+
+      if (persistedTotal !== null && persistedTotal > 0) {
+        const voiceConfidence = scaleSpeechScore(speech?.confidenceScore ?? speech?.fluencyScore ?? null);
+        const voiceLanguage = scaleSpeechScore(speech?.pronunciationScore ?? null);
+        const content = toNumber(answer.scoreSpecificity) ?? persistedTotal;
+        const logic = toNumber(answer.scoreLogic) ?? persistedTotal;
+        const textLanguage = toNumber(answer.scoreLanguage) ?? persistedTotal;
+        const expertise = toNumber(answer.scoreRelevance) ?? persistedTotal;
+        const language = average([textLanguage, voiceLanguage ?? 0]) || textLanguage;
+        const confidence = average([expertise, voiceConfidence ?? 0]) || expertise;
+
+        return {
+          sessionQuestionId: answer.sessionQuestionId,
+          questionText: answer.sessionQuestion?.questionText ?? "",
+          answerText: answer.answerText ?? "",
+          scoringSource: "ai" as const,
+          scores: {
+            content,
+            logic,
+            language,
+            confidence,
+            expertise,
+            impression: persistedTotal,
+            total: persistedTotal,
+          },
+          strengths: splitStoredLines(answer.strengths),
+          weaknesses: splitStoredLines(answer.weaknesses),
+          tips: uniqueList((speech?.tips ?? []).concat(sampleComparison?.notes ?? [])),
+          feedback: answer.feedback?.trim() || "AI scored this answer, but detailed feedback was not stored.",
+          improvedAnswer: answer.improvedAnswer?.trim() ?? "",
+          academicKeywords: extractAcademicKeywords(
+            answer.sessionQuestion?.question?.keywords ?? answer.sessionQuestion?.question?.suggestedAnswerLogic ?? ""
+          ),
+          speech,
+          sampleComparison,
+        };
+      }
+
+      const detailed: DetailedScore = scoreInterviewAnswerDetailed(answer.answerText ?? "");
       return {
         sessionQuestionId: answer.sessionQuestionId,
         questionText: answer.sessionQuestion?.questionText ?? "",
         answerText: answer.answerText ?? "",
+        scoringSource: "heuristic" as const,
         scores: {
           content: detailed.content,
           logic: detailed.logic,
@@ -109,22 +150,11 @@ export function buildSessionAnalysis(
       };
     });
 
-  // --- Criteria averages from DB scores (fallback to detailed) ---
-  const scores = answers.map((answer) => {
-    const detail = answerDetails.find((d) => d.sessionQuestionId === answer.sessionQuestionId);
-    const voiceConfidence = scaleSpeechScore(detail?.speech?.confidenceScore ?? detail?.speech?.fluencyScore ?? null);
-    const voiceLanguage = scaleSpeechScore(detail?.speech?.pronunciationScore ?? null);
-    const textConfidence = Number(answer.scoreRelevance ?? detail?.scores.confidence ?? 0);
-    const textLanguage = Number(answer.scoreLanguage ?? detail?.scores.language ?? 0);
-    return {
-      content: Number(answer.scoreSpecificity ?? detail?.scores.content ?? 0),
-      logic: Number(answer.scoreLogic ?? detail?.scores.logic ?? 0),
-      language: average([textLanguage, voiceLanguage ?? 0]),
-      confidence: average([textConfidence, voiceConfidence ?? 0]),
-      expertise: Number(answer.scoreRelevance ?? detail?.scores.expertise ?? 0),
-      impression: Number(answer.scoreTotal ?? detail?.scores.total ?? 0),
-    };
-  }).filter((score) => score.impression > 0);
+  // Official aggregates only use persisted AI scores. Heuristic details remain visible as fallback guidance.
+  const scores = answerDetails
+    .filter((detail) => detail.scoringSource === "ai")
+    .map((detail) => detail.scores)
+    .filter((score) => score.total > 0);
 
   const criteriaAverages = {
     content: average(scores.map((s) => s.content)),
@@ -135,12 +165,19 @@ export function buildSessionAnalysis(
     impression: average(scores.map((s) => s.impression)),
   };
   const overallScore = average(scores.map((s) => s.impression));
-  const weakest = Object.entries(criteriaAverages).sort((a, b) => a[1] - b[1])[0]?.[0] ?? "content";
+  const weakest = scores.length
+    ? Object.entries(criteriaAverages).sort((a, b) => a[1] - b[1])[0]?.[0] ?? "content"
+    : "content";
 
   // --- Aggregate strengths/weaknesses from per-answer details ---
   const allStrengths = uniqueList(answerDetails.flatMap((d) => d.strengths));
   const allWeaknesses = uniqueList(answerDetails.flatMap((d) => d.weaknesses));
   const speechTips = uniqueList(answerDetails.flatMap((d) => d.speech?.tips ?? []));
+  const detailTips = uniqueList(answerDetails.flatMap((d) => d.tips));
+  const improvementTips = uniqueList(
+    (detailTips.length ? detailTips : allWeaknesses.map((weakness) => `Ưu tiên sửa: ${weakness}`))
+      .concat(speechTips)
+  ).slice(0, 6);
   const speechSummary = buildSpeechSummary(answerDetails);
 
   return {
@@ -153,16 +190,22 @@ export function buildSessionAnalysis(
       ])
     ).slice(0, 6),
     overallScore,
-    progressHint: `Ưu tiên cải thiện tiêu chí ${translateCriterion(weakest)} trong buổi luyện tiếp theo.`,
+    progressHint: scores.length
+      ? `Ưu tiên cải thiện tiêu chí ${translateCriterion(weakest)} trong buổi luyện tiếp theo.`
+      : "Chưa có điểm AI chính thức, hãy hoàn tất cấu hình AI hoặc chấm lại khi model khả dụng.",
     speechSummary,
-    sessionSummary: buildSummary(session, overallScore, weakest),
+    sessionSummary: buildSummary(session, overallScore, weakest, scores.length > 0),
     strengths: allStrengths.slice(0, 6),
     weaknesses: allWeaknesses.slice(0, 6),
     answerDetails,
   };
 }
 
-function buildSummary(session: InterviewSession, score: number, weakest: string) {
+function buildSummary(session: InterviewSession, score: number, weakest: string, hasOfficialScore = true) {
+  if (!hasOfficialScore) {
+    return `Buổi phỏng vấn cho ${session.targetMajor ?? "ngành mục tiêu"} tại ${session.targetSchool ?? "trường mục tiêu"} đã được lưu, nhưng chưa có điểm AI chính thức. Hãy kiểm tra cấu hình model/API rồi chấm lại để nhận báo cáo chuẩn.`;
+  }
+
   const label = score >= 8 ? "tốt" : score >= 6.5 ? "khá" : "cần luyện thêm";
   return `Buổi phỏng vấn cho ${session.targetMajor ?? "ngành mục tiêu"} tại ${session.targetSchool ?? "trường mục tiêu"} đạt mức ${label}. Bạn đã trả lời ${session.answeredQuestions}/${session.totalQuestions} câu. Điểm cần tập trung là ${translateCriterion(weakest)}; hãy bổ sung ví dụ cá nhân, kế hoạch học tập rõ mốc và liên hệ với học bổng/trường.`;
 }
@@ -276,7 +319,31 @@ function average(values: number[]) {
 }
 
 function uniqueList(values: string[]) {
-  return Array.from(new Set(values));
+  return Array.from(new Set(values.filter((value) => !isLegacyGenericTip(value))));
+}
+
+function isLegacyGenericTip(value: string) {
+  return value.includes("60-90")
+    || value.includes("3 vĂ")
+    || value.includes("3 ví")
+    || value.includes("Ghi Ă¢m")
+    || value.includes("Ghi âm");
+}
+
+function splitStoredLines(value: string | null | undefined) {
+  if (!value) return [];
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function extractAcademicKeywords(value: string | null | undefined) {
+  return uniqueList(
+    tokenize(value ?? "")
+      .filter((token) => token.length >= 4)
+      .slice(0, 8)
+  );
 }
 
 function compareWithSampleAnswer(answerText: string, sampleAnswer: string | null, keywordSource: string | null) {

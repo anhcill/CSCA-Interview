@@ -27,12 +27,14 @@ import {
   setStoredInterviewLanguageMode,
   type Locale
 } from "@/lib/i18n";
-import { apiPost } from "@/lib/api";
+import { ApiError, apiPost } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
-import { fetchMyProfile, updateMyProfile, type ProfileInput, type UserProfileDto } from "@/lib/profile-client";
+import { fetchPaymentEntitlement, type PaymentEntitlement } from "@/lib/payments-client";
+import { fetchMyProfile, updateMyProfile, type ProfileInput, type StudyPlanParseMetadata, type UserProfileDto } from "@/lib/profile-client";
 
-const durationOptions = [30, 60, 90] as const;
+const durationOptions = [30, 60, 120] as const;
 const stepLabels = ["Profile", "Mục tiêu", "Chế độ", "Study Plan", "Phân tích AI", "Bắt đầu"];
+const setupDraftStorageKey = "ai_phongvan_interview_setup_draft";
 
 const initialForm: WizardSetupForm = {
   applicantNameZh: "",
@@ -59,6 +61,7 @@ export function InterviewSetup() {
   const [form, setForm] = useState<WizardSetupForm>(initialForm);
   const [currentStep, setCurrentStep] = useState(0);
   const [studyPlanAnalysis, setStudyPlanAnalysis] = useState<any | null>(null);
+  const [studyPlanParseMetadata, setStudyPlanParseMetadata] = useState<StudyPlanParseMetadata | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [locale, setLocale] = useState<Locale>("vi");
@@ -67,6 +70,8 @@ export function InterviewSetup() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [profile, setProfile] = useState<UserProfileDto | null>(null);
   const [profileNotice, setProfileNotice] = useState("");
+  const [paymentEntitlement, setPaymentEntitlement] = useState<PaymentEntitlement | null>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const t = messages[locale].setup;
   const selectedTargetSchool = form.targetSchool.trim() || profile?.targetSchool || "";
   const selectedSchoolId = form.targetSchool.trim()
@@ -96,6 +101,20 @@ export function InterviewSetup() {
       language: storedMode || localeToBackendLanguage(initialLocale)
     }));
 
+    try {
+      const rawDraft = sessionStorage.getItem(setupDraftStorageKey);
+      const draft = rawDraft ? JSON.parse(rawDraft) as { currentStep?: number; form?: WizardSetupForm } : null;
+      if (draft?.form) {
+        setForm((current) => ({
+          ...current,
+          ...draft.form
+        }));
+        setCurrentStep(Math.min(stepLabels.length - 1, Math.max(0, draft.currentStep ?? 0)));
+      }
+    } catch {
+      sessionStorage.removeItem(setupDraftStorageKey);
+    }
+
     function handleLocaleChanged(event: Event) {
       const nextLocale = (event as CustomEvent<{ locale: Locale }>).detail?.locale;
       if (nextLocale) setLocale(nextLocale);
@@ -104,6 +123,31 @@ export function InterviewSetup() {
     window.addEventListener(localeChangedEvent, handleLocaleChanged);
     return () => window.removeEventListener(localeChangedEvent, handleLocaleChanged);
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    const token = getAuthToken();
+    if (!token) return;
+    const authToken = token;
+
+    async function checkPayment() {
+      setIsCheckingPayment(true);
+      try {
+        const data = await fetchPaymentEntitlement(form.plannedDurationMinutes, authToken);
+        if (!ignore) setPaymentEntitlement(data.entitlement);
+      } catch {
+        if (!ignore) setPaymentEntitlement(null);
+      } finally {
+        if (!ignore) setIsCheckingPayment(false);
+      }
+    }
+
+    void checkPayment();
+
+    return () => {
+      ignore = true;
+    };
+  }, [form.plannedDurationMinutes]);
 
   useEffect(() => {
     let ignore = false;
@@ -116,6 +160,7 @@ export function InterviewSetup() {
         if (ignore) return;
 
         setProfile(data.profile);
+        setStudyPlanParseMetadata(data.profile?.studyPlanParseMetadata ?? null);
         if (data.profile) {
           const loadedProfile = data.profile;
           setForm((current) => ({
@@ -173,10 +218,10 @@ export function InterviewSetup() {
       return;
     }
 
-    const allowedExtensions = ["pdf", "docx", "txt"];
+    const allowedExtensions = ["pdf", "docx", "txt", "png", "jpg", "jpeg", "webp"];
     const extension = file.name.split(".").pop()?.toLowerCase();
     if (!extension || !allowedExtensions.includes(extension)) {
-      setError("Định dạng tệp không được hỗ trợ. Vui lòng upload PDF, DOCX hoặc TXT.");
+      setError("Định dạng tệp không được hỗ trợ. Vui lòng upload PDF, DOCX, TXT hoặc ảnh PNG/JPG/WEBP.");
       return;
     }
 
@@ -184,6 +229,8 @@ export function InterviewSetup() {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => {
+      setStudyPlanAnalysis(null);
+      setStudyPlanParseMetadata(null);
       setForm((current) => ({
         ...current,
         studyPlan: `Tệp đã chọn: ${file.name}`,
@@ -255,10 +302,13 @@ export function InterviewSetup() {
       setAnalysisError("");
       try {
         let studyPlanForAnalysis = form.studyPlan.trim();
+        let parseMetadataForAnalysis = studyPlanParseMetadata;
         if (form.studyPlanFileContent.trim()) {
           const saved = await updateMyProfile(buildProfilePayload());
           studyPlanForAnalysis = saved.profile.studyPlan;
+          parseMetadataForAnalysis = saved.studyPlanParseMetadata ?? saved.profile.studyPlanParseMetadata ?? null;
           setProfile(saved.profile);
+          setStudyPlanParseMetadata(parseMetadataForAnalysis);
           setForm((current) => ({
             ...current,
             studyPlan: saved.profile.studyPlan,
@@ -274,10 +324,13 @@ export function InterviewSetup() {
           majorId: form.majorId || null,
           scholarshipId: form.scholarshipId || null,
           scholarshipType: form.scholarshipType,
+          studyPlanFileName: form.studyPlanFileName || profile?.studyPlanFileName || null,
+          studyPlanParseMetadata: parseMetadataForAnalysis,
           targetSchool: selectedTargetSchool,
           targetMajor: form.targetMajor
         }, { token });
         setStudyPlanAnalysis(res);
+        setStudyPlanParseMetadata(res.parseMetadata ?? parseMetadataForAnalysis);
       } catch (err: any) {
         console.error(err);
         setAnalysisError(err.message || "Không thể phân tích Study Plan bằng AI");
@@ -307,6 +360,7 @@ export function InterviewSetup() {
       const saved = await updateMyProfile(buildProfilePayload());
       const sessionStudyPlan = saved.profile.studyPlan;
       setProfile(saved.profile);
+      setStudyPlanParseMetadata(saved.studyPlanParseMetadata ?? saved.profile.studyPlanParseMetadata ?? null);
 
       const backendLanguage = interviewModeToBackendLanguage(form.language);
       const data = await createInterviewSession({
@@ -323,10 +377,17 @@ export function InterviewSetup() {
       });
 
       sessionStorage.setItem(activeInterviewSessionStorageKey, data.session.id);
+      sessionStorage.removeItem(setupDraftStorageKey);
       setStoredInterviewLanguageMode(form.language);
       router.push(`/interview?sessionId=${data.session.id}${form.language === "BILINGUAL" ? "&mode=bilingual" : ""}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : t.createFailed;
+      if (err instanceof ApiError && err.status === 402) {
+        sessionStorage.setItem(setupDraftStorageKey, JSON.stringify({ currentStep, form }));
+        router.push(`/payment?next=${encodeURIComponent("/interview/setup")}&duration=${form.plannedDurationMinutes}`);
+        return;
+      }
+
       setError(message);
 
       if (message.toLowerCase().includes("dang nhap") || message.toLowerCase().includes("đăng nhập")) {
@@ -368,6 +429,12 @@ export function InterviewSetup() {
               {profileNotice}
             </p>
           ) : null}
+
+          <PaymentFlowNotice
+            durationMinutes={form.plannedDurationMinutes}
+            entitlement={paymentEntitlement}
+            isChecking={isCheckingPayment}
+          />
 
           {error ? (
             <p className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200" role="alert">{error}</p>
@@ -479,6 +546,49 @@ export function InterviewSetup() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function PaymentFlowNotice({
+  durationMinutes,
+  entitlement,
+  isChecking
+}: {
+  durationMinutes: number;
+  entitlement: PaymentEntitlement | null;
+  isChecking: boolean;
+}) {
+  if (isChecking) {
+    return (
+      <p className="mt-4 rounded-lg border border-border bg-muted/45 px-4 py-3 text-sm font-bold text-muted-foreground">
+        Đang kiểm tra lượt thanh toán cho gói {durationMinutes} phút...
+      </p>
+    );
+  }
+
+  if (entitlement?.hasAccess) {
+    const planLabel = entitlement.availablePayments[0]?.plan?.label ?? `${durationMinutes} phút`;
+    return (
+      <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+        Đã có lượt thanh toán sẵn sàng cho gói {planLabel}. Bạn có thể tạo phòng phỏng vấn.
+      </p>
+    );
+  }
+
+  if (!entitlement) return null;
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+      <p className="font-bold">
+        Cần thanh toán gói tối thiểu {durationMinutes} phút trước khi bắt đầu phỏng vấn.
+      </p>
+      <Link
+        href={`/payment?next=${encodeURIComponent("/interview/setup")}&duration=${durationMinutes}`}
+        className="focus-ring inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-black text-primary-foreground"
+      >
+        Thanh toán ngay
+      </Link>
+    </div>
   );
 }
 

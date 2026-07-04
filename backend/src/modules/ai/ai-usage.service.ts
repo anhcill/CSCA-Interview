@@ -23,7 +23,7 @@ export type AiUsageLogInput = {
 
 export async function logAiUsage(input: AiUsageLogInput) {
   try {
-    await prisma.ai_usage_logs.create({
+    const log = await prisma.ai_usage_logs.create({
       data: {
         cost_usd: estimateCostUsd(input.tokenUsage) ?? null,
         error_message: input.errorMessage ?? null,
@@ -38,10 +38,13 @@ export async function logAiUsage(input: AiUsageLogInput) {
         task_type: input.taskType,
         total_tokens: input.tokenUsage?.totalTokens ?? null,
         user_id: input.userId ?? null
-      }
+      },
+      select: { id: true }
     });
+    return log.id;
   } catch (error) {
     console.warn("[AI] usage log failed", error instanceof Error ? error.message : error);
+    return null;
   }
 }
 

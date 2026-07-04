@@ -3,6 +3,7 @@
 import { Bot, Settings } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { AiModelRouterPanel } from "@/components/admin/ai-model-router-panel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
@@ -162,6 +163,8 @@ export default function AdminSettingsPage() {
       </div>
 
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+
+      <AiModelRouterPanel token={token} onSaved={load} />
 
       <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
         <section className="rounded-lg border bg-white p-5">

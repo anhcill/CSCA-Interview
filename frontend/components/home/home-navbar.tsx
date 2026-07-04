@@ -4,7 +4,8 @@ import { ArrowRight, Bot } from "lucide-react";
 const navLinks = [
   { href: "/features", label: "Tính năng" },
   { href: "/guide", label: "Quy trình" },
-  { href: "/pricing", label: "Gói sử dụng" }
+  { href: "/pricing", label: "Gói sử dụng" },
+  { href: "/payment", label: "Thanh toán" }
 ] as const;
 
 export function BrandLogo({ light = false }: { light?: boolean }) {
@@ -52,7 +53,7 @@ export function HomeNavbar() {
         </div>
       </header>
 
-      <nav className="grid grid-cols-3 gap-2 text-center text-xs font-black text-[#4b5563] md:hidden">
+      <nav className="grid grid-cols-2 gap-2 text-center text-xs font-black text-[#4b5563] sm:grid-cols-4 md:hidden">
         {navLinks.map((item) => (
           <Link key={item.href} className="rounded-md border border-[#dde5ef] bg-white px-2 py-2 transition hover:border-[#b91c1c] hover:text-[#b91c1c]" href={item.href}>
             {item.label}

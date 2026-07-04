@@ -3,6 +3,7 @@
 import { Link as LinkIcon, Trash2, Upload, Volume2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { MasterSheetImporter } from "@/components/admin/master-sheet-importer";
 import { QuestionsImporter } from "@/components/admin/questions-importer";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -364,6 +365,7 @@ export default function AdminQuestionsPage() {
 
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
 
+      <MasterSheetImporter token={token} onImported={load} />
       <QuestionsImporter token={token} onImported={load} />
 
       {showForm ? (

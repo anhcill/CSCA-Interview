@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, ClipboardList, GraduationCap, ShieldCheck, User } from "lucide-react";
+import { BarChart3, ClipboardList, CreditCard, GraduationCap, ShieldCheck, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -14,6 +14,7 @@ const navItems = [
   { href: "/dashboard", icon: BarChart3, labelKey: "dashboard" },
   { href: "/interview/setup", icon: GraduationCap, labelKey: "interview" },
   { href: "/interview/history", icon: ClipboardList, labelKey: "history" },
+  { href: "/payment", icon: CreditCard, labelKey: "payment" },
   { href: "/profile", icon: User, labelKey: "profile" }
 ] as const;
 const adminNavItem = { href: "/admin", icon: ShieldCheck, label: "Admin" } as const;
@@ -27,7 +28,7 @@ const adminPrefetchPaths = [
   "/admin/scholarships"
 ];
 
-const publicPaths = new Set(["/", "/403-forbidden", "/features", "/guide", "/login", "/pricing", "/privacy", "/register", "/terms"]);
+const publicPaths = new Set(["/", "/403-forbidden", "/features", "/guide", "/login", "/payment", "/pricing", "/privacy", "/register", "/terms"]);
 const fullScreenPaths = new Set(["/interview"]);
 const adminRoles: AuthUser["role"][] = ["ADMIN", "SUPER_ADMIN"];
 type AuthStatus = "checking" | "authenticated" | "error" | "forbidden" | "public" | "unauthenticated";

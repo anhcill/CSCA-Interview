@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
+import { env, openAiTtsVoiceOptions } from "../../config/env.js";
 import { requireAuth } from "../auth/auth.middleware.js";
 import { MissingOpenAiKeyError, synthesizeSpeech, transcribeAudio } from "./speech.service.js";
 import {
@@ -55,7 +56,7 @@ speechRouter.post("/transcribe", async (req: Request, res: Response) => {
 
 const synthesizeSchema = z.object({
   text: z.string().min(1, "Text required").max(4096, "Text quá dài (tối đa 4096 ký tự)"),
-  voice: z.enum(["alloy", "echo", "fable", "onyx", "nova", "shimmer"]).optional().default("nova"),
+  voice: z.enum(openAiTtsVoiceOptions).optional().default(env.openAiTtsVoice),
   speed: z.number().min(0.25).max(4.0).optional().default(1.0)
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, ChevronDown, ClipboardList, GraduationCap, LogOut, Menu, ShieldCheck, User, X } from "lucide-react";
+import { BarChart3, ChevronDown, ClipboardList, CreditCard, GraduationCap, LogOut, Menu, ShieldCheck, User, X } from "lucide-react";
 
 const BellIcon = ({ size = 18, className = "" }: { size?: number; className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -21,6 +21,7 @@ const navItems = [
   { href: "/dashboard", icon: BarChart3, labelKey: "dashboard" },
   { href: "/interview/setup", icon: GraduationCap, labelKey: "interview" },
   { href: "/interview/history", icon: ClipboardList, labelKey: "history" },
+  { href: "/payment", icon: CreditCard, labelKey: "payment" },
   { href: "/profile", icon: User, labelKey: "profile" }
 ] as const;
 

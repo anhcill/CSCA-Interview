@@ -24,7 +24,9 @@ declare module 'lucide-react' {
   export const Loader: LucideIcon;
   export const AlertCircle: LucideIcon;
   export const CheckCircle: LucideIcon;
+  export const CheckCircle2: LucideIcon;
   export const Clock: LucideIcon;
+  export const Clock3: LucideIcon;
   export const Timer: LucideIcon;
   export const User: LucideIcon;
   export const Bot: LucideIcon;
@@ -106,7 +108,12 @@ declare module 'lucide-react' {
   export const School: LucideIcon;
   export const ClipboardList: LucideIcon;
   export const ClipboardCheck: LucideIcon;
+  export const CreditCard: LucideIcon;
+  export const Headphones: LucideIcon;
+  export const LockKeyhole: LucideIcon;
+  export const QrCode: LucideIcon;
   export const ShieldCheck: LucideIcon;
+  export const WalletCards: LucideIcon;
   export const BookOpenCheck: LucideIcon;
   export const MessageSquareText: LucideIcon;
   export const Activity: LucideIcon;

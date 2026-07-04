@@ -1,12 +1,12 @@
 "use client";
 
-import { Award, BookOpen, Check, Clock, FileText, Globe, Loader2, School, Sparkles, Upload, User, X, type LucideIcon } from "lucide-react";
+import { AlertCircle, BookOpen, Check, Clock, FileText, Loader2, School, Sparkles, Upload, User, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
 import { apiGet } from "@/lib/api";
 import type { InterviewLanguageMode } from "@/lib/i18n";
-import type { UserProfileDto } from "@/lib/profile-client";
+import type { StudyPlanParseMetadata, UserProfileDto } from "@/lib/profile-client";
 import type { SchoolDto } from "@/lib/schools-client";
 
 export type WizardSetupForm = {
@@ -410,18 +410,6 @@ function ChecklistPill({ done, label }: ReadyItem) {
   );
 }
 
-function FactRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-background px-4 py-3">
-      <Icon className="mt-0.5 text-primary" size={17} />
-      <div className="min-w-0">
-        <p className="text-xs font-black uppercase text-muted-foreground">{label}</p>
-        <p className="mt-1 break-words text-sm font-black text-foreground">{value || "Chưa nhập"}</p>
-      </div>
-    </div>
-  );
-}
-
 function FactCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-background px-4 py-3">
@@ -438,16 +426,6 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
       <span className="text-right text-sm font-black">{value}</span>
     </div>
   );
-}
-
-function buildLanguageSummary(profile: UserProfileDto) {
-  return [
-    formatCertificate("HSK", profile.hskLevel),
-    formatCertificate("HSKK", profile.hskkLevel),
-    formatCertificate("IELTS", profile.ieltsScore),
-    formatCertificate("TOEFL", profile.toeflScore),
-    profile.otherLanguages ?? ""
-  ].filter(Boolean).join(" | ") || "Chưa nhập";
 }
 
 function useApplicationOptions() {
@@ -496,11 +474,6 @@ function formatDegreeLabel(level: MajorOption["degreeLevel"]) {
   return level === "MASTER" ? "Thạc sĩ" : "Đại học";
 }
 
-function formatCertificate(prefix: string, value: string | null) {
-  if (!value) return "";
-  return value.trim().toLowerCase().startsWith(prefix.toLowerCase()) ? value : `${prefix} ${value}`;
-}
-
 function clampDuration(value: string) {
   const minutes = Number(value);
   if (!Number.isFinite(minutes)) return 30;
@@ -533,7 +506,7 @@ export function StudyPlanWizardStep({
     <section className="rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)]">
       <StepHeader eyebrow="Bước 4" icon={BookOpen} title="Kế hoạch học tập (Study Plan)" />
       <p className="text-xs text-muted-foreground mt-1">
-        Study Plan lấy từ profile nếu học viên đã upload file. Nếu chưa có file, hãy upload PDF, DOCX hoặc TXT tại đây.
+        Study Plan lấy từ profile nếu học viên đã upload file. Nếu chưa có file, hãy upload PDF, DOCX, TXT hoặc ảnh scan tại đây.
       </p>
       <div className="mt-4">
         <StudyPlanSourceBox
@@ -625,10 +598,10 @@ function StudyPlanSourceBox({
     >
       <Upload size={32} className="text-muted-foreground" />
       <p className="mt-3 text-sm font-black text-foreground">Chưa có Study Plan trong profile</p>
-      <p className="mt-1 text-xs font-semibold text-muted-foreground">Upload PDF, DOCX hoặc TXT. Hệ thống sẽ trích xuất nội dung để AI phân tích.</p>
+      <p className="mt-1 text-xs font-semibold text-muted-foreground">Upload PDF, DOCX, TXT hoặc ảnh scan. Hệ thống sẽ trích xuất nội dung để AI phân tích.</p>
       <input
         type="file"
-        accept=".pdf,.docx,.txt"
+        accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp"
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) onFileSelect(file);
@@ -672,10 +645,38 @@ export function StudyPlanAnalysisWizardStep({
 
   if (!analysis) return null;
 
+  const parseMetadata = analysis.parseMetadata as StudyPlanParseMetadata | undefined;
+  const parseWarnings = parseMetadata?.warnings ?? [];
+  const strengths = normalizeAnalysisItems(analysis.strengths);
+  const weaknesses = normalizeAnalysisItems(analysis.weaknesses);
+  const suggestions = normalizeAnalysisItems(analysis.suggestions);
+  const generatedQuestions = normalizeAnalysisItems(analysis.generatedQuestions);
+
   return (
     <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
       <div className="rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)] flex flex-col gap-4">
         <StepHeader eyebrow="Bước 5" icon={Sparkles} title="Phân tích Study Plan bằng AI" />
+
+        {parseWarnings.length ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase">Cảnh báo đọc file</p>
+                <ul className="mt-1 space-y-1 text-xs font-semibold leading-5">
+                  {parseWarnings.map((warning, idx) => (
+                    <li key={idx}>{warning}</li>
+                  ))}
+                </ul>
+                {parseMetadata ? (
+                  <p className="mt-2 text-[11px] font-bold opacity-80">
+                    {parseMetadata.fileName ? `${parseMetadata.fileName} · ` : ""}{parseMetadata.extractedTextLength} ký tự đã đọc
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Alignment score */}
         <div className="flex items-center gap-4 rounded-xl bg-primary/5 p-4 border border-primary/10">
@@ -695,9 +696,7 @@ export function StudyPlanAnalysisWizardStep({
           <div className="rounded-lg border border-green-700/20 bg-green-500/5 p-4">
             <h5 className="text-xs font-black uppercase text-green-700">✅ Điểm mạnh</h5>
             <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground font-semibold">
-              {analysis.strengths?.split("\n").filter(Boolean).map((item: string, idx: number) => (
-                <li key={idx} className="flex gap-1.5"><span className="text-green-600 shrink-0">•</span> {item}</li>
-              )) || analysis.strengths?.map((item: string, idx: number) => (
+              {strengths.map((item: string, idx: number) => (
                 <li key={idx} className="flex gap-1.5"><span className="text-green-600 shrink-0">•</span> {item}</li>
               ))}
             </ul>
@@ -705,9 +704,7 @@ export function StudyPlanAnalysisWizardStep({
           <div className="rounded-lg border border-red-700/20 bg-red-500/5 p-4">
             <h5 className="text-xs font-black uppercase text-red-700">⚠️ Điểm yếu / Cần sửa</h5>
             <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground font-semibold">
-              {analysis.weaknesses?.split("\n").filter(Boolean).map((item: string, idx: number) => (
-                <li key={idx} className="flex gap-1.5"><span className="text-red-600 shrink-0">•</span> {item}</li>
-              )) || analysis.weaknesses?.map((item: string, idx: number) => (
+              {weaknesses.map((item: string, idx: number) => (
                 <li key={idx} className="flex gap-1.5"><span className="text-red-600 shrink-0">•</span> {item}</li>
               ))}
             </ul>
@@ -718,9 +715,7 @@ export function StudyPlanAnalysisWizardStep({
         <div className="rounded-lg border border-blue-700/20 bg-blue-500/5 p-4">
           <h5 className="text-xs font-black uppercase text-blue-700">💡 Gợi ý cải thiện</h5>
           <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground font-semibold">
-            {analysis.suggestions?.split("\n").filter(Boolean).map((item: string, idx: number) => (
-              <li key={idx} className="flex gap-1.5"><span className="text-blue-600 shrink-0">•</span> {item}</li>
-            )) || analysis.suggestions?.map((item: string, idx: number) => (
+            {suggestions.map((item: string, idx: number) => (
               <li key={idx} className="flex gap-1.5"><span className="text-blue-600 shrink-0">•</span> {item}</li>
             ))}
           </ul>
@@ -735,7 +730,7 @@ export function StudyPlanAnalysisWizardStep({
           Giáo sư AI dự kiến sẽ đặt các câu hỏi sau dựa trên thông tin Study Plan của bạn. Hãy chuẩn bị kỹ câu trả lời.
         </p>
         <div className="space-y-3">
-          {analysis.generatedQuestions?.map((item: string, idx: number) => (
+          {generatedQuestions.map((item: string, idx: number) => (
             <div key={idx} className="p-3 rounded-lg bg-muted text-xs font-bold text-foreground border border-border flex items-start gap-2.5">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-black text-primary">
                 {idx + 1}
@@ -747,4 +742,16 @@ export function StudyPlanAnalysisWizardStep({
       </div>
     </section>
   );
+}
+
+function normalizeAnalysisItems(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map(String).map((item) => item.trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value.split("\n").map((item) => item.trim()).filter(Boolean);
+  }
+
+  return [];
 }
