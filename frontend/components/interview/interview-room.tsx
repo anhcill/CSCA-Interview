@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
-  Keyboard,
   Mic,
   Pause,
   Phone,
@@ -16,8 +15,6 @@ import {
   RotateCcw,
   Send,
   SkipForward,
-  Square,
-  Timer,
   Video,
   Volume2,
 } from "lucide-react";
@@ -26,13 +23,13 @@ import {
   activeInterviewSessionStorageKey,
   completeInterviewSession,
   createInterviewSession,
+  fetchInterviewQuestionAudio,
   fetchInterviewSession,
   fetchNextInterviewQuestion,
   pauseInterviewSession,
   resumeInterviewSession,
   skipInterviewQuestion,
   submitInterviewAnswer,
-  type InterviewQuestionDto,
 } from "@/lib/interview-client";
 import {
   backendLanguageToBrowserSpeechLang,
@@ -49,42 +46,48 @@ import {
   type Locale
 } from "@/lib/i18n";
 import { type VoiceRecorderResult, useVoiceRecorder } from "@/lib/hooks/use-voice-recorder";
-import { type FaceAnalysisStatus, useFaceAnalysis } from "@/lib/hooks/use-face-analysis";
+import { useFaceAnalysis } from "@/lib/hooks/use-face-analysis";
 import { assessPronunciation, playBase64Audio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
-import type { VisualCheckState } from "@/lib/visual-analysis";
-import { CameraCheckPanel, type CameraCheckStatus, type CameraSystemChecks } from "./camera-check-panel";
-import { ChatMessage, interviewQuestions } from "./interview-data";
+import { CameraCheckPanel, type CameraSystemChecks } from "./camera-check-panel";
+import { ChatBubble } from "./chat-bubble";
+import type { ChatMessage } from "./interview-data";
+import { playAudioUrl } from "./question-audio-player";
+import {
+  buildAiMessage,
+  fallbackQuestions,
+  formatDuration,
+  formatElapsed,
+  getClockTime,
+  getQuestionDisplayText,
+  getQuestionSupportText,
+  mapQuestion,
+  mapQuestions,
+  type RoomQuestion
+} from "./question-flow";
 import { PronunciationPanel, SpeechMetricsPanel } from "./speech-metrics-panel";
-import { VisualMetricsPanel, VisualMetricsSummary, type VisualMetricsStatus } from "./visual-metrics-panel";
+import {
+  getRemoteSpeechPreset,
+  getVoicePresetLabel,
+  inferSpeechLang,
+  isQuestionReaderMode,
+  isSpeechRate,
+  isSpeechVoicePreset,
+  MissingBrowserVoiceError,
+  questionReaderStorageKey,
+  shouldPreferRemoteSpeech,
+  speechRateStorageKey,
+  speechRates,
+  speechVoiceStorageKey,
+  speakWithBrowser,
+  type QuestionReaderMode,
+  type SpeechRate,
+  type SpeechVoicePreset,
+  voicePresets
+} from "./speech-settings";
+import { getVisualMetricsStatus, mapVisualCheckToCameraStatus } from "./visual-status";
+import { VisualMetricsPanel, VisualMetricsSummary } from "./visual-metrics-panel";
 import { WebcamPreview } from "./webcam-preview";
 
-type RoomQuestion = {
-  aiReason?: string | null;
-  category: string;
-  difficulty?: string;
-  expectedAnswerLogic?: string | null;
-  followUpDepth?: number;
-  id: string;
-  isFollowUp?: boolean;
-  language?: BackendLanguage;
-  questionText: string;
-  source?: string;
-  translation?: string | null;
-};
-
-const fallbackQuestions: RoomQuestion[] = interviewQuestions.map((question, index) => ({
-  category: question.category,
-  expectedAnswerLogic: question.vi,
-  id: `fallback-${index}`,
-  questionText: question.zh,
-  translation: question.vi
-}));
-
-const speechVoiceStorageKey = "ai_phongvan_speech_voice";
-const speechRateStorageKey = "ai_phongvan_speech_rate";
-type SpeechVoicePreset = "auto" | "female" | "male" | "warm" | "slow" | "clear";
-type SpeechRate = 0.5 | 0.75 | 1 | 1.25 | 1.5;
-type RemoteSpeechVoice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 type LastFeedback = {
   feedback: string | null;
   improvedAnswer: string | null;
@@ -96,15 +99,7 @@ type SpeechSubmitPayload = {
   result?: VoiceRecorderResult;
 };
 
-const voicePresets: SpeechVoicePreset[] = ["auto", "female", "male", "warm", "slow", "clear"];
-const speechRates: SpeechRate[] = [0.5, 0.75, 1, 1.25, 1.5];
-
-class MissingBrowserVoiceError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "MissingBrowserVoiceError";
-  }
-}
+const maxNoSpeechAutoRetries = 2;
 
 export function InterviewRoom() {
   const router = useRouter();
@@ -140,8 +135,10 @@ export function InterviewRoom() {
   const [isAssessingPronunciation, setIsAssessingPronunciation] = useState(false);
   const [speechNotice, setSpeechNotice] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [noSpeechSignal, setNoSpeechSignal] = useState(0);
   const [selectedVoicePreset, setSelectedVoicePreset] = useState<SpeechVoicePreset>("auto");
   const [selectedSpeechRate, setSelectedSpeechRate] = useState<SpeechRate>(1);
+  const [selectedQuestionReader, setSelectedQuestionReader] = useState<QuestionReaderMode>("ai");
   const [showChat, setShowChat] = useState(true);
 
   const handleFaceAnalysisError = useCallback((message: string) => {
@@ -169,10 +166,21 @@ export function InterviewRoom() {
   }, [faceAnalysis, isCameraBusy, isCameraOn]);
 
   const isCompletingRef = useRef(false);
+  const hasAutoCompletedForTimeRef = useRef(false);
   const lastAutoSpokenQuestionIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const noSpeechRetryTimerRef = useRef<number | null>(null);
+  const noSpeechRetryCountRef = useRef(0);
+  const startRecordingRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const recorderStateRef = useRef({ isRecording: false, isTranscribing: false });
+  const interviewModeRef = useRef(interviewMode);
+  const isPausedRef = useRef(isPaused);
   const t = messages[locale].interview;
   const isBilingual = interviewLanguageMode === "BILINGUAL";
+
+  const handleRecorderNoSpeech = useCallback(() => {
+    setNoSpeechSignal((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -180,6 +188,8 @@ export function InterviewRoom() {
     if (isSpeechVoicePreset(stored)) setSelectedVoicePreset(stored);
     const storedRate = Number(localStorage.getItem(speechRateStorageKey));
     if (isSpeechRate(storedRate)) setSelectedSpeechRate(storedRate);
+    const storedReader = localStorage.getItem(questionReaderStorageKey);
+    if (isQuestionReaderMode(storedReader)) setSelectedQuestionReader(storedReader);
   }, []);
 
   useEffect(() => {
@@ -201,6 +211,7 @@ export function InterviewRoom() {
       setLiveTranscript(text.trim());
       setInput(text.trim());
     },
+    onNoSpeech: handleRecorderNoSpeech,
     onTranscript: (text, result) => {
       const transcript = text.trim();
       if (!transcript) return;
@@ -214,6 +225,23 @@ export function InterviewRoom() {
       }
     }
   });
+
+  const clearNoSpeechRetryTimer = useCallback(() => {
+    if (noSpeechRetryTimerRef.current !== null) {
+      window.clearTimeout(noSpeechRetryTimerRef.current);
+      noSpeechRetryTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    interviewModeRef.current = interviewMode;
+    isPausedRef.current = isPaused;
+    recorderStateRef.current = {
+      isRecording: voiceRecorder.isRecording,
+      isTranscribing: voiceRecorder.isTranscribing
+    };
+    startRecordingRef.current = voiceRecorder.startRecording;
+  }, [interviewMode, isPaused, voiceRecorder.isRecording, voiceRecorder.isTranscribing, voiceRecorder.startRecording]);
 
   const activeQuestion = questions[currentQuestion] ?? fallbackQuestions[0];
   const activeSubtitle = isBilingual ? getQuestionSupportText(activeQuestion) : null;
@@ -240,6 +268,59 @@ export function InterviewRoom() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [error, isThinking, liveTranscript, messagesList]);
+
+  useEffect(() => {
+    noSpeechRetryCountRef.current = 0;
+    clearNoSpeechRetryTimer();
+  }, [activeQuestion.id, clearNoSpeechRetryTimer]);
+
+  useEffect(() => {
+    if (noSpeechSignal === 0) return;
+
+    setAutoSubmitCountdown(null);
+    setLiveTranscript("");
+    setInput("");
+
+    if (interviewModeRef.current === "TEXT" || isPausedRef.current || isCompletingRef.current) {
+      setSpeechNotice("Chưa nghe rõ câu trả lời. Bạn có thể nhập câu trả lời bằng bàn phím.");
+      return;
+    }
+
+    const nextAttempt = noSpeechRetryCountRef.current + 1;
+    noSpeechRetryCountRef.current = nextAttempt;
+
+    if (nextAttempt > maxNoSpeechAutoRetries) {
+      setSpeechNotice("Chưa nghe rõ câu trả lời. Bạn có thể bấm Bật mic hoặc Trả lời lại câu hỏi để thử lại.");
+      return;
+    }
+
+    setSpeechNotice(`Chưa nghe rõ câu trả lời. Hệ thống sẽ mở lại mic lần ${nextAttempt}/${maxNoSpeechAutoRetries}.`);
+    clearNoSpeechRetryTimer();
+    noSpeechRetryTimerRef.current = window.setTimeout(() => {
+      const recorderState = recorderStateRef.current;
+      if (
+        !isCompletingRef.current &&
+        !isPausedRef.current &&
+        interviewModeRef.current !== "TEXT" &&
+        !recorderState.isRecording &&
+        !recorderState.isTranscribing
+      ) {
+        void startRecordingRef.current();
+      }
+    }, 900);
+  }, [clearNoSpeechRetryTimer, noSpeechSignal]);
+
+  useEffect(() => {
+    return clearNoSpeechRetryTimer;
+  }, [clearNoSpeechRetryTimer]);
+
+  const startListeningAfterSpeech = useCallback((shouldStart?: boolean) => {
+    if (!isCompletingRef.current && shouldStart && interviewMode !== "TEXT" && !isPaused && !voiceRecorder.isRecording && !voiceRecorder.isTranscribing) {
+      window.setTimeout(() => {
+        if (!isCompletingRef.current) void voiceRecorder.startRecording();
+      }, 250);
+    }
+  }, [interviewMode, isPaused, voiceRecorder]);
 
   const speakText = useCallback(async (text: string, options: { startListeningAfter?: boolean } = {}) => {
     if (!text || isSpeaking) return;
@@ -280,22 +361,62 @@ export function InterviewRoom() {
       }
     } finally {
       setIsSpeaking(false);
-      if (!isCompletingRef.current && options.startListeningAfter && interviewMode !== "TEXT" && !isPaused && !voiceRecorder.isRecording && !voiceRecorder.isTranscribing) {
-        window.setTimeout(() => {
-          if (!isCompletingRef.current) void voiceRecorder.startRecording();
-        }, 250);
-      }
+      startListeningAfterSpeech(options.startListeningAfter);
     }
   }, [
-    interviewMode,
-    isPaused,
     isSpeaking,
     sessionLanguage,
     selectedVoicePreset,
     selectedSpeechRate,
+    startListeningAfterSpeech,
     t.browserSpeechFailed,
-    t.speechFailed,
-    voiceRecorder
+    t.speechFailed
+  ]);
+
+  const speakQuestion = useCallback(async (question: RoomQuestion, options: { startListeningAfter?: boolean } = {}) => {
+    const text = getQuestionDisplayText(question, interviewLanguageMode);
+
+    if (selectedQuestionReader !== "human" || !sessionId || question.id.startsWith("fallback-")) {
+      await speakText(text, options);
+      return;
+    }
+
+    if (!text || isSpeaking) return;
+
+    setIsSpeaking(true);
+    setError("");
+    setSpeechNotice("");
+
+    let playedHumanAudio = false;
+
+    try {
+      const audio = await fetchInterviewQuestionAudio(sessionId, question.id);
+
+      if (audio.audioUrl) {
+        await playAudioUrl(audio.audioUrl);
+        playedHumanAudio = true;
+      } else {
+        setSpeechNotice("Chưa có bản đọc người thật cho câu này, hệ thống sẽ dùng giọng AI.");
+      }
+    } catch {
+      setSpeechNotice("Không tải được bản đọc người thật, hệ thống sẽ dùng giọng AI.");
+    } finally {
+      setIsSpeaking(false);
+    }
+
+    if (playedHumanAudio) {
+      startListeningAfterSpeech(options.startListeningAfter);
+      return;
+    }
+
+    await speakText(text, options);
+  }, [
+    interviewLanguageMode,
+    isSpeaking,
+    selectedQuestionReader,
+    sessionId,
+    speakText,
+    startListeningAfterSpeech
   ]);
 
   useEffect(() => {
@@ -354,12 +475,13 @@ export function InterviewRoom() {
     const delay = 250;
     const timer = window.setTimeout(() => {
       if (!document.hidden) {
-        void speakText(activeQuestionDisplay, { startListeningAfter: true });
+        void speakQuestion(activeQuestion, { startListeningAfter: true });
       }
     }, delay);
 
     return () => window.clearTimeout(timer);
   }, [
+    activeQuestion,
     activeQuestion.id,
     activeQuestionDisplay,
     interviewMode,
@@ -367,7 +489,7 @@ export function InterviewRoom() {
     isPaused,
     prefersReducedMotion,
     sessionLanguage,
-    speakText
+    speakQuestion
   ]);
 
   useEffect(() => {
@@ -468,6 +590,8 @@ export function InterviewRoom() {
     }
 
     const question = questions[currentQuestion];
+    clearNoSpeechRetryTimer();
+    noSpeechRetryCountRef.current = 0;
 
     setIsSubmitting(true);
     setError("");
@@ -593,8 +717,7 @@ export function InterviewRoom() {
       if (interviewMode !== "TEXT") {
         lastAutoSpokenQuestionIdRef.current = nextRoomQuestion.id;
         window.setTimeout(() => {
-          const textToSpeak = getQuestionDisplayText(nextRoomQuestion, interviewLanguageMode);
-          void speakText(textToSpeak, { startListeningAfter: true });
+          void speakQuestion(nextRoomQuestion, { startListeningAfter: true });
         }, 300);
       }
     } catch (err) {
@@ -626,6 +749,7 @@ export function InterviewRoom() {
     setError("");
 
     if (nextPaused) {
+      clearNoSpeechRetryTimer();
       setAutoSubmitCountdown(null);
       setLiveTranscript("");
       voiceRecorder.cancelRecording();
@@ -647,16 +771,17 @@ export function InterviewRoom() {
   }
 
   async function handleSpeakQuestion() {
-    await speakText(activeQuestionDisplay ?? "", { startListeningAfter: true });
+    await speakQuestion(activeQuestion, { startListeningAfter: true });
   }
 
-  async function handleCompleteInterview() {
+  const handleCompleteInterview = useCallback(async () => {
     if (!completeTargetSessionId || isCompletingRef.current) {
       return;
     }
 
     isCompletingRef.current = true;
     setIsCompleting(true);
+    clearNoSpeechRetryTimer();
     setError("");
     setAutoSubmitCountdown(null);
     setLiveTranscript("");
@@ -679,7 +804,29 @@ export function InterviewRoom() {
     } finally {
       setIsCompleting(false);
     }
-  }
+  }, [clearNoSpeechRetryTimer, completeTargetSessionId, router, t.completeFailed, voiceRecorder.cancelRecording]);
+
+  useEffect(() => {
+    hasAutoCompletedForTimeRef.current = false;
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (
+      plannedDurationSeconds === null ||
+      isLoadingSession ||
+      isPaused ||
+      !completeTargetSessionId ||
+      isCompletingRef.current ||
+      hasAutoCompletedForTimeRef.current ||
+      elapsedSeconds < plannedDurationSeconds
+    ) {
+      return;
+    }
+
+    hasAutoCompletedForTimeRef.current = true;
+    setSpeechNotice("Đã hết thời lượng phỏng vấn, hệ thống đang tổng hợp và chấm điểm.");
+    void handleCompleteInterview();
+  }, [completeTargetSessionId, elapsedSeconds, handleCompleteInterview, isLoadingSession, isPaused, plannedDurationSeconds]);
 
   async function handleSkipQuestion() {
     if (!sessionId || isThinking || isSubmitting || isPaused || isCompletingRef.current) return;
@@ -694,6 +841,7 @@ export function InterviewRoom() {
     setLastSpeechMetrics(null);
     setLastPronunciation(null);
     setSpeechNotice("");
+    clearNoSpeechRetryTimer();
     voiceRecorder.cancelRecording();
 
     setMessagesList((current) => [
@@ -743,9 +891,11 @@ export function InterviewRoom() {
     setLastSpeechMetrics(null);
     setLastPronunciation(null);
     setSpeechNotice("");
+    clearNoSpeechRetryTimer();
+    noSpeechRetryCountRef.current = 0;
     if (interviewMode !== "TEXT") {
       window.setTimeout(() => {
-        void speakText(activeQuestionDisplay, { startListeningAfter: true });
+        void speakQuestion(activeQuestion, { startListeningAfter: true });
       }, 200);
     }
   }
@@ -913,7 +1063,7 @@ export function InterviewRoom() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 rounded-2xl border border-[#F0EBE7] bg-white/80 p-3 shadow-sm md:grid-cols-[1fr_auto_auto] md:items-center">
+          <div className="grid grid-cols-1 gap-3 rounded-2xl border border-[#F0EBE7] bg-white/80 p-3 shadow-sm md:grid-cols-[1fr_auto_auto_auto] md:items-center">
             <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#F6F1EE] p-1 text-[11px] font-extrabold">
               {(["TEXT", "VOICE", "HYBRID"] as const).map((mode) => (
                 <button
@@ -927,6 +1077,22 @@ export function InterviewRoom() {
                 </button>
               ))}
             </div>
+
+            <label className="flex items-center gap-2 text-[11px] font-extrabold text-[#8C837E]">
+              <span>Nguồn đọc</span>
+              <select
+                value={selectedQuestionReader}
+                onChange={(event) => {
+                  const next = event.target.value as QuestionReaderMode;
+                  setSelectedQuestionReader(next);
+                  localStorage.setItem(questionReaderStorageKey, next);
+                }}
+                className="rounded-xl border border-[#E8E3DF] bg-white px-3 py-2 text-xs font-extrabold text-[#2B231F] outline-none"
+              >
+                <option value="ai">AI hệ thống</option>
+                <option value="human">Người thật</option>
+              </select>
+            </label>
 
             <label className="flex items-center gap-2 text-[11px] font-extrabold text-[#8C837E]">
               <span>{t.voiceLabel}</span>
@@ -1153,568 +1319,4 @@ export function InterviewRoom() {
       </footer>
     </main>
   );
-}
-
-function mapQuestions(questions: InterviewQuestionDto[]): RoomQuestion[] {
-  return questions.map(mapQuestion);
-}
-
-function mapQuestion(question: InterviewQuestionDto): RoomQuestion {
-  return {
-    aiReason: question.aiReason,
-    category: question.category,
-    difficulty: question.difficulty,
-    expectedAnswerLogic: question.expectedAnswerLogic,
-    id: question.id,
-    language: question.language,
-    questionText: question.questionText,
-    source: question.source
-  };
-}
-
-function getQuestionDisplayText(question: RoomQuestion, mode: InterviewLanguageMode) {
-  if (mode === "VI" && question.language === "VI") return question.questionText;
-  if (mode === "VI" && question.translation) return question.translation;
-  return question.questionText;
-}
-
-function getQuestionSupportText(question: RoomQuestion) {
-  return question.translation ?? question.expectedAnswerLogic ?? undefined;
-}
-
-function buildAiMessage(
-  question: RoomQuestion,
-  id: number,
-  mode: InterviewLanguageMode,
-  time = getClockTime(),
-  prefix = ""
-): ChatMessage {
-  const isBilingual = mode === "BILINGUAL";
-  const contentText = getQuestionDisplayText(question, mode);
-
-  return {
-    id,
-    author: "ai",
-    content: `${prefix}${contentText}`,
-    translation: isBilingual ? getQuestionSupportText(question) : undefined,
-    time
-  };
-}
-
-function getClockTime() {
-  return new Intl.DateTimeFormat("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date());
-}
-
-function formatElapsed(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
-  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
-}
-
-function formatDuration(minutes: number | null) {
-  if (!minutes) return "Không giới hạn";
-  if (minutes === 60) return "1 giờ";
-  if (minutes % 60 === 0) return `${minutes / 60} giờ`;
-  if (minutes > 60) return `${Math.floor(minutes / 60)} giờ ${minutes % 60} phút`;
-  return `${minutes} phút`;
-}
-
-function getVoicePresetLabel(preset: SpeechVoicePreset, t: (typeof messages)["vi"]["interview"]) {
-  const labels: Record<SpeechVoicePreset, string> = {
-    auto: t.voiceAuto,
-    clear: t.voiceClear,
-    female: t.voiceFemale,
-    male: t.voiceMale,
-    slow: t.voiceSlow,
-    warm: t.voiceWarm
-  };
-  return labels[preset];
-}
-
-function InterviewStatusRail({
-  elapsedSeconds,
-  lastFeedback,
-  liveTranscript,
-  plannedDurationMinutes,
-  remainingSeconds,
-  progress,
-  progressLabel,
-  t
-}: {
-  elapsedSeconds: number;
-  lastFeedback: LastFeedback | null;
-  liveTranscript: string;
-  plannedDurationMinutes: number | null;
-  remainingSeconds: number | null;
-  progress: number;
-  progressLabel: string;
-  t: (typeof messages)["vi"]["interview"];
-}) {
-  return (
-    <section className="mt-4 grid gap-3 md:grid-cols-3" aria-label={t.answerControls}>
-      <div className="rounded-lg border border-border bg-background p-4">
-        <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">{t.timer}</p>
-        <p className="mt-2 text-2xl font-black tabular-nums text-primary">{formatElapsed(elapsedSeconds)}</p>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={progressLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-          <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
-        </div>
-        <p className="mt-2 text-xs font-bold text-muted-foreground">{progressLabel}</p>
-      </div>
-
-      <div className="rounded-lg border border-border bg-background p-4" aria-live="polite">
-        <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">Thời lượng phỏng vấn</p>
-        <p className="mt-2 text-2xl font-black tabular-nums text-primary">{formatDuration(plannedDurationMinutes)}</p>
-        <p className={`mt-2 text-xs font-bold ${remainingSeconds === 0 ? "text-red-600" : "text-muted-foreground"}`}>
-          {remainingSeconds === null ? "Chưa đặt giới hạn" : `Còn ${formatElapsed(remainingSeconds)}`}
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-[#cfe4d8] bg-[#f4fff8] p-4" aria-live="polite">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-black uppercase tracking-wide text-[#246345]">{t.latestFeedback}</p>
-          {lastFeedback?.scoreTotal ? <span className="rounded-full bg-white px-2 py-1 text-xs font-black text-[#0a6b45]">{lastFeedback.scoreTotal}/10</span> : null}
-        </div>
-        <p className="mt-2 line-clamp-3 text-sm font-bold leading-6 text-[#1f5138]">
-          {lastFeedback?.feedback || t.noFeedbackYet}
-        </p>
-        {lastFeedback?.improvedAnswer ? (
-          <details className="mt-2 text-xs font-bold text-[#246345]">
-            <summary className="cursor-pointer">{t.improvedAnswer}</summary>
-            <p className="mt-2 leading-5">{lastFeedback.improvedAnswer}</p>
-          </details>
-        ) : null}
-      </div>
-      {liveTranscript ? (
-        <div className="rounded-lg border border-border bg-background p-4 md:col-span-3" aria-live="polite">
-          <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">{t.transcript}</p>
-          <p className="mt-2 text-sm font-bold leading-6 text-foreground">{liveTranscript}</p>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function InterviewHeader({
-  elapsedSeconds,
-  isPauseChanging,
-  isPaused,
-  plannedDurationMinutes,
-  remainingSeconds,
-  showChat,
-  value,
-  onChange,
-  onToggleChat,
-  onTogglePause,
-  t
-}: {
-  elapsedSeconds: number;
-  isPauseChanging: boolean;
-  isPaused: boolean;
-  plannedDurationMinutes: number | null;
-  remainingSeconds: number | null;
-  showChat: boolean;
-  value: InterviewLanguageMode;
-  onChange: (mode: InterviewLanguageMode) => void;
-  onToggleChat: () => void;
-  onTogglePause: () => void;
-  t: (typeof messages)["vi"]["interview"];
-}) {
-  return (
-    <header className="grid gap-4 border-b border-border bg-background px-5 py-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
-      <Link href="/dashboard" className="focus-ring inline-flex min-h-11 items-center gap-3 text-lg font-black" aria-label={t.backToDashboard}>
-        <span className="flex h-11 w-11 items-center justify-center rounded-lg text-foreground transition hover:bg-muted">
-          <ArrowLeft size={22} />
-        </span>
-        {t.title}
-      </Link>
-
-      <button type="button" onClick={onTogglePause} disabled={isPauseChanging} className="focus-ring inline-flex min-h-11 items-center justify-center gap-3 rounded-lg border border-border bg-background px-6 text-xl font-black tracking-wide shadow-sm transition hover:bg-muted disabled:opacity-50" aria-label={isPaused ? t.resume : t.pause}>
-        <Timer size={18} />
-        {formatElapsed(elapsedSeconds)}
-        <span className="text-sm font-black text-muted-foreground">
-          / {remainingSeconds === null ? formatDuration(plannedDurationMinutes) : formatElapsed((plannedDurationMinutes ?? 0) * 60)}
-        </span>
-        {isPaused ? <Play size={16} /> : <Pause size={16} />}
-      </button>
-
-      <div className="flex items-center justify-start gap-4 md:justify-end">
-        <button type="button" onClick={onToggleChat} className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-black shadow-sm transition hover:bg-muted" aria-pressed={showChat}>
-          {showChat ? <EyeOff size={16} /> : <Eye size={16} />}
-          {showChat ? "Ẩn chat" : "Hiện chat"}
-        </button>
-        <span className="text-sm font-black text-muted-foreground">{t.language}</span>
-        <select
-          value={value}
-          onChange={(event) => onChange(event.target.value as InterviewLanguageMode)}
-          className="focus-ring inline-flex min-h-11 min-w-[150px] cursor-pointer items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-black shadow-sm outline-none"
-        >
-          <option value="ZH">{t.languageZh}</option>
-          <option value="VI">{t.languageVi}</option>
-          <option value="EN">{t.languageEn}</option>
-          <option value="BILINGUAL">{t.languageBilingual}</option>
-        </select>
-      </div>
-    </header>
-  );
-}
-
-function InterviewControls({
-  interviewMode,
-  isListening,
-  isRecording,
-  isSpeaking,
-  isTranscribing,
-  onModeChange,
-  onToggleListening,
-  onToggleRecording,
-  t
-}: {
-  interviewMode: "TEXT" | "VOICE" | "HYBRID";
-  isListening: boolean;
-  isRecording: boolean;
-  isSpeaking: boolean;
-  isTranscribing: boolean;
-  onModeChange: (mode: "TEXT" | "VOICE" | "HYBRID") => void;
-  onToggleListening: () => void;
-  onToggleRecording: () => void;
-  t: (typeof messages)["vi"]["interview"];
-}) {
-  const modeLabels = {
-    HYBRID: t.hybridMode,
-    TEXT: t.textMode,
-    VOICE: t.voiceMode
-  };
-
-  return (
-    <div className="mx-auto mt-5 w-full max-w-[620px] rounded-lg border border-border bg-background px-4 py-3 shadow-sm">
-      <div className="mb-3 grid grid-cols-3 gap-2 rounded-lg bg-muted p-1 text-xs font-black">
-        {(["TEXT", "VOICE", "HYBRID"] as const).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => onModeChange(mode)}
-            className={`focus-ring min-h-11 rounded-lg px-3 py-2 transition ${interviewMode === mode ? "bg-background text-primary shadow-sm" : "text-muted-foreground"}`}
-            aria-pressed={interviewMode === mode}
-          >
-            {modeLabels[mode]}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-3">
-        <button type="button" onClick={onToggleRecording} disabled={interviewMode === "TEXT" || isTranscribing} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45">
-          <span className={`flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg ${isRecording ? "bg-[#f3374d] shadow-red-500/25" : "bg-[#0a9f7a] shadow-emerald-500/25"}`}>
-            {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={21} />}
-          </span>
-          {isTranscribing ? t.transcribing : isRecording ? t.stopRecording : t.micOn}
-        </button>
-        <button type="button" onClick={onToggleListening} disabled={isListening} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-muted disabled:cursor-wait disabled:opacity-70">
-          <span className={`flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg ${isListening ? "bg-[#d42027] shadow-red-500/25" : "bg-primary shadow-red-500/20"}`}>
-            {isListening ? <Square size={18} fill="currentColor" /> : <Volume2 size={21} />}
-          </span>
-          {isListening ? t.speaking : t.speakQuestion}
-        </button>
-        <button type="button" onClick={() => onModeChange("TEXT")} disabled={isSpeaking} className="focus-ring flex min-h-24 flex-col items-center gap-2 rounded-lg px-3 py-2 text-sm font-black transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-primary">
-            <Keyboard size={22} />
-          </span>
-          {t.textMode}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AnswerComposer({
-  autoSubmitCountdown,
-  input,
-  isLoadingSession,
-  isPaused,
-  isRecording,
-  isSubmitting,
-  isUpdatingPause,
-  onChange,
-  onSubmit,
-  t
-}: {
-  autoSubmitCountdown: number | null;
-  input: string;
-  isLoadingSession: boolean;
-  isPaused: boolean;
-  isRecording: boolean;
-  isSubmitting: boolean;
-  isUpdatingPause: boolean;
-  onChange: (value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  t: (typeof messages)["vi"]["interview"];
-}) {
-  return (
-    <form onSubmit={onSubmit} className="mt-4 border-t border-border bg-background/92 p-4" aria-label={t.answerLabel}>
-      <p className="sr-only" id="answer-input-help">{t.answerInputHelp}</p>
-      {autoSubmitCountdown ? (
-        <p className="mb-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700">
-          {interpolate(t.sendingIn, { seconds: autoSubmitCountdown })}
-        </p>
-      ) : null}
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-3 shadow-sm">
-        <label className="sr-only" htmlFor="interview-answer">{t.answerLabel}</label>
-        <input
-          id="interview-answer"
-          value={input}
-          onChange={(event) => onChange(event.target.value)}
-          disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause}
-          aria-describedby="answer-input-help"
-          className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold outline-none placeholder:text-muted-foreground"
-          placeholder={isRecording ? t.recordingPlaceholder : t.answerPlaceholder}
-        />
-        <button
-          type="submit"
-          disabled={isLoadingSession || isSubmitting || isPaused || isUpdatingPause}
-          className="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition hover:bg-primary/15"
-          aria-label={t.sendAnswer}
-        >
-          <Send size={19} />
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function ChatBubble({ message }: { message: ChatMessage }) {
-  const isAi = message.author === "ai";
-  return (
-    <div className={`flex gap-3 items-start ${isAi ? '' : 'flex-row-reverse animate-[fade-in_250ms_ease]'}`}>
-      {isAi ? (
-        <div className="h-8 w-8 shrink-0 rounded-full bg-[#D92C3D] flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm select-none">
-          AI
-        </div>
-      ) : (
-        <div className="h-8 w-8 shrink-0 rounded-full bg-[#8C837E] flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm select-none">
-          ME
-        </div>
-      )}
-      <div className="flex flex-col gap-1 max-w-[75%]">
-        <div className={`rounded-2xl px-4 py-2.5 text-xs font-semibold shadow-sm leading-relaxed ${
-          isAi 
-            ? 'bg-[#FDF8F5] border border-[#F0EBE7] text-[#2B231F]' 
-            : 'bg-[#D92C3D] text-white'
-        }`}>
-          <p className="whitespace-pre-wrap">{message.content}</p>
-          {message.translation && (
-            <p className={`mt-1 text-[10px] border-t pt-1 font-semibold leading-normal ${isAi ? 'border-[#E8E3DF] text-[#8C837E]' : 'border-white/20 text-white/80'}`}>
-              {message.translation}
-            </p>
-          )}
-        </div>
-        <span className={`text-[8px] font-bold text-[#8C837E] px-1 ${isAi ? 'text-left' : 'text-right'}`}>{message.time}</span>
-      </div>
-    </div>
-  );
-}
-
-function getVisualMetricsStatus(status: FaceAnalysisStatus, timestamp: number): VisualMetricsStatus {
-  if (status === "error" || status === "unsupported") return "unavailable";
-  if (status === "running" && timestamp > 0) return "live";
-  return "neutral";
-}
-
-function mapVisualCheckToCameraStatus(check: VisualCheckState, status: FaceAnalysisStatus): CameraCheckStatus {
-  if (status === "error" || status === "unsupported") return "unavailable";
-  return check;
-}
-
-function inferSpeechLang(text: string, fallback: string) {
-  if (/[\u4e00-\u9fff]/.test(text)) return "zh-CN";
-  if (/[\u00c0-\u1ef9]/i.test(text)) {
-    return "vi-VN";
-  }
-  if (/[a-z]/i.test(text) && fallback === "zh-CN") return "vi-VN";
-  return fallback;
-}
-
-function getBrowserVoices(): Promise<SpeechSynthesisVoice[]> {
-  return new Promise((resolve) => {
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length) {
-      resolve(voices);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => resolve(window.speechSynthesis.getVoices()), 500);
-    window.speechSynthesis.onvoiceschanged = () => {
-      window.clearTimeout(timeout);
-      resolve(window.speechSynthesis.getVoices());
-    };
-  });
-}
-
-function pickVoice(voices: SpeechSynthesisVoice[], lang: string) {
-  const normalized = lang.toLowerCase();
-  const base = normalized.split("-")[0];
-  return (
-    voices.find((voice) => voice.lang.toLowerCase() === normalized) ??
-    voices.find((voice) => voice.lang.toLowerCase().startsWith(`${base}-`)) ??
-    null
-  );
-}
-
-function isSpeechVoicePreset(value: string | null): value is SpeechVoicePreset {
-  return value === "auto" || value === "female" || value === "male" || value === "warm" || value === "slow" || value === "clear";
-}
-
-function isSpeechRate(value: number): value is SpeechRate {
-  return speechRates.includes(value as SpeechRate);
-}
-
-function normalizeVoiceName(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-const femaleVoiceHints = [
-  "female",
-  "woman",
-  "girl",
-  "zira",
-  "jenny",
-  "aria",
-  "sara",
-  "susan",
-  "victoria",
-  "huihui",
-  "xiaoxiao",
-  "xiaoyi",
-  "xiaomo",
-  "xiaohan",
-  "xiaorui",
-  "xiaoqiu",
-  "xiaorong",
-  "xiaoxuan",
-  "xiaoshuang",
-  "xiaobei",
-  "xiaoni",
-  "yaoyao",
-  "hanhan",
-  "tingting",
-  "tracy",
-  "mei",
-  "hoaimy",
-  "hoai",
-  "my",
-  "linh",
-  "mai"
-];
-
-const maleVoiceHints = [
-  "boy",
-  "david",
-  "mark",
-  "george",
-  "daniel",
-  "alex",
-  "paul",
-  "namminh",
-  "nam minh",
-  "kangkang",
-  "yunjian",
-  "yunxi",
-  "yunyang",
-  "yunhao",
-  "yunze",
-  "yunfeng"
-];
-
-const warmVoiceHints = ["natural", "premium", "online", "xiaoxiao", "zira", "jenny", "aria", "hoaimy", "linh", "mei"];
-
-function getVoiceSearchKey(voice: SpeechSynthesisVoice) {
-  return normalizeVoiceName(`${voice.name} ${voice.voiceURI}`);
-}
-
-function scorePresetVoice(voice: SpeechSynthesisVoice, wantedHints: string[], blockedHints: string[]) {
-  const key = getVoiceSearchKey(voice);
-  const wantedScore = wantedHints.reduce((score, hint) => score + (key.includes(hint) ? 4 : 0), 0);
-  const blockedScore = blockedHints.reduce((score, hint) => score + (key.includes(hint) ? 8 : 0), 0);
-  const naturalScore = key.includes("natural") || key.includes("online") ? 1 : 0;
-  return wantedScore + naturalScore - blockedScore;
-}
-
-function pickPresetVoice(voices: SpeechSynthesisVoice[], lang: string, preset: SpeechVoicePreset) {
-  const normalized = lang.toLowerCase();
-  const base = normalized.split("-")[0];
-  const languageVoices = voices.filter((voice) => {
-    const voiceLang = voice.lang.toLowerCase();
-    return voiceLang === normalized || voiceLang.startsWith(`${base}-`);
-  });
-
-  if (preset === "auto" || preset === "slow" || preset === "clear") return pickVoice(voices, lang);
-
-  if (!languageVoices.length) return null;
-
-  const wantedHints = preset === "female" ? femaleVoiceHints : preset === "male" ? maleVoiceHints : warmVoiceHints;
-  const blockedHints = preset === "female" ? maleVoiceHints : preset === "male" ? femaleVoiceHints : [];
-
-  const scored = languageVoices
-    .map((voice) => {
-      return { score: scorePresetVoice(voice, wantedHints, blockedHints), voice };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  if (scored[0]?.score > 0) return scored[0].voice;
-
-  return preset === "warm" ? pickVoice(languageVoices, lang) : null;
-}
-
-function getPresetRate(lang: string, preset: SpeechVoicePreset, speechRate: SpeechRate = 1) {
-  const baseRate = (() => {
-    if (preset === "slow") return lang === "zh-CN" ? 0.92 : 0.95;
-    if (preset === "clear") return lang === "zh-CN" ? 1.06 : 1.08;
-    if (preset === "warm") return lang === "zh-CN" ? 0.98 : 1;
-    return lang === "zh-CN" ? 1.02 : 1.04;
-  })();
-  return Math.min(1.8, Math.max(0.45, baseRate * speechRate));
-}
-
-function getPresetPitch(preset: SpeechVoicePreset) {
-  if (preset === "female") return 1.06;
-  if (preset === "male") return 0.94;
-  if (preset === "warm") return 0.96;
-  return 1;
-}
-
-function shouldPreferRemoteSpeech(preset: SpeechVoicePreset) {
-  return preset !== "auto";
-}
-
-function getRemoteSpeechPreset(preset: SpeechVoicePreset, lang: string, speechRate: SpeechRate): { voice: RemoteSpeechVoice; speed: number } {
-  const speed = getPresetRate(lang, preset, speechRate);
-  if (preset === "male") return { voice: "onyx", speed };
-  if (preset === "warm") return { voice: "shimmer", speed };
-  if (preset === "clear") return { voice: "shimmer", speed };
-  return { voice: "nova", speed };
-}
-
-async function speakWithBrowser(text: string, lang: string, errorMessage: string, preset: SpeechVoicePreset = "auto", speechRate: SpeechRate = 1) {
-  const voices = await getBrowserVoices();
-  const voice = pickPresetVoice(voices, lang, preset);
-
-  if (!voice) {
-    const presetLabel = preset === "female" ? "n\u1eef" : preset === "male" ? "nam" : "ph\u00f9 h\u1ee3p";
-    throw new MissingBrowserVoiceError(`M\u00e1y ch\u01b0a c\u00f3 gi\u1ecdng ${presetLabel} cho ${lang}.`);
-  }
-
-  return new Promise<void>((resolve, reject) => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = voice?.lang ?? lang;
-    utterance.rate = getPresetRate(lang, preset, speechRate);
-    utterance.pitch = getPresetPitch(preset);
-    if (voice) utterance.voice = voice;
-    utterance.onend = () => resolve();
-    utterance.onerror = () => reject(new Error(errorMessage));
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  });
 }

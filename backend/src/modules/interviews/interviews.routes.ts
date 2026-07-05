@@ -8,11 +8,13 @@ import {
   LanguageCode,
   Prisma,
   QuestionCategory,
-  QuestionSource
+  QuestionSource,
+  audio_source
 } from "@prisma/client";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
+import { env } from "../../config/env.js";
 import { requireAuth, type AuthenticatedUser } from "../auth/auth.middleware.js";
 import { generateInterviewQuestions, scoreInterviewAnswerWithAi } from "../ai/ai.service.js";
 import { createAdaptiveQuestion } from "./adaptive-interview.engine.js";
@@ -23,8 +25,8 @@ import {
   checkAiCallBudget as checkAiCallBudgetFromService,
   delay as delayFromService,
   findBankQuestions as findBankQuestionsFromService,
+  getQuestionLimitForDuration,
   getUserInterviewSessionsList,
-  maxSessionQuestions as serviceMaxSessionQuestions,
   rejectLockedSession as rejectLockedSessionFromService,
   toQuestionDto as toQuestionDtoFromService
 } from "./interviews.service.js";
@@ -44,6 +46,7 @@ import {
   type StudyPlanParseStatus,
   type SupportedDocumentType
 } from "../profiles/document-parser.js";
+import { getR2PlaybackUrl, MissingR2ConfigError } from "../storage/r2.service.js";
 
 export const interviewsRouter = Router();
 
@@ -360,9 +363,11 @@ interviewsRouter.post("/", async (req, res) => {
       targetMajor: sessionTargetMajor,
       targetSchool: sessionTargetSchool
     });
+    const targetQuestionCount = getQuestionLimitForDuration(requiredPaymentMinutes);
     const bankQuestions = await findBankQuestionsFromService({
       degreeLevel: sessionDegreeLevel,
       language,
+      limit: targetQuestionCount,
       majorId: ragContext.majorId ?? sessionMajorId,
       schoolId: ragContext.schoolId ?? sessionSchoolId,
       scholarshipId: ragContext.scholarshipId ?? sessionScholarshipId,
@@ -370,35 +375,42 @@ interviewsRouter.post("/", async (req, res) => {
       targetMajor: sessionTargetMajor,
       targetSchool: sessionTargetSchool
     });
-    const aiBudget = await checkAiCallBudgetFromService(user.id);
-    if (!aiBudget.ok) {
-      res.status(429).json({ message: aiBudget.message });
-      return;
+    const needsAiSeedQuestions = bankQuestions.length < targetQuestionCount;
+    if (needsAiSeedQuestions) {
+      const aiBudget = await checkAiCallBudgetFromService(user.id);
+      if (!aiBudget.ok) {
+        res.status(429).json({ message: aiBudget.message });
+        return;
+      }
     }
-    const aiQuestions = await generateInterviewQuestions({
-      degreeLevel: sessionDegreeLevel ?? "BACHELOR",
-      language,
-      questionBankContext: bankQuestions.slice(0, 8).map((question) => ({
-        category: question.category,
-        commonMistakes: question.commonMistakes,
-        expectedAnswerLogic: question.suggestedAnswerLogic,
-        keywords: question.keywords,
-        questionText: question.questionText,
-        sampleAnswer: question.sampleAnswer,
-        scoringRubric: question.scoringRubric
-      })),
-      ragContext: ragContext.contextText,
-      scholarshipType: sessionScholarshipType,
-      studyPlan: sessionStudyPlan,
-      targetMajor: sessionTargetMajor,
-      targetSchool: sessionTargetSchool,
-      userId: user.id
-    });
+
+    const aiQuestions = needsAiSeedQuestions
+      ? await generateInterviewQuestions({
+          degreeLevel: sessionDegreeLevel ?? "BACHELOR",
+          language,
+          questionBankContext: bankQuestions.slice(0, 8).map((question) => ({
+            category: question.category,
+            commonMistakes: question.commonMistakes,
+            expectedAnswerLogic: question.suggestedAnswerLogic,
+            keywords: question.keywords,
+            questionText: question.questionText,
+            sampleAnswer: question.sampleAnswer,
+            scoringRubric: question.scoringRubric
+          })),
+          ragContext: ragContext.contextText,
+          scholarshipType: sessionScholarshipType,
+          studyPlan: sessionStudyPlan,
+          targetMajor: sessionTargetMajor,
+          targetSchool: sessionTargetSchool,
+          userId: user.id
+        })
+      : [];
 
     const preparedQuestions = buildPreparedQuestionsFromService({
       aiQuestions,
       bankQuestions,
-      language
+      language,
+      targetQuestionCount
     });
 
     const session = await prisma.interviewSession.create({
@@ -1051,6 +1063,63 @@ interviewsRouter.get("/:sessionId", async (req, res) => {
   res.json({ session: toSessionDto(session) });
 });
 
+interviewsRouter.get("/:sessionId/questions/:sessionQuestionId/audio", async (req, res) => {
+  const user = res.locals.user as AuthenticatedUser;
+  const sessionQuestion = await prisma.interviewSessionQuestion.findFirst({
+    where: {
+      id: req.params.sessionQuestionId,
+      sessionId: req.params.sessionId,
+      session: { userId: user.id }
+    },
+    select: {
+      language: true,
+      questionId: true
+    }
+  });
+
+  if (!sessionQuestion) {
+    res.status(404).json({ message: "Không tìm thấy câu hỏi trong buổi phỏng vấn" });
+    return;
+  }
+
+  if (!sessionQuestion.questionId) {
+    res.json({ audioUrl: null, source: null });
+    return;
+  }
+
+  const audio = await prisma.question_audios.findFirst({
+    where: {
+      language: sessionQuestion.language,
+      question_id: sessionQuestion.questionId,
+      source: audio_source.HUMAN_RECORDED
+    },
+    orderBy: { created_at: "desc" }
+  });
+
+  if (!audio) {
+    res.json({ audioUrl: null, source: null });
+    return;
+  }
+
+  let audioUrl: string;
+  try {
+    audioUrl = await resolveStoredAudioUrl(audio.file_url, req);
+  } catch (error) {
+    if (error instanceof MissingR2ConfigError) {
+      res.status(503).json({ message: error.message });
+      return;
+    }
+    throw error;
+  }
+
+  res.json({
+    audioUrl,
+    durationSeconds: audio.duration_seconds?.toString() ?? null,
+    source: audio.source,
+    voiceName: audio.voice_name
+  });
+});
+
 interviewsRouter.get("/:sessionId/analysis", async (req, res) => {
   const user = res.locals.user as AuthenticatedUser;
   const session = await prisma.interviewSession.findFirst({
@@ -1587,7 +1656,9 @@ interviewsRouter.post("/:sessionId/next-question", async (req, res) => {
       return;
     }
 
-    if (session.sessionQuestions.length >= serviceMaxSessionQuestions) {
+    const sessionQuestionLimit = getQuestionLimitForDuration(session.plannedDurationMinutes);
+
+    if (session.sessionQuestions.length >= sessionQuestionLimit) {
       if (existingNext) {
         res.json({
           aiThinking: false,
@@ -1597,7 +1668,7 @@ interviewsRouter.post("/:sessionId/next-question", async (req, res) => {
         return;
       }
 
-      res.status(409).json({ message: "Buổi phỏng vấn đã đạt giới hạn số câu hỏi." });
+      res.status(409).json({ message: "Buổi phỏng vấn đã đạt giới hạn số câu theo thời lượng đã chọn." });
       return;
     }
 
@@ -2273,6 +2344,15 @@ function toDifficultyLevel(difficulty: string): DifficultyLevel {
     : difficulty === "HARD"
       ? DifficultyLevel.HARD
       : DifficultyLevel.MEDIUM;
+}
+
+async function resolveStoredAudioUrl(fileUrl: string, req: Request) {
+  const playbackUrl = await getR2PlaybackUrl(fileUrl);
+  if (/^(https?:|blob:|data:)/i.test(playbackUrl)) return playbackUrl;
+  if (!playbackUrl.startsWith("/")) return playbackUrl;
+
+  const origin = (env.backendPublicUrl ?? `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+  return `${origin}${playbackUrl}`;
 }
 
 type SessionDtoInput = Omit<

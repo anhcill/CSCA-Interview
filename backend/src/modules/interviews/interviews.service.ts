@@ -16,7 +16,10 @@ import { awardBadgesForUser } from "../gamification/gamification.service.js";
 import { normalizeSearchText, rankSearchCandidate } from "../../utils/search-normalize.js";
 
 // ── Constants ──────────────────────────────────────────────────────────
-export const maxSessionQuestions = 10;
+const defaultPlannedDurationMinutes = 30;
+const estimatedMinutesPerQuestion = 6;
+const minSessionQuestions = 3;
+export const maxSessionQuestions = 30;
 export const initialSessionQuestions = 5;
 export const maxAiCallsPerUserPerDay = Number(process.env.AI_DAILY_CALL_LIMIT ?? 40);
 
@@ -176,6 +179,18 @@ export function delay(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+export function getQuestionLimitForDuration(plannedDurationMinutes?: number | null) {
+  const minutes = Number(plannedDurationMinutes ?? defaultPlannedDurationMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return initialSessionQuestions;
+
+  return clampQuestionLimit(Math.round(minutes / estimatedMinutesPerQuestion));
+}
+
+function clampQuestionLimit(value: number) {
+  if (!Number.isFinite(value)) return initialSessionQuestions;
+  return Math.max(minSessionQuestions, Math.min(maxSessionQuestions, Math.floor(value)));
+}
+
 export async function checkAiCallBudget(userId: string, requestedCalls = 1) {
   if (requestedCalls <= 0) {
     return { ok: true as const };
@@ -209,6 +224,7 @@ export async function checkAiCallBudget(userId: string, requestedCalls = 1) {
 type BankQuestionLookupInput = {
   degreeLevel?: DegreeLevel | null;
   language: LanguageCode;
+  limit?: number;
   majorId?: string | null;
   schoolId?: string | null;
   scholarshipId?: string | null;
@@ -219,6 +235,7 @@ type BankQuestionLookupInput = {
 
 export async function findBankQuestions(input: BankQuestionLookupInput | LanguageCode, degreeLevel?: DegreeLevel | null) {
   const lookup = typeof input === "string" ? { degreeLevel, language: input } : input;
+  const limit = clampQuestionLimit(lookup.limit ?? 7);
   const [school, major, scholarship] = await Promise.all([
     findSchoolTarget(lookup.schoolId, lookup.targetSchool),
     findMajorTarget(lookup.majorId, lookup.targetMajor),
@@ -249,7 +266,7 @@ export async function findBankQuestions(input: BankQuestionLookupInput | Languag
   return questions
     .sort((left, right) => questionTargetScore(right, { majorId: major?.id, scholarshipId: scholarship?.id, schoolId: school?.id })
       - questionTargetScore(left, { majorId: major?.id, scholarshipId: scholarship?.id, schoolId: school?.id }))
-    .slice(0, 7);
+    .slice(0, limit);
 }
 
 function scopeQuestionField(field: "majorId" | "scholarshipId" | "schoolId", id: string | null): Prisma.QuestionWhereInput {
@@ -405,12 +422,15 @@ export async function getUserInterviewSessionsList(userId: string, limit = 10, s
 export function buildPreparedQuestions({
   aiQuestions,
   bankQuestions,
-  language
+  language,
+  targetQuestionCount
 }: {
   aiQuestions: Awaited<ReturnType<typeof generateInterviewQuestions>>;
   bankQuestions: Awaited<ReturnType<typeof findBankQuestions>>;
   language: LanguageCode;
+  targetQuestionCount?: number;
 }): PreparedQuestion[] {
+  const questionLimit = clampQuestionLimit(targetQuestionCount ?? initialSessionQuestions);
   const bankPrepared = bankQuestions.map((question) => ({
     category: question.category,
     difficulty: question.difficulty,
@@ -441,7 +461,7 @@ export function buildPreparedQuestions({
     .filter((question, index, questions) => {
       return questions.findIndex((item) => item.questionText === question.questionText) === index;
     })
-    .slice(0, initialSessionQuestions);
+    .slice(0, questionLimit);
 }
 
 export function toQuestionCategory(category: string): QuestionCategory {

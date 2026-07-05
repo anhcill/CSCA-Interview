@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Settings } from "lucide-react";
+import { Bot, CheckCircle2, Copy, RefreshCw, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 
@@ -68,12 +68,64 @@ const defaultAgentRoutes: Record<string, AiRouteConfig> = {
 const defaultRoute: AiRouteConfig = { provider: "9router", model: "cx/gpt-5.5" };
 const defaultNineRouterBaseUrl = "https://9router-production-d1ef.up.railway.app/v1";
 
+const quickModelProfiles: Array<{
+  description: string;
+  id: string;
+  label: string;
+  routes: Record<string, AiRouteConfig>;
+}> = [
+  {
+    id: "strong",
+    label: "Mạnh",
+    description: "Ưu tiên chấm và phân tích kỹ.",
+    routes: defaultAgentRoutes
+  },
+  {
+    id: "balanced",
+    label: "Cân bằng",
+    description: "Ổn cho vận hành hằng ngày.",
+    routes: {
+      default: { provider: "9router", model: "cx/gpt-5.4" },
+      adaptive_follow_up_generator: { provider: "9router", model: "cx/gpt-5.4-mini" },
+      answer_scoring_evaluator: { provider: "9router", model: "ag/claude-sonnet-4-6" },
+      interview_question_generator: { provider: "9router", model: "cx/gpt-5.4" },
+      study_plan_analyzer: { provider: "9router", model: "ag/claude-sonnet-4-6" }
+    }
+  },
+  {
+    id: "fast",
+    label: "Nhanh",
+    description: "Giảm độ trễ khi đông người dùng.",
+    routes: {
+      default: { provider: "9router", model: "cx/gpt-5.4-mini" },
+      adaptive_follow_up_generator: { provider: "9router", model: "cx/gpt-5.4-mini" },
+      answer_scoring_evaluator: { provider: "9router", model: "cx/gpt-5.4-mini-review" },
+      interview_question_generator: { provider: "9router", model: "cx/gpt-5.4-mini" },
+      study_plan_analyzer: { provider: "9router", model: "cx/gpt-5.4-mini-review" }
+    }
+  },
+  {
+    id: "review",
+    label: "Review kỹ",
+    description: "Dùng model review cho các tác vụ cần soi sâu.",
+    routes: {
+      default: { provider: "9router", model: "cx/gpt-5.5-review" },
+      adaptive_follow_up_generator: { provider: "9router", model: "cx/gpt-5.4-mini" },
+      answer_scoring_evaluator: { provider: "9router", model: "cx/gpt-5.5-review" },
+      interview_question_generator: { provider: "9router", model: "cx/gpt-5.5" },
+      study_plan_analyzer: { provider: "9router", model: "cx/gpt-5.5-review" }
+    }
+  }
+];
+
 export function AiModelRouterPanel({ onSaved, token }: Props) {
   const [agents, setAgents] = useState<AiAgentOption[]>([]);
   const [providers, setProviders] = useState<AiProviderOption[]>([]);
   const [presets, setPresets] = useState<AiPresetOption[]>([]);
   const [settingKey, setSettingKey] = useState("ai_model_router");
   const [routes, setRoutes] = useState<Record<string, AiRouteConfig>>({ default: defaultRoute });
+  const [bulkProvider, setBulkProvider] = useState<AiProviderId>(defaultRoute.provider);
+  const [bulkModel, setBulkModel] = useState(defaultRoute.model);
   const [nineRouterBaseUrl, setNineRouterBaseUrl] = useState(defaultNineRouterBaseUrl);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,6 +152,8 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
       setProviders(response.providers);
       setPresets(response.presets);
       setRoutes(nextRoutes);
+      setBulkProvider(nextRoutes.default.provider);
+      setBulkModel(nextRoutes.default.model);
       setSettingKey(response.settingKey);
       setNineRouterBaseUrl(setting?.providers?.["9router"]?.baseUrl || setting?.providers?.ninerouter?.baseUrl || defaultNineRouterBaseUrl);
     } catch (err) {
@@ -120,6 +174,15 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
     }, {});
   }, [presets]);
 
+  function firstModelForProvider(provider: AiProviderId) {
+    return presetsByProvider[provider]?.[0]?.model ?? "";
+  }
+
+  function changeBulkProvider(provider: AiProviderId) {
+    setBulkProvider(provider);
+    setBulkModel(firstModelForProvider(provider));
+  }
+
   function updateRoute(routeKey: string, patch: Partial<AiRouteConfig>) {
     setRoutes((current) => {
       const previous = current[routeKey] ?? defaultRoute;
@@ -131,6 +194,68 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
         [routeKey]: { provider, model }
       };
     });
+  }
+
+  function applyRouteToAll(route: AiRouteConfig) {
+    setRoutes((current) => {
+      const next: Record<string, AiRouteConfig> = {
+        ...current,
+        default: { ...route }
+      };
+
+      agents.forEach((agent) => {
+        next[agent.key] = { ...route };
+      });
+
+      return next;
+    });
+  }
+
+  function applyBulkRoute() {
+    const model = bulkModel.trim();
+    if (!model) return;
+    applyRouteToAll({ provider: bulkProvider, model });
+  }
+
+  function applyQuickProfile(profile: (typeof quickModelProfiles)[number]) {
+    const profileDefault = profile.routes.default ?? defaultRoute;
+    setRoutes((current) => {
+      const next: Record<string, AiRouteConfig> = {
+        ...current,
+        default: { ...profileDefault }
+      };
+
+      agents.forEach((agent) => {
+        next[agent.key] = { ...(profile.routes[agent.key] ?? profileDefault) };
+      });
+
+      return next;
+    });
+    setBulkProvider(profileDefault.provider);
+    setBulkModel(profileDefault.model);
+  }
+
+  function copyDefaultToAgents() {
+    setRoutes((current) => {
+      const defaultConfig = current.default ?? defaultRoute;
+      const next: Record<string, AiRouteConfig> = { ...current, default: { ...defaultConfig } };
+      agents.forEach((agent) => {
+        next[agent.key] = { ...defaultConfig };
+      });
+      return next;
+    });
+  }
+
+  function resetRoutesToDefault() {
+    const next: Record<string, AiRouteConfig> = {
+      default: { ...defaultRoute }
+    };
+    agents.forEach((agent) => {
+      next[agent.key] = { ...(defaultAgentRoutes[agent.key] ?? defaultRoute) };
+    });
+    setRoutes(next);
+    setBulkProvider(defaultRoute.provider);
+    setBulkModel(defaultRoute.model);
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -162,7 +287,7 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
   async function testRoute(routeKey: string) {
     const route = routes[routeKey] ?? defaultRoute;
     setTestingKey(routeKey);
-      setTestResults((current) => ({ ...current, [routeKey]: { ok: false, message: "Đang kiểm tra model..." } }));
+    setTestResults((current) => ({ ...current, [routeKey]: { ok: false, message: "Đang kiểm tra model..." } }));
     try {
       const result = await apiPost<AiTestResponse>("/api/admin/ai-model-router/test", {
         baseUrl: route.provider === "9router" ? nineRouterBaseUrl.trim() || null : null,
@@ -199,57 +324,92 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
       {error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
 
       <form onSubmit={save} className="mt-4 space-y-4">
-        <label className="block text-sm font-semibold">
-          9Router base URL
-          <input
-            className="mt-1 min-h-10 w-full rounded-lg border px-3 text-sm"
-            value={nineRouterBaseUrl}
-            onChange={(event) => setNineRouterBaseUrl(event.target.value)}
-            placeholder={defaultNineRouterBaseUrl}
-          />
-        </label>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          <label className="block text-sm font-semibold">
+            9Router base URL
+            <input
+              className="mt-1 min-h-10 w-full rounded-lg border px-3 text-sm"
+              value={nineRouterBaseUrl}
+              onChange={(event) => setNineRouterBaseUrl(event.target.value)}
+              placeholder={defaultNineRouterBaseUrl}
+            />
+          </label>
+          <div className="flex flex-wrap items-end gap-2">
+            <button type="button" onClick={copyDefaultToAgents} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-bold hover:bg-slate-50">
+              <Copy size={16} />Copy mặc định
+            </button>
+            <button type="button" onClick={resetRoutesToDefault} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-bold hover:bg-slate-50">
+              <RefreshCw size={16} />Mặc định hệ thống
+            </button>
+          </div>
+        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Chức năng AI</th>
-                <th className="px-3 py-2">Provider</th>
-                <th className="px-3 py-2">Model</th>
-                <th className="px-3 py-2">Kiểm tra</th>
-                <th className="px-3 py-2">Kết quả</th>
-              </tr>
-            </thead>
-            <tbody>
-              <ModelRouteRow
-                description="Route mặc định nếu agent chưa có cấu hình riêng."
-                label="Mặc định"
-                presetsByProvider={presetsByProvider}
-                providers={providers}
-                result={testResults.default}
-                route={routes.default ?? defaultRoute}
-                routeKey="default"
-                testing={testingKey === "default"}
-                onChange={updateRoute}
-                onTest={testRoute}
+        <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
+            <div>
+              <p className="text-sm font-bold text-indigo-900">Chuyển nhanh theo cấu hình</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {quickModelProfiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => applyQuickProfile(profile)}
+                    className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 text-xs font-bold text-indigo-800 hover:bg-indigo-50"
+                    title={profile.description}
+                  >
+                    <Settings size={14} />{profile.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[150px_minmax(220px,1fr)_auto]">
+              <select
+                className="min-h-10 rounded-lg border bg-white px-3 text-sm"
+                value={bulkProvider}
+                onChange={(event) => changeBulkProvider(event.target.value as AiProviderId)}
+              >
+                {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
+              </select>
+              <BulkModelPicker
+                model={bulkModel}
+                presets={presetsByProvider[bulkProvider] ?? []}
+                onChange={setBulkModel}
               />
-              {agents.map((agent) => (
-                <ModelRouteRow
-                  key={agent.key}
-                  description={agent.description}
-                  label={agent.label}
-                  presetsByProvider={presetsByProvider}
-                  providers={providers}
-                  result={testResults[agent.key]}
-                  route={routes[agent.key] ?? routes.default ?? defaultRoute}
-                  routeKey={agent.key}
-                  testing={testingKey === agent.key}
-                  onChange={updateRoute}
-                  onTest={testRoute}
-                />
-              ))}
-            </tbody>
-          </table>
+              <button type="button" onClick={applyBulkRoute} disabled={!bulkModel.trim()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+                <CheckCircle2 size={16} />Áp cho tất cả
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          <ModelRouteCard
+            description="Route mặc định nếu agent chưa có cấu hình riêng."
+            label="Mặc định"
+            presetsByProvider={presetsByProvider}
+            providers={providers}
+            result={testResults.default}
+            route={routes.default ?? defaultRoute}
+            routeKey="default"
+            testing={testingKey === "default"}
+            onChange={updateRoute}
+            onTest={testRoute}
+          />
+          {agents.map((agent) => (
+            <ModelRouteCard
+              key={agent.key}
+              description={agent.description}
+              label={agent.label}
+              presetsByProvider={presetsByProvider}
+              providers={providers}
+              result={testResults[agent.key]}
+              route={routes[agent.key] ?? routes.default ?? defaultRoute}
+              routeKey={agent.key}
+              testing={testingKey === agent.key}
+              onChange={updateRoute}
+              onTest={testRoute}
+            />
+          ))}
         </div>
 
         <button type="submit" disabled={saving || loading} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white disabled:opacity-50">
@@ -261,7 +421,37 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
   );
 }
 
-function ModelRouteRow(props: {
+function BulkModelPicker(props: {
+  model: string;
+  onChange: (model: string) => void;
+  presets: AiPresetOption[];
+}) {
+  const selectedPreset = props.presets.find((preset) => preset.model === props.model);
+
+  return (
+    <div>
+      {props.presets.length ? (
+        <select
+          className="min-h-10 w-full rounded-lg border bg-white px-3 text-sm"
+          value={props.model}
+          onChange={(event) => props.onChange(event.target.value)}
+        >
+          {props.presets.map((preset) => <option key={preset.model} value={preset.model}>{preset.label}</option>)}
+          {props.model && !selectedPreset ? <option value={props.model}>{props.model}</option> : null}
+        </select>
+      ) : null}
+      <input
+        className={props.presets.length ? "mt-2 min-h-10 w-full rounded-lg border bg-white px-3 font-mono text-xs" : "min-h-10 w-full rounded-lg border bg-white px-3 font-mono text-xs"}
+        value={props.model}
+        onChange={(event) => props.onChange(event.target.value)}
+        placeholder="Nhập model ID"
+      />
+      {selectedPreset ? <p className="mt-1 text-xs font-semibold text-slate-500">{selectedPreset.tier}</p> : null}
+    </div>
+  );
+}
+
+function ModelRouteCard(props: {
   description: string;
   label: string;
   onChange: (routeKey: string, patch: Partial<AiRouteConfig>) => void;
@@ -277,12 +467,13 @@ function ModelRouteRow(props: {
   const selectedPreset = providerPresets.find((preset) => preset.model === props.route.model);
 
   return (
-    <tr className="border-t align-top">
-      <td className="px-3 py-3">
-        <p className="font-bold">{props.label}</p>
-        <p className="mt-1 max-w-xs text-xs text-slate-500">{props.description}</p>
-      </td>
-      <td className="px-3 py-3">
+    <div className="rounded-lg border bg-white p-4">
+      <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_170px_minmax(260px,1.25fr)_auto_minmax(150px,0.7fr)] lg:items-start">
+        <div>
+          <p className="font-bold">{props.label}</p>
+          <p className="mt-1 text-xs text-slate-500">{props.description}</p>
+          <p className="mt-2 rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-500">{props.routeKey}</p>
+        </div>
         <select
           className="min-h-10 w-full rounded-lg border px-3 text-sm"
           value={props.route.provider}
@@ -290,45 +481,41 @@ function ModelRouteRow(props: {
         >
           {props.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
         </select>
-      </td>
-      <td className="px-3 py-3">
-        {providerPresets.length ? (
-          <select
-            className="min-h-10 w-full rounded-lg border px-3 text-sm"
-            value={props.route.model}
-            onChange={(event) => props.onChange(props.routeKey, { model: event.target.value })}
-          >
-            {providerPresets.map((preset) => <option key={preset.model} value={preset.model}>{preset.label}</option>)}
-            {props.route.model && !selectedPreset ? <option value={props.route.model}>{props.route.model}</option> : null}
-          </select>
-        ) : null}
-        <input
-          className={providerPresets.length ? "mt-2 min-h-10 w-full rounded-lg border px-3 font-mono text-xs" : "min-h-10 w-full rounded-lg border px-3 font-mono text-xs"}
-          value={props.route.model}
-          onChange={(event) => props.onChange(props.routeKey, { model: event.target.value })}
-          placeholder="Nhập model ID"
+        <BulkModelPicker
+          model={props.route.model}
+          presets={providerPresets}
+          onChange={(model) => props.onChange(props.routeKey, { model })}
         />
-        <p className="mt-1 text-xs text-slate-500">{selectedPreset?.tier ?? props.route.model}</p>
-      </td>
-      <td className="px-3 py-3">
-        <button
-          type="button"
-          className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:opacity-50"
-          disabled={props.testing || !props.route.model}
-          onClick={() => props.onTest(props.routeKey)}
-        >
-          <Bot size={14} />
-          {props.testing ? "Đang kiểm tra" : "Kiểm tra"}
-        </button>
-      </td>
-      <td className="px-3 py-3">
-        {props.result ? (
-          <p className={props.result.ok ? "text-xs font-semibold text-emerald-700" : "text-xs font-semibold text-red-700"}>
-            {props.result.ok ? `OK${props.result.latencyMs ? ` - ${props.result.latencyMs}ms` : ""}` : props.result.message}
-          </p>
-        ) : <span className="text-xs text-slate-400">Chưa kiểm tra</span>}
-      </td>
-    </tr>
+        <div className="space-y-2">
+          <button
+            type="button"
+            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50 disabled:opacity-50"
+            disabled={props.testing || !props.route.model}
+            onClick={() => props.onTest(props.routeKey)}
+          >
+            <Bot size={14} />
+            {props.testing ? "Đang kiểm tra" : "Kiểm tra"}
+          </button>
+          <button
+            type="button"
+            className="inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50"
+            onClick={() => props.onChange(props.routeKey, defaultAgentRoutes[props.routeKey] ?? defaultRoute)}
+          >
+            <RefreshCw size={14} />Reset dòng
+          </button>
+        </div>
+        <div>
+          {props.result ? (
+            <p className={props.result.ok ? "rounded-lg bg-emerald-50 p-2 text-xs font-semibold text-emerald-700" : "rounded-lg bg-red-50 p-2 text-xs font-semibold text-red-700"}>
+              {props.result.ok ? `OK${props.result.latencyMs ? ` - ${props.result.latencyMs}ms` : ""}` : props.result.message}
+            </p>
+          ) : (
+            <span className="inline-flex rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-400">Chưa kiểm tra</span>
+          )}
+          <p className="mt-2 break-all font-mono text-[11px] text-slate-500">{selectedPreset?.label ?? props.route.model}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

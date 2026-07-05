@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, CameraOff, Settings } from "lucide-react";
+import { Camera, CameraOff } from "lucide-react";
 import type { RefObject } from "react";
 import { VisualMetricsOverlay, type VisualMetrics, type VisualMetricsStatus } from "./visual-metrics-panel";
 
@@ -27,10 +27,12 @@ export function WebcamPreview({ activeSubtitle, isCameraOn, metrics, metricsStat
 
       {!isCameraOn ? <CameraPlaceholder /> : null}
 
-      <div className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#2B231F]/40 px-3 py-1.5 text-[10px] font-extrabold tracking-wider text-white backdrop-blur-md">
-        <span className="h-2 w-2 rounded-full bg-[#FF453A] animate-pulse" />
-        <span>LIVE</span>
-      </div>
+      {isCameraOn ? (
+        <div className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#2B231F]/40 px-3 py-1.5 text-[10px] font-extrabold tracking-wider text-white backdrop-blur-md">
+          <span className="h-2 w-2 rounded-full bg-[#FF453A] animate-pulse" />
+          <span>LIVE</span>
+        </div>
+      ) : null}
 
       <button
         type="button"
@@ -39,10 +41,10 @@ export function WebcamPreview({ activeSubtitle, isCameraOn, metrics, metricsStat
         title={isCameraOn ? "Tắt camera" : "Bật camera"}
         aria-label={isCameraOn ? "Tắt camera" : "Bật camera"}
       >
-        {isCameraOn ? <Settings size={15} /> : <Camera size={15} />}
+        {isCameraOn ? <CameraOff size={15} /> : <Camera size={15} />}
       </button>
 
-      <VisualMetricsOverlay metrics={metrics} status={metricsStatus} />
+      {isCameraOn ? <VisualMetricsOverlay metrics={metrics} status={metricsStatus} /> : null}
 
       <div className="absolute bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#2B231F]/80 p-4 text-white shadow-lg backdrop-blur-md">
         <div className="min-w-0 flex-1">

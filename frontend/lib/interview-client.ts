@@ -22,6 +22,13 @@ export type NextInterviewQuestionResponse = {
   question: InterviewQuestionDto;
 };
 
+export type InterviewQuestionAudioResponse = {
+  audioUrl: string | null;
+  durationSeconds?: string | null;
+  source: "HUMAN_RECORDED" | null;
+  voiceName?: string | null;
+};
+
 export type InterviewAnswerDto = {
   answerText: string | null;
   feedback: string | null;
@@ -214,6 +221,13 @@ export async function fetchInterviewSession(sessionId: string) {
   return apiGet<CreateInterviewResponse>(`/api/interviews/${sessionId}`, {
     token: getRequiredToken()
   });
+}
+
+export async function fetchInterviewQuestionAudio(sessionId: string, sessionQuestionId: string) {
+  return apiGet<InterviewQuestionAudioResponse>(
+    `/api/interviews/${sessionId}/questions/${sessionQuestionId}/audio`,
+    { cacheMs: 0, token: getRequiredToken() }
+  );
 }
 
 export async function fetchInterviewAnalysis(sessionId: string) {

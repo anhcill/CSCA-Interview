@@ -172,6 +172,10 @@ function cachePublic(ttlMs: number) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET") return next();
     if (req.headers.authorization) return next();
+    if (shouldBypassCache(req)) {
+      res.setHeader("Cache-Control", "no-store");
+      return next();
+    }
     const key = req.originalUrl;
     try {
       const cached = await getCachedJson(key);
@@ -203,6 +207,10 @@ function cachePublic(ttlMs: number) {
 function cachePrivate(ttlMs: number) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET") return next();
+    if (shouldBypassCache(req)) {
+      res.setHeader("Cache-Control", "no-store");
+      return next();
+    }
 
     const authHash = req.headers.authorization
       ? createHash("sha256").update(req.headers.authorization).digest("hex").slice(0, 18)
@@ -234,6 +242,12 @@ function cachePrivate(ttlMs: number) {
     };
     next();
   };
+}
+
+function shouldBypassCache(req: Request) {
+  const cacheControl = String(req.headers["cache-control"] ?? "").toLowerCase();
+  const pragma = String(req.headers.pragma ?? "").toLowerCase();
+  return cacheControl.includes("no-cache") || cacheControl.includes("no-store") || pragma.includes("no-cache");
 }
 
 function clearCacheOnMutation(req: Request, _res: Response, next: NextFunction) {

@@ -69,6 +69,8 @@ export const aiModelPresetOptions = [
   { model: "cx/gpt-5.4-mini-review", provider: "9router", label: "CX GPT-5.4 Mini Review", tier: "Nhanh hơn cho review" },
   { model: "ag/claude-sonnet-4-6", provider: "9router", label: "Claude Sonnet 4.6", tier: "Mạnh, diễn giải tốt" },
   { model: "ag/claude-opus-4-6-thinking", provider: "9router", label: "Claude Opus 4.6 Thinking", tier: "Rất mạnh, suy luận sâu" },
+  { model: "deepseek-v4-flash", provider: "deepseek", label: "DeepSeek-V4-Flash", tier: "Nhanh, phù hợp hỏi tiếp/tạo câu hỏi" },
+  { model: "deepseek-v4-pro", provider: "deepseek", label: "DeepSeek-V4-Pro", tier: "Mạnh hơn, phù hợp chấm điểm/phân tích" },
   { model: "gpt-4o-mini", provider: "openai", label: "OpenAI GPT-4o mini", tier: "Fallback trả phí rẻ" },
   { model: "gpt-4o", provider: "openai", label: "OpenAI GPT-4o", tier: "Fallback trả phí ổn định" },
   { model: "gpt-4.1", provider: "openai", label: "OpenAI GPT-4.1", tier: "Fallback trả phí mạnh" }

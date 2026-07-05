@@ -1,8 +1,8 @@
 "use client";
 
-import { Link as LinkIcon, Trash2, Upload, Volume2, X } from "lucide-react";
+import { Link as LinkIcon, Mic, Square, Trash2, Upload, Volume2, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { MasterSheetImporter } from "@/components/admin/master-sheet-importer";
 import { QuestionsImporter } from "@/components/admin/questions-importer";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -42,6 +42,7 @@ type QuestionAudio = {
   created_at: string;
   duration_seconds?: number | string | null;
   file_url: string;
+  playback_url?: string;
   id: string;
   language: "VI" | "ZH" | "EN";
   question_id: string;
@@ -74,7 +75,7 @@ const emptyAudioForm = {
   fileUrl: "",
   language: "VI",
   mimeType: "",
-  source: "AI_TTS" as AudioSource,
+  source: "HUMAN_RECORDED" as AudioSource,
   transcript: "",
   voiceName: ""
 };
@@ -110,6 +111,14 @@ export default function AdminQuestionsPage() {
   const [audioForm, setAudioForm] = useState(emptyAudioForm);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioSaving, setAudioSaving] = useState(false);
+  const [audioRecording, setAudioRecording] = useState(false);
+  const [audioRecordingSeconds, setAudioRecordingSeconds] = useState(0);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState("");
+  const audioRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioRecordingChunksRef = useRef<Blob[]>([]);
+  const audioRecordingStartedAtRef = useRef(0);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioPreviewUrlRef = useRef("");
   const debouncedSearch = useDebouncedValue(search, 300);
   const token = getAuthToken();
 
@@ -122,7 +131,7 @@ export default function AdminQuestionsPage() {
       if (filterDiff) url += `&difficulty=${filterDiff}`;
       if (filterLang) url += `&language=${filterLang}`;
       if (filterSchool) url += `&schoolId=${filterSchool}`;
-      const res = await apiGet<ListResponse>(url, { token });
+      const res = await apiGet<ListResponse>(url, { cacheMs: 0, token });
       setQuestions(res.data);
       setTotal(res.total);
       setTotalPages(res.totalPages);
@@ -168,6 +177,24 @@ export default function AdminQuestionsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!audioRecording) return;
+
+    const interval = window.setInterval(() => {
+      const elapsed = Math.max(0, (Date.now() - audioRecordingStartedAtRef.current) / 1000);
+      setAudioRecordingSeconds(elapsed);
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [audioRecording]);
+
+  useEffect(() => {
+    return () => {
+      cancelAudioRecording();
+      revokeAudioPreviewUrl();
+    };
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -249,6 +276,8 @@ export default function AdminQuestionsPage() {
 
   async function openAudioPanel(question: Question) {
     if (audioQuestion?.id === question.id) {
+      cancelAudioRecording();
+      clearSelectedAudio();
       setAudioQuestion(null);
       setAudios([]);
       return;
@@ -259,18 +288,168 @@ export default function AdminQuestionsPage() {
     setShowForm(false);
     setAudioQuestion(question);
     setAudioForm(emptyAudioForm);
+    cancelAudioRecording();
+    clearSelectedAudio();
     await loadAudios(question.id);
+  }
+
+  function revokeAudioPreviewUrl() {
+    if (audioPreviewUrlRef.current) {
+      URL.revokeObjectURL(audioPreviewUrlRef.current);
+      audioPreviewUrlRef.current = "";
+    }
+  }
+
+  function setNextAudioPreviewUrl(url: string) {
+    revokeAudioPreviewUrl();
+    audioPreviewUrlRef.current = url;
+    setAudioPreviewUrl(url);
+  }
+
+  function stopAudioStream() {
+    audioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    audioStreamRef.current = null;
+  }
+
+  function cancelAudioRecording() {
+    const recorder = audioRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    audioRecorderRef.current = null;
+    audioRecordingChunksRef.current = [];
+    stopAudioStream();
+    setAudioRecording(false);
+    setAudioRecordingSeconds(0);
+    audioRecordingStartedAtRef.current = 0;
+  }
+
+  function clearSelectedAudio() {
+    cancelAudioRecording();
+    revokeAudioPreviewUrl();
+    setAudioPreviewUrl("");
+    setAudioForm((current) => ({
+      ...current,
+      audioFileBase64: "",
+      durationSeconds: "",
+      fileName: "",
+      mimeType: ""
+    }));
+  }
+
+  async function startDirectAudioRecording() {
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setError("Trình duyệt chưa hỗ trợ thu âm trực tiếp.");
+      return;
+    }
+
+    cancelAudioRecording();
+    revokeAudioPreviewUrl();
+    setAudioPreviewUrl("");
+    setError("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getPreferredRecordingMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const startedAt = Date.now();
+
+      audioStreamRef.current = stream;
+      audioRecorderRef.current = recorder;
+      audioRecordingChunksRef.current = [];
+      audioRecordingStartedAtRef.current = startedAt;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioRecordingChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        setError("Không thể ghi âm. Vui lòng kiểm tra quyền micro.");
+        cancelAudioRecording();
+      };
+
+      recorder.onstop = () => {
+        const durationSeconds = Math.max(0.1, (Date.now() - startedAt) / 1000);
+        const chunks = audioRecordingChunksRef.current;
+        const type = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type });
+
+        audioRecorderRef.current = null;
+        audioRecordingChunksRef.current = [];
+        stopAudioStream();
+        setAudioRecording(false);
+        setAudioRecordingSeconds(durationSeconds);
+        audioRecordingStartedAtRef.current = 0;
+
+        if (!blob.size) {
+          setError("Bản thu không có dữ liệu âm thanh.");
+          return;
+        }
+
+        if (blob.size > 20 * 1024 * 1024) {
+          setError("Bản thu vượt quá 20MB. Vui lòng thu ngắn hơn.");
+          return;
+        }
+
+        const previewUrl = URL.createObjectURL(blob);
+        setNextAudioPreviewUrl(previewUrl);
+        blobToBase64(blob)
+          .then((audioFileBase64) => {
+            const extension = getAudioExtensionFromMimeType(type);
+            const fileName = `question-recording-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
+            setAudioForm((current) => ({
+              ...current,
+              audioFileBase64,
+              durationSeconds: durationSeconds.toFixed(1),
+              fileName,
+              fileUrl: "",
+              mimeType: type,
+              source: "HUMAN_RECORDED"
+            }));
+          })
+          .catch(() => setError("Không thể đọc bản thu âm."));
+      };
+
+      setAudioForm((current) => ({
+        ...current,
+        audioFileBase64: "",
+        fileName: "",
+        fileUrl: "",
+        mimeType: "",
+        source: "HUMAN_RECORDED"
+      }));
+      setAudioRecording(true);
+      setAudioRecordingSeconds(0);
+      recorder.start();
+    } catch {
+      stopAudioStream();
+      setAudioRecording(false);
+      setError("Không thể mở micro. Vui lòng cấp quyền thu âm cho trình duyệt.");
+    }
+  }
+
+  function stopDirectAudioRecording() {
+    const recorder = audioRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      recorder.stop();
+    }
   }
 
   function handleAudioFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 8 * 1024 * 1024) {
-      setError("File audio vượt quá 8MB");
+    if (file.size > 20 * 1024 * 1024) {
+      setError("File audio vượt quá 20MB");
       return;
     }
 
+    cancelAudioRecording();
+    setNextAudioPreviewUrl(URL.createObjectURL(file));
     const reader = new FileReader();
     reader.onload = () => {
       setAudioForm((current) => ({
@@ -278,7 +457,8 @@ export default function AdminQuestionsPage() {
         audioFileBase64: String(reader.result ?? ""),
         fileName: file.name,
         fileUrl: "",
-        mimeType: file.type
+        mimeType: file.type,
+        source: "HUMAN_RECORDED"
       }));
     };
     reader.onerror = () => setError("Không thể đọc file audio");
@@ -303,6 +483,7 @@ export default function AdminQuestionsPage() {
         transcript: audioForm.transcript || null,
         voiceName: audioForm.voiceName || null
       }, { token });
+      clearSelectedAudio();
       setAudioForm(emptyAudioForm);
       await loadAudios(audioQuestion.id);
     } catch (err) {
@@ -406,13 +587,44 @@ export default function AdminQuestionsPage() {
               className="w-full rounded-lg border px-3 py-2"
               placeholder="Link audio TTS hoặc bản ghi thật"
               value={audioForm.fileUrl}
-              onChange={(event) => setAudioForm({ ...audioForm, audioFileBase64: "", fileName: "", fileUrl: event.target.value, mimeType: "" })}
+              onChange={(event) => {
+                const fileUrl = event.target.value;
+                cancelAudioRecording();
+                revokeAudioPreviewUrl();
+                setAudioPreviewUrl("");
+                setAudioForm((current) => ({ ...current, audioFileBase64: "", fileName: "", fileUrl, mimeType: "" }));
+              }}
             />
-            <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border bg-white px-3 text-sm font-bold hover:bg-slate-50">
-              <Upload size={16} />Tải file audio lên
-              <input type="file" accept="audio/*" className="hidden" onChange={handleAudioFile} />
-            </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border bg-white px-3 text-sm font-bold hover:bg-slate-50 ${audioRecording ? "pointer-events-none opacity-60" : ""}`}>
+                <Upload size={16} />Tải file audio lên
+                <input type="file" accept="audio/*" className="hidden" disabled={audioRecording || audioSaving} onChange={handleAudioFile} />
+              </label>
+              {audioRecording ? (
+                <button type="button" onClick={stopDirectAudioRecording} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-sm font-bold text-red-700 hover:bg-red-50">
+                  <Square size={16} />Dừng thu
+                </button>
+              ) : (
+                <button type="button" onClick={() => void startDirectAudioRecording()} disabled={audioSaving} className="inline-flex min-h-10 items-center gap-2 rounded-lg border bg-white px-3 text-sm font-bold hover:bg-slate-50 disabled:opacity-50">
+                  <Mic size={16} />Thu trực tiếp
+                </button>
+              )}
+            </div>
+            {audioRecording ? <p className="text-xs font-semibold text-red-600">Đang thu: {formatAudioDuration(audioRecordingSeconds)}</p> : null}
             {audioForm.fileName ? <p className="text-xs font-semibold text-slate-500">Đã chọn: {audioForm.fileName}</p> : null}
+            {audioPreviewUrl ? (
+              <div className="rounded-lg border bg-white p-3">
+                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                  <p className="text-xs font-bold text-slate-600">Nghe lại trước khi lưu</p>
+                  <button type="button" onClick={clearSelectedAudio} className="inline-flex min-h-8 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700 hover:bg-red-50">
+                    <Trash2 size={14} />Xóa audio đã chọn
+                  </button>
+                </div>
+                <audio className="mt-3 w-full" controls src={audioPreviewUrl}>
+                  <track kind="captions" />
+                </audio>
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-3">
               <select className="rounded-lg border px-3 py-2" value={audioForm.source} onChange={(event) => setAudioForm({ ...audioForm, source: event.target.value as AudioSource })}>
                 {audioSources.map((source) => <option key={source} value={source}>{source}</option>)}
@@ -447,7 +659,7 @@ export default function AdminQuestionsPage() {
                       <p className="mt-1 text-xs text-slate-500">{audio.voice_name || "Chưa có giọng"} - {formatAudioDuration(audio.duration_seconds)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <a href={resolveAudioUrl(audio.file_url)} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50">
+                      <a href={resolveAudioUrl(audio.playback_url ?? audio.file_url)} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50">
                         <LinkIcon size={14} />Mở link
                       </a>
                       <button type="button" onClick={() => void handleAudioDelete(audio)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700 hover:bg-red-50">
@@ -455,7 +667,7 @@ export default function AdminQuestionsPage() {
                       </button>
                     </div>
                   </div>
-                  <audio className="mt-3 w-full" controls src={resolveAudioUrl(audio.file_url)}>
+                  <audio className="mt-3 w-full" controls src={resolveAudioUrl(audio.playback_url ?? audio.file_url)}>
                     <track kind="captions" />
                   </audio>
                   {audio.transcript ? <p className="mt-2 text-sm text-slate-600">{audio.transcript}</p> : null}
@@ -702,7 +914,7 @@ export default function AdminQuestionsPage() {
                         <p className="mt-1 text-xs text-slate-500">{audio.voice_name || "Chưa có giọng"} - {formatAudioDuration(audio.duration_seconds)}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <a href={resolveAudioUrl(audio.file_url)} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50">
+                        <a href={resolveAudioUrl(audio.playback_url ?? audio.file_url)} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50">
                           <LinkIcon size={14} />Mở link
                         </a>
                         <button type="button" onClick={() => void handleAudioDelete(audio)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700 hover:bg-red-50">
@@ -710,7 +922,7 @@ export default function AdminQuestionsPage() {
                         </button>
                       </div>
                     </div>
-                    <audio className="mt-3 w-full" controls src={resolveAudioUrl(audio.file_url)}>
+                    <audio className="mt-3 w-full" controls src={resolveAudioUrl(audio.playback_url ?? audio.file_url)}>
                       <track kind="captions" />
                     </audio>
                     {audio.transcript ? <p className="mt-2 text-sm text-slate-600">{audio.transcript}</p> : null}
@@ -753,6 +965,39 @@ function hasScoringRubric(value: unknown) {
 function resolveAudioUrl(fileUrl: string) {
   if (/^(https?:|blob:|data:)/i.test(fileUrl)) return fileUrl;
   return buildApiUrl(fileUrl.startsWith("/") ? fileUrl : `/${fileUrl}`);
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("Không thể đọc audio"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function getPreferredRecordingMimeType() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return "";
+
+  const mimeTypes = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+    "audio/wav"
+  ];
+
+  return mimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? "";
+}
+
+function getAudioExtensionFromMimeType(mimeType: string) {
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes("mpeg")) return "mp3";
+  if (normalized.includes("mp4")) return "m4a";
+  if (normalized.includes("ogg")) return "ogg";
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("webm")) return "webm";
+  return "webm";
 }
 
 function formatAudioDuration(value?: number | string | null) {

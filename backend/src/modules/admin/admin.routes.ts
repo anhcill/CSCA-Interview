@@ -16,6 +16,7 @@ import { requireAuth, type AuthenticatedUser } from "../auth/auth.middleware.js"
 import { passwordHashRounds } from "../auth/auth.utils.js";
 import { importQuestionMasterSheet, MasterSheetImportError, previewQuestionMasterSheet } from "../questions/master-sheet-import.service.js";
 import { importQuestionsFromCsv } from "../questions/questions.routes.js";
+import { getR2ObjectBuffer, getStudyPlanContentType, isR2StoredUrl } from "../storage/r2.service.js";
 import { writeAdminAuditLog } from "./audit.service.js";
 import {
   getAdminOverviewStats,
@@ -434,6 +435,72 @@ adminRouter.get("/users", async (req, res) => {
   }
 });
 
+adminRouter.get("/study-plan-files", async (req, res) => {
+  try {
+    const { search } = req.query;
+    const { limit, page, skip } = parsePagination(req.query);
+    const where: any = {
+      studyPlanFileName: { not: null },
+      user: { deletedAt: null }
+    };
+
+    if (search) {
+      const text = String(search);
+      where.OR = [
+        { studyPlanFileName: { contains: text, mode: "insensitive" } },
+        { targetSchool: { contains: text, mode: "insensitive" } },
+        { targetMajor: { contains: text, mode: "insensitive" } },
+        { user: { email: { contains: text, mode: "insensitive" } } },
+        { user: { fullName: { contains: text, mode: "insensitive" } } }
+      ];
+    }
+
+    const [profiles, total] = await Promise.all([
+      prisma.userProfile.findMany({
+        orderBy: { updatedAt: "desc" },
+        select: {
+          scholarshipType: true,
+          studyPlanFileContent: true,
+          studyPlanFileName: true,
+          studyPlanFileUrl: true,
+          targetMajor: true,
+          targetSchool: true,
+          updatedAt: true,
+          user: {
+            select: {
+              email: true,
+              fullName: true,
+              id: true
+            }
+          },
+          userId: true
+        },
+        skip,
+        take: limit,
+        where
+      }),
+      prisma.userProfile.count({ where })
+    ]);
+
+    const data = profiles.map((profile) => ({
+      email: profile.user.email,
+      fileName: profile.studyPlanFileName,
+      fullName: profile.user.fullName,
+      scholarshipType: profile.scholarshipType,
+      storageProvider: getStudyPlanStorageProvider(profile),
+      targetMajor: profile.targetMajor,
+      targetSchool: profile.targetSchool,
+      updatedAt: profile.updatedAt,
+      userId: profile.userId
+    }));
+
+    res.json(paginatedResponse(data, total, page, limit));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Không thể tải danh sách file Study Plan" });
+  }
+});
+
 adminRouter.get("/users/:id", async (req, res) => {
   try {
     const user = await prisma.user.findFirst({
@@ -493,34 +560,19 @@ adminRouter.get("/users/:id/study-plan/download", async (req, res) => {
 
     const fileName = profile.studyPlanFileName || "study_plan.pdf";
 
-    // 1. Nếu tệp được lưu trên Cloudinary -> redirect đến URL
     if (profile.studyPlanFileUrl) {
-      res.redirect(profile.studyPlanFileUrl);
+      if (isR2StoredUrl(profile.studyPlanFileUrl)) {
+        const file = await getR2ObjectBuffer(profile.studyPlanFileUrl);
+        sendStudyPlanBuffer(res, file.buffer, fileName, file.contentType);
+      } else {
+        await sendRemoteStudyPlanFile(res, profile.studyPlanFileUrl, fileName);
+      }
       return;
     }
 
-    // 2. Nếu tệp được lưu trong Database (Base64) -> decode và gửi dạng file download
     if (profile.studyPlanFileContent) {
       const buffer = Buffer.from(profile.studyPlanFileContent, "base64");
-      const extension = fileName.split(".").pop()?.toLowerCase();
-      let contentType = "application/octet-stream";
-      if (extension === "pdf") {
-        contentType = "application/pdf";
-      } else if (extension === "docx") {
-        contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-      } else if (extension === "txt") {
-        contentType = "text/plain; charset=utf-8";
-      } else if (extension === "png") {
-        contentType = "image/png";
-      } else if (extension === "jpg" || extension === "jpeg") {
-        contentType = "image/jpeg";
-      } else if (extension === "webp") {
-        contentType = "image/webp";
-      }
-
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
-      res.send(buffer);
+      sendStudyPlanBuffer(res, buffer, fileName, getStudyPlanContentType(fileName));
       return;
     }
   } catch (error) {
@@ -528,6 +580,36 @@ adminRouter.get("/users/:id/study-plan/download", async (req, res) => {
     res.status(500).json({ message: "Không thể tải xuống tệp kế hoạch học tập" });
   }
 });
+
+type StudyPlanStorageSource = {
+  studyPlanFileContent?: string | null;
+  studyPlanFileUrl?: string | null;
+};
+
+function getStudyPlanStorageProvider(profile: StudyPlanStorageSource) {
+  if (isR2StoredUrl(profile.studyPlanFileUrl)) return "R2";
+  if (profile.studyPlanFileUrl) return "Cloudinary";
+  if (profile.studyPlanFileContent) return "Database";
+  return "Không rõ";
+}
+
+async function sendRemoteStudyPlanFile(res: Response, fileUrl: string, fileName: string) {
+  const response = await fetch(fileUrl);
+
+  if (!response.ok) {
+    throw new Error(`Không thể tải file từ kho lưu trữ: ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? getStudyPlanContentType(fileName);
+  sendStudyPlanBuffer(res, Buffer.from(await response.arrayBuffer()), fileName, contentType);
+}
+
+function sendStudyPlanBuffer(res: Response, buffer: Buffer, fileName: string, contentType: string) {
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Content-Length", buffer.byteLength);
+  res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+  res.send(buffer);
+}
 
 adminRouter.put("/users/:id/status", async (req, res) => {
   const parsed = userStatusSchema.safeParse(req.body ?? {});

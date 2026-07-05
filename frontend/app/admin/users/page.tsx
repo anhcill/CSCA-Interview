@@ -1,11 +1,11 @@
 "use client";
 
-import { Calendar, FileText, Lock, Mail, Phone, Search, Unlock, UserCheck } from "lucide-react";
+import { Calendar, Download, FileText, Lock, Mail, Phone, Search, Unlock, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSkeleton } from "@/components/ui/skeleton";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { apiGet, apiGetBlob, apiPost, apiPut } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
@@ -64,26 +64,57 @@ type UsersResponse = {
   totalPages: number;
 };
 
+type StudyPlanFileItem = {
+  email: string;
+  fileName: string | null;
+  fullName: string;
+  scholarshipType: string;
+  storageProvider: string;
+  targetMajor: string;
+  targetSchool: string;
+  updatedAt: string;
+  userId: string;
+};
+
 type UserDetailResponse = { user: AdminUserDetail };
+type StudyPlanFilesResponse = {
+  data: StudyPlanFileItem[];
+  page: number;
+  total: number;
+  totalPages: number;
+};
 
 const roleOptions = ["USER", "ADMIN", "SUPER_ADMIN"] as const;
+const tabs = [
+  { id: "users", label: "Người dùng" },
+  { id: "studyPlans", label: "File Study Plan" }
+] as const;
+type AdminUsersTab = typeof tabs[number]["id"];
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [selectedUser, setSelectedUser] = useState<AdminUserDetail | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AdminUsersTab>("users");
   const [search, setSearch] = useState("");
+  const [studyPlanSearch, setStudyPlanSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [studyPlanFiles, setStudyPlanFiles] = useState<StudyPlanFileItem[]>([]);
+  const [studyPlanFilePage, setStudyPlanFilePage] = useState(1);
+  const [studyPlanFileTotal, setStudyPlanFileTotal] = useState(0);
+  const [studyPlanFileTotalPages, setStudyPlanFileTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [studyPlanFilesLoading, setStudyPlanFilesLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [passwordDraft, setPasswordDraft] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedStudyPlanSearch = useDebouncedValue(studyPlanSearch, 300);
   const token = getAuthToken();
 
   const loadUsers = useCallback(async () => {
@@ -119,9 +150,31 @@ export default function AdminUsersPage() {
     }
   }, [token]);
 
+  const loadStudyPlanFiles = useCallback(async () => {
+    setStudyPlanFilesLoading(true);
+    setError("");
+    try {
+      const url = `/api/admin/study-plan-files?page=${studyPlanFilePage}&limit=30&search=${encodeURIComponent(debouncedStudyPlanSearch)}`;
+      const response = await apiGet<StudyPlanFilesResponse>(url, { cacheMs: 0, token });
+      setStudyPlanFiles(response.data);
+      setStudyPlanFileTotal(response.total);
+      setStudyPlanFileTotalPages(response.totalPages);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách file Study Plan");
+    } finally {
+      setStudyPlanFilesLoading(false);
+    }
+  }, [debouncedStudyPlanSearch, studyPlanFilePage, token]);
+
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    if (activeTab === "studyPlans") {
+      void loadStudyPlanFiles();
+    }
+  }, [activeTab, loadStudyPlanFiles]);
 
   useEffect(() => {
     if (!selectedId && users[0]) {
@@ -187,6 +240,29 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function downloadStudyPlanFile(userId: string, fileName?: string | null) {
+    setActionId(`${userId}:study-plan`);
+    setError("");
+    try {
+      const result = await apiGetBlob(`/api/admin/users/${userId}/study-plan/download`, {
+        timeoutMs: 60_000,
+        token
+      });
+      const objectUrl = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = result.fileName || fileName || "study_plan";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể tải file Study Plan");
+    } finally {
+      setActionId(null);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-4 md:flex-row md:items-center">
@@ -199,6 +275,21 @@ export default function AdminUsersPage() {
 
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
 
+      <div className="mb-5 inline-flex rounded-lg border bg-white p-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`min-h-9 rounded-md px-4 text-sm font-bold ${activeTab === tab.id ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "users" ? (
+        <>
       <section className="mb-5 grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-[1fr_180px_180px]">
         <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3">
           <Search size={16} className="text-slate-400" />
@@ -346,15 +437,15 @@ export default function AdminUsersPage() {
                       <span className="text-slate-500">Kế hoạch học tập</span>
                       <span className="font-medium text-slate-900">
                         {selectedUser.profile.studyPlanFileName ? (
-                          <a
-                            href={`/api/admin/users/${selectedUser.id}/study-plan/download`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-850 hover:underline font-bold"
+                          <button
+                            type="button"
+                            disabled={actionId === `${selectedUser.id}:study-plan`}
+                            onClick={() => void downloadStudyPlanFile(selectedUser.id, selectedUser.profile?.studyPlanFileName)}
+                            className="inline-flex items-center gap-1.5 text-left font-bold text-indigo-600 hover:text-indigo-800 hover:underline disabled:opacity-50"
                           >
                             <FileText size={14} className="shrink-0" />
                             {selectedUser.profile.studyPlanFileName}
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-slate-400">Không có file tải lên</span>
                         )}
@@ -398,6 +489,95 @@ export default function AdminUsersPage() {
           <button type="button" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Sau</button>
         </div>
       ) : null}
+        </>
+      ) : (
+        <section className="overflow-hidden rounded-lg border bg-white">
+          <div className="flex flex-col justify-between gap-3 border-b bg-slate-50 px-4 py-3 md:flex-row md:items-center">
+            <div>
+              <h2 className="text-sm font-bold">File Study Plan</h2>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{studyPlanFileTotal} file đã upload</p>
+            </div>
+            <label className="flex min-h-10 w-full items-center gap-2 rounded-lg border bg-white px-3 md:w-80">
+              <Search size={16} className="text-slate-400" />
+              <input
+                className="w-full border-0 text-sm outline-none"
+                placeholder="Tìm tên, email, trường, ngành..."
+                value={studyPlanSearch}
+                onChange={(event) => {
+                  setStudyPlanSearch(event.target.value);
+                  setStudyPlanFilePage(1);
+                }}
+              />
+            </label>
+          </div>
+          {studyPlanFilesLoading ? (
+            <div className="p-4"><ListSkeleton rows={6} /></div>
+          ) : studyPlanFiles.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Ứng viên</th>
+                    <th className="px-4 py-3">File</th>
+                    <th className="px-4 py-3">Mục tiêu</th>
+                    <th className="px-4 py-3">Kho lưu</th>
+                    <th className="px-4 py-3">Cập nhật</th>
+                    <th className="px-4 py-3">Tải</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studyPlanFiles.map((file) => (
+                    <tr key={file.userId} className="border-t hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <button type="button" onClick={() => { setActiveTab("users"); void loadUserDetail(file.userId); }} className="text-left">
+                          <span className="block font-semibold text-slate-900">{file.fullName}</span>
+                          <span className="block text-xs text-slate-500">{file.email}</span>
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 font-bold text-slate-900">
+                          <FileText size={14} />
+                          {file.fileName || "study_plan"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <span className="block font-semibold text-slate-900">{file.targetSchool}</span>
+                        <span className="block text-xs">{file.targetMajor} - {file.scholarshipType}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">{file.storageProvider}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{formatDate(file.updatedAt)}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          disabled={actionId === `${file.userId}:study-plan`}
+                          onClick={() => void downloadStudyPlanFile(file.userId, file.fileName)}
+                          className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                        >
+                          <Download size={14} />
+                          Tải
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-6">
+              <EmptyState title="Chưa có file Study Plan" description="Khi ứng viên upload file, danh sách sẽ xuất hiện ở đây." />
+            </div>
+          )}
+          {studyPlanFileTotalPages > 1 ? (
+            <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
+              <button type="button" disabled={studyPlanFilePage <= 1} onClick={() => setStudyPlanFilePage((current) => Math.max(1, current - 1))} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Trước</button>
+              <span className="text-sm font-bold">{studyPlanFilePage}/{studyPlanFileTotalPages}</span>
+              <button type="button" disabled={studyPlanFilePage >= studyPlanFileTotalPages} onClick={() => setStudyPlanFilePage((current) => Math.min(studyPlanFileTotalPages, current + 1))} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Sau</button>
+            </div>
+          ) : null}
+        </section>
+      )}
     </main>
   );
 }

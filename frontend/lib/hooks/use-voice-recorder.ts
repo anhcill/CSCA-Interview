@@ -16,6 +16,7 @@ type UseVoiceRecorderOptions = {
   onAutoSubmitCountdown?: (seconds: number | null) => void;
   onError?: (error: string) => void;
   onInterimTranscript?: (text: string) => void;
+  onNoSpeech?: () => void;
   onTranscript?: (text: string, result?: VoiceRecorderResult) => void;
   onTranscriptionResult?: (result: VoiceRecorderResult) => void;
 };
@@ -65,7 +66,7 @@ function toSpeechRecognitionLang(language?: "vi" | "zh" | "en") {
 }
 
 export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
-  const { language, onAutoSubmitCountdown, onError, onInterimTranscript, onTranscript, onTranscriptionResult } = options;
+  const { language, onAutoSubmitCountdown, onError, onInterimTranscript, onNoSpeech, onTranscript, onTranscriptionResult } = options;
   const [state, setState] = useState<VoiceRecorderState>("idle");
   const [transcript, setTranscript] = useState("");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -82,6 +83,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   const silenceFrameRef = useRef<number | null>(null);
   const silenceStartedAtRef = useRef<number | null>(null);
   const recordingStartedAtRef = useRef<number>(0);
+  const stopReasonRef = useRef<"cancel" | "manual" | "silence">("manual");
 
   const clearRestartTimer = useCallback(() => {
     if (restartTimerRef.current !== null) {
@@ -141,6 +143,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       if (hasStartedSpeaking && rms < 0.014) {
         silenceStartedAtRef.current ??= now;
         if (now - silenceStartedAtRef.current > 1600) {
+          stopReasonRef.current = "silence";
           recorder.stop();
           return;
         }
@@ -234,6 +237,12 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
 
         recognition.onerror = (event) => {
           if (event.error === "no-speech") {
+            if (!recognitionTranscriptRef.current.trim()) {
+              shouldKeepListeningRef.current = false;
+              clearFinalizeTimer();
+              clearRestartTimer();
+              onNoSpeech?.();
+            }
             return;
           }
 
@@ -297,12 +306,15 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
       recordingStartedAtRef.current = Date.now();
+      stopReasonRef.current = "manual";
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
 
       recorder.onstop = async () => {
+        const stopReason = stopReasonRef.current;
+        stopReasonRef.current = "manual";
         cleanupAudioMonitor();
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -310,8 +322,14 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
         const blob = new Blob(chunksRef.current, { type: mimeType });
         chunksRef.current = [];
 
+        if (stopReason === "cancel") {
+          setState("idle");
+          return;
+        }
+
         if (blob.size < 100) {
           setState("idle");
+          if (stopReason === "silence") onNoSpeech?.();
           return;
         }
 
@@ -321,6 +339,11 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
           const base64 = await blobToBase64(blob);
           const cleanMimeType = mimeType.split(";")[0] ?? mimeType;
           const result = await transcribeAudio(base64, cleanMimeType, language);
+          if (!result.text.trim()) {
+            if (stopReason === "silence") onNoSpeech?.();
+            return;
+          }
+
           const payload: VoiceRecorderResult = {
             ...result,
             audioBase64: base64,
@@ -347,7 +370,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       onError?.(message);
       setState("idle");
     }
-  }, [cleanupAudioMonitor, clearFinalizeTimer, clearRestartTimer, language, onAutoSubmitCountdown, onError, onInterimTranscript, onTranscript, onTranscriptionResult, startSilenceMonitor]);
+  }, [cleanupAudioMonitor, clearFinalizeTimer, clearRestartTimer, language, onAutoSubmitCountdown, onError, onInterimTranscript, onNoSpeech, onTranscript, onTranscriptionResult, startSilenceMonitor]);
 
   const stopRecording = useCallback(() => {
     shouldKeepListeningRef.current = false;
@@ -359,6 +382,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       return;
     }
     if (mediaRecorderRef.current?.state === "recording") {
+      stopReasonRef.current = "manual";
       mediaRecorderRef.current.stop();
     }
   }, [clearFinalizeTimer, clearRestartTimer]);
@@ -381,6 +405,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       recognitionRef.current = null;
     }
     if (mediaRecorderRef.current?.state === "recording") {
+      stopReasonRef.current = "cancel";
       mediaRecorderRef.current.stop();
     }
     streamRef.current?.getTracks().forEach((track) => track.stop());

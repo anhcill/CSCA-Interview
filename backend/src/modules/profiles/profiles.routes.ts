@@ -9,10 +9,10 @@ import {
   decodeBase64DocumentPayload,
   extractTextFromDocument,
   minimumStudyPlanTextLength,
-  stripBase64DataUrl,
   type StudyPlanParseMetadata,
   uploadToCloudinary
 } from "./document-parser.js";
+import { uploadStudyPlanToR2 } from "../storage/r2.service.js";
 
 export const profilesRouter = Router();
 const cloudinaryRawUploadLimitBytes = 10 * 1024 * 1024;
@@ -81,7 +81,6 @@ profilesRouter.put("/me", async (req, res) => {
   // Nếu người dùng tải lên tệp mới
   if (parsed.data.studyPlanFileContent && parsed.data.studyPlanFileName) {
     try {
-      const base64Data = stripBase64DataUrl(parsed.data.studyPlanFileContent);
       const buffer = decodeBase64DocumentPayload(parsed.data.studyPlanFileContent);
       const fileSize = buffer.byteLength;
 
@@ -103,10 +102,14 @@ profilesRouter.put("/me", async (req, res) => {
       // 2. Phân tách lưu trữ: dưới 10MB lưu Cloudinary, trên 10MB lưu DB
       if (fileSize <= cloudinaryRawUploadLimitBytes) {
         studyPlanFileUrl = await uploadToCloudinary(buffer, parsed.data.studyPlanFileName);
-        studyPlanFileContent = null; // Xóa trong DB
+        studyPlanFileContent = null;
       } else {
-        studyPlanFileContent = base64Data;
-        studyPlanFileUrl = null; // Xóa URL Cloudinary
+        studyPlanFileUrl = await uploadStudyPlanToR2({
+          buffer,
+          fileName: parsed.data.studyPlanFileName,
+          userId: user.id
+        });
+        studyPlanFileContent = null;
       }
     } catch (err) {
       console.error("[StudyPlan Upload Error]", err);

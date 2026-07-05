@@ -75,8 +75,9 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs
 
 export async function apiGet<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const cacheMs = options.cacheMs ?? defaultGetCacheMs;
+  const bypassCache = cacheMs <= 0;
   const cacheKey = `${path}:${options.token ?? "public"}`;
-  if (cacheMs > 0) {
+  if (!bypassCache) {
     const cached = memoryCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value as T;
     if (cached) memoryCache.delete(cacheKey);
@@ -85,8 +86,10 @@ export async function apiGet<T>(path: string, options: ApiOptions = {}): Promise
   }
 
   const request = fetchWithTimeout(`${apiBaseUrl}${path}`, {
+    cache: bypassCache ? "no-store" : "default",
     credentials: "include",
     headers: {
+      ...(bypassCache ? { "Cache-Control": "no-cache", Pragma: "no-cache" } : {}),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
     }
   }, options.timeoutMs).then(async (response) => {
@@ -95,13 +98,13 @@ export async function apiGet<T>(path: string, options: ApiOptions = {}): Promise
     }
 
     const data = await parseJsonResponse<T>(response);
-    if (cacheMs > 0) memoryCache.set(cacheKey, { expiresAt: Date.now() + cacheMs, value: data });
+    if (!bypassCache) memoryCache.set(cacheKey, { expiresAt: Date.now() + cacheMs, value: data });
     return data;
   }).finally(() => {
     pendingGets.delete(cacheKey);
   });
 
-  if (cacheMs > 0) pendingGets.set(cacheKey, request);
+  if (!bypassCache) pendingGets.set(cacheKey, request);
   return request;
 }
 
@@ -120,6 +123,24 @@ export async function apiGetText(path: string, options: ApiOptions = {}): Promis
   return response.text();
 }
 
+export async function apiGetBlob(path: string, options: ApiOptions = {}): Promise<{ blob: Blob; fileName?: string }> {
+  const response = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
+    credentials: "include",
+    headers: {
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+    }
+  }, options.timeoutMs);
+
+  if (!response.ok) {
+    throw new ApiError(await parseApiError(response), response.status);
+  }
+
+  return {
+    blob: await response.blob(),
+    fileName: parseContentDispositionFileName(response.headers.get("content-disposition"))
+  };
+}
+
 export function createEventStream(path: string, onToken: (token: string) => void, onDone?: () => void) {
   const source = new EventSource(buildApiUrl(path), { withCredentials: true });
   source.addEventListener("token", (event) => {
@@ -132,6 +153,26 @@ export function createEventStream(path: string, onToken: (token: string) => void
   });
   source.onerror = () => source.close();
   return source;
+}
+
+function parseContentDispositionFileName(value: string | null) {
+  if (!value) return undefined;
+
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (utf8Match?.[1]) return decodeHeaderFileName(utf8Match[1]);
+
+  const plainMatch = /filename="?([^";]+)"?/i.exec(value);
+  if (plainMatch?.[1]) return decodeHeaderFileName(plainMatch[1]);
+
+  return undefined;
+}
+
+function decodeHeaderFileName(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 export function createAuthorizedEventStream(

@@ -19,7 +19,11 @@ type UseFaceAnalysisOptions = {
 
 const defaultModelAssetPath =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
-const defaultWasmBasePath = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+const defaultWasmBasePath = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
+
+function stopMediaStream(stream: MediaStream | null | undefined) {
+  stream?.getTracks().forEach((track) => track.stop());
+}
 
 function getMediaErrorMessage(error: unknown) {
   if (error instanceof DOMException) {
@@ -74,6 +78,7 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const frameRef = useRef<number | null>(null);
   const lastFrameAtRef = useRef(0);
+  const startRunIdRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const brightnessCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const snapshotRef = useRef<VisualAnalysisSnapshot>(emptyVisualAnalysis);
@@ -84,6 +89,8 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   const stop = useCallback((nextStatus: FaceAnalysisStatus = "idle") => {
+    startRunIdRef.current += 1;
+
     if (frameRef.current !== null) {
       window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
@@ -92,7 +99,7 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
     landmarkerRef.current?.close();
     landmarkerRef.current = null;
 
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    stopMediaStream(streamRef.current);
     streamRef.current = null;
     setStream(null);
 
@@ -119,7 +126,18 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
     const minFrameGap = 1000 / Math.max(1, targetFps);
     if (now - lastFrameAtRef.current >= minFrameGap) {
       lastFrameAtRef.current = now;
-      const result = landmarker.detectForVideo(video, now);
+      let result: FaceLandmarkerResult;
+
+      try {
+        result = landmarker.detectForVideo(video, now);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Không thể phân tích khung hình camera";
+        setError(message);
+        onError?.(message);
+        stop("error");
+        return;
+      }
+
       const canvas = brightnessCanvasRef.current ?? document.createElement("canvas");
       brightnessCanvasRef.current = canvas;
 
@@ -138,7 +156,7 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
     }
 
     frameRef.current = window.requestAnimationFrame(runFrame);
-  }, [targetFps]);
+  }, [onError, stop, targetFps]);
 
   const start = useCallback(async () => {
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -150,8 +168,13 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
     }
 
     stop();
+    const runId = startRunIdRef.current + 1;
+    startRunIdRef.current = runId;
     setError("");
     setStatus("loading");
+
+    let pendingLandmarker: FaceLandmarker | null = null;
+    let pendingStream: MediaStream | null = null;
 
     try {
       const [{ FaceLandmarker, FilesetResolver }, mediaStream] = await Promise.all([
@@ -161,6 +184,12 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
           video: cameraConstraints ?? { facingMode: "user", height: { ideal: 720 }, width: { ideal: 1280 } }
         })
       ]);
+
+      pendingStream = mediaStream;
+      if (startRunIdRef.current !== runId) {
+        stopMediaStream(pendingStream);
+        return;
+      }
 
       const fileset = await FilesetResolver.forVisionTasks(wasmBasePath);
       const landmarker = await FaceLandmarker.createFromOptions(fileset, {
@@ -177,21 +206,36 @@ export function useFaceAnalysis(options: UseFaceAnalysisOptions = {}) {
         runningMode: "VIDEO"
       });
 
-      landmarkerRef.current = landmarker;
-      streamRef.current = mediaStream;
-      setStream(mediaStream);
-      setStatus("ready");
+      pendingLandmarker = landmarker;
+      if (startRunIdRef.current !== runId) {
+        pendingLandmarker.close();
+        stopMediaStream(pendingStream);
+        return;
+      }
 
       if (videoRef.current) {
         videoRef.current.muted = true;
         videoRef.current.playsInline = true;
-        videoRef.current.srcObject = mediaStream;
+        videoRef.current.srcObject = pendingStream;
         await videoRef.current.play();
       }
 
+      if (startRunIdRef.current !== runId) {
+        pendingLandmarker.close();
+        stopMediaStream(pendingStream);
+        return;
+      }
+
+      landmarkerRef.current = pendingLandmarker;
+      streamRef.current = pendingStream;
+      setStream(pendingStream);
       setStatus("running");
       frameRef.current = window.requestAnimationFrame(runFrame);
+      pendingLandmarker = null;
+      pendingStream = null;
     } catch (err) {
+      pendingLandmarker?.close();
+      stopMediaStream(pendingStream);
       const message = getMediaErrorMessage(err);
       setError(message);
       onError?.(message);

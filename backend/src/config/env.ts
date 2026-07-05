@@ -99,5 +99,12 @@ export const env = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
-  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
+  r2AccountId: process.env.R2_ACCOUNT_ID,
+  r2AccessKeyId: process.env.R2_ACCESS_KEY_ID,
+  r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  r2Bucket: process.env.R2_BUCKET ?? process.env.R2_BUCKET_NAME,
+  r2Endpoint: process.env.R2_ENDPOINT,
+  r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL,
+  r2Region: process.env.R2_REGION ?? "auto"
 };

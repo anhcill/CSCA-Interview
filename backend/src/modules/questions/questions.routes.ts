@@ -1,12 +1,11 @@
 import { DegreeLevel, DifficultyLevel, LanguageCode, Prisma, QuestionCategory, audio_source } from "@prisma/client";
-import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { writeAdminAuditLog } from "../admin/audit.service.js";
 import { getOptionalAuthenticatedUser, requireAuth, requireRole, type AuthenticatedUser } from "../auth/auth.middleware.js";
+import { getR2PlaybackUrl, MissingR2ConfigError, uploadQuestionAudioToR2 } from "../storage/r2.service.js";
 
 export const questionsRouter = Router();
 
@@ -56,7 +55,7 @@ const audioSchema = z.object({
   message: "Cần nhập File URL hoặc upload file audio"
 });
 
-const maxAudioUploadBytes = 8 * 1024 * 1024;
+const maxAudioUploadBytes = 20 * 1024 * 1024;
 const allowedAudioExtensions = new Set([".aac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"]);
 const audioExtensionByMime: Record<string, string> = {
   "audio/aac": ".aac",
@@ -185,6 +184,10 @@ questionsRouter.get("/export", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"),
     res.setHeader("Content-Disposition", `attachment; filename="questions-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(`\uFEFF${csv}`);
   } catch (error) {
+    if (error instanceof MissingR2ConfigError) {
+      res.status(503).json({ message: error.message });
+      return;
+    }
     console.error(error);
     res.status(500).json({ message: "Không thể export CSV câu hỏi" });
   }
@@ -281,8 +284,12 @@ questionsRouter.get("/:id/audios", requireAuth, requireRole("ADMIN", "SUPER_ADMI
       where: { question_id: req.params.id },
       orderBy: { created_at: "desc" }
     });
-    res.json({ data: audios });
-  } catch {
+    res.json({ data: await Promise.all(audios.map(toQuestionAudioDto)) });
+  } catch (error) {
+    if (error instanceof MissingR2ConfigError) {
+      res.status(503).json({ message: error.message });
+      return;
+    }
     res.status(500).json({ message: "Không thể tải audio câu hỏi" });
   }
 });
@@ -330,10 +337,14 @@ questionsRouter.post("/:id/audios", requireAuth, requireRole("ADMIN", "SUPER_ADM
       entityId: question.id,
       entityType: "question"
     });
-    res.status(201).json(audio);
+    res.status(201).json(await toQuestionAudioDto(audio));
   } catch (error) {
     if (error instanceof Error && error.message === "INVALID_AUDIO_UPLOAD") {
-      res.status(400).json({ message: "File audio không hợp lệ hoặc vượt quá 8MB" });
+      res.status(400).json({ message: "File audio không hợp lệ hoặc vượt quá 20MB" });
+      return;
+    }
+    if (error instanceof MissingR2ConfigError) {
+      res.status(503).json({ message: error.message });
       return;
     }
     console.error(error);
@@ -562,13 +573,13 @@ async function saveQuestionAudioUpload({
   }
 
   const extension = getAudioExtension(fileName, mimeType);
-  const uploadDir = path.join(process.cwd(), "uploads", "question-audios");
-  const storedName = `${questionId}-${randomUUID()}${extension}`;
 
-  await mkdir(uploadDir, { recursive: true });
-  await writeFile(path.join(uploadDir, storedName), buffer);
-
-  return `/uploads/question-audios/${storedName}`;
+  return uploadQuestionAudioToR2({
+    buffer,
+    contentType: getAudioContentType(mimeType, extension),
+    extension,
+    questionId
+  });
 }
 
 function getAudioExtension(fileName: string, mimeType: string) {
@@ -576,6 +587,21 @@ function getAudioExtension(fileName: string, mimeType: string) {
   if (allowedAudioExtensions.has(extensionFromName)) return extensionFromName;
 
   return audioExtensionByMime[mimeType.toLowerCase()] ?? ".webm";
+}
+
+function getAudioContentType(mimeType: string, extension: string) {
+  const normalized = mimeType.toLowerCase();
+  if (audioExtensionByMime[normalized]) return normalized;
+
+  const entry = Object.entries(audioExtensionByMime).find(([, ext]) => ext === extension);
+  return entry?.[0] ?? "audio/webm";
+}
+
+async function toQuestionAudioDto<T extends { file_url: string }>(audio: T) {
+  return {
+    ...audio,
+    playback_url: await getR2PlaybackUrl(audio.file_url)
+  };
 }
 
 // POST /api/questions (admin)
