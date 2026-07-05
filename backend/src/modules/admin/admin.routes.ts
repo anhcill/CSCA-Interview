@@ -17,6 +17,7 @@ import { passwordHashRounds } from "../auth/auth.utils.js";
 import { importQuestionMasterSheet, MasterSheetImportError, previewQuestionMasterSheet } from "../questions/master-sheet-import.service.js";
 import { importQuestionsFromCsv } from "../questions/questions.routes.js";
 import { getR2ObjectBuffer, getStudyPlanContentType, isR2StoredUrl } from "../storage/r2.service.js";
+import { getAiUsageAdminList, getAiUsageAdminSummary } from "./ai-usage-admin.service.js";
 import { writeAdminAuditLog } from "./audit.service.js";
 import {
   getAdminOverviewStats,
@@ -125,6 +126,31 @@ adminRouter.get("/stats/ai-cost", async (req, res) => {
   }
 });
 
+
+adminRouter.get("/ai-usage", async (req, res) => {
+  try {
+    const { limit, page, skip } = parsePagination({
+      limit: req.query.limit ?? req.query.pageSize,
+      page: req.query.page
+    });
+    const result = await getAiUsageAdminList(req.query as Record<string, unknown>, { limit, skip });
+
+    res.json(paginatedResponse(result.rows, result.total, page, limit));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Không thể tải lịch sử sử dụng AI" });
+  }
+});
+
+adminRouter.get("/ai-usage/summary", async (req, res) => {
+  try {
+    const summary = await getAiUsageAdminSummary(req.query as Record<string, unknown>);
+    res.json(summary);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Không thể tải tổng hợp sử dụng AI" });
+  }
+});
 
 const userStatusSchema = z.object({ isActive: z.boolean() });
 const userRoleSchema = z.object({ role: z.nativeEnum(Role) });

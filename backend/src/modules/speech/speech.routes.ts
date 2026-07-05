@@ -13,6 +13,11 @@ export const speechRouter = Router();
 
 speechRouter.use(requireAuth);
 
+function authenticatedUserId(res: Response) {
+  const user = res.locals.user as { id?: unknown } | undefined;
+  return typeof user?.id === "string" ? user.id : null;
+}
+
 const transcribeSchema = z.object({
   audio: z.string().min(1, "Audio data required"),
   mimeType: z.string().optional().default("audio/webm"),
@@ -31,7 +36,7 @@ speechRouter.post("/transcribe", async (req: Request, res: Response) => {
     }
 
     const { audio, mimeType, language } = parsed.data;
-    const result = await transcribeAudio(audio, mimeType, language);
+    const result = await transcribeAudio(audio, mimeType, language, { userId: authenticatedUserId(res) });
 
     res.json({
       duration: result.duration,
@@ -72,7 +77,7 @@ speechRouter.post("/synthesize", async (req: Request, res: Response) => {
     }
 
     const { text, voice, speed } = parsed.data;
-    const result = await synthesizeSpeech(text, voice, speed);
+    const result = await synthesizeSpeech(text, voice, speed, { userId: authenticatedUserId(res) });
 
     res.json({
       audio: result.audioBuffer.toString("base64"),

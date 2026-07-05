@@ -21,6 +21,13 @@ export const openAiTtsVoiceOptions = [
 
 export type OpenAiTtsVoice = typeof openAiTtsVoiceOptions[number];
 
+export type AiModelCostEntry = {
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
+};
+
+export type AiModelCosts = Record<string, AiModelCostEntry>;
+
 function defaultOpenAiProviderModel(model: string) {
   return usesOpenAiNamespace ? `openai/${model}` : model;
 }
@@ -43,6 +50,89 @@ function optionalNumber(value: string | undefined) {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionalCostNumber(value: unknown) {
+  if (value == null || value === "") return null;
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeCostKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function parseModelCostEntry(value: unknown): AiModelCostEntry | null {
+  if (!isRecord(value)) return null;
+
+  const inputCostPer1M =
+    optionalCostNumber(value.inputCostPer1M)
+    ?? optionalCostNumber(value.input_cost_per_1m)
+    ?? optionalCostNumber(value.input)
+    ?? optionalCostNumber(value.promptCostPer1M)
+    ?? optionalCostNumber(value.prompt_cost_per_1m);
+  const outputCostPer1M =
+    optionalCostNumber(value.outputCostPer1M)
+    ?? optionalCostNumber(value.output_cost_per_1m)
+    ?? optionalCostNumber(value.output)
+    ?? optionalCostNumber(value.completionCostPer1M)
+    ?? optionalCostNumber(value.completion_cost_per_1m);
+
+  if (inputCostPer1M == null && outputCostPer1M == null) return null;
+  return { inputCostPer1M, outputCostPer1M };
+}
+
+function addModelCost(costs: AiModelCosts, key: string, value: unknown) {
+  const entry = parseModelCostEntry(value);
+  if (!entry) return;
+  costs[normalizeCostKey(key)] = entry;
+}
+
+function parseAiModelCostsJson(value: string | undefined): AiModelCosts {
+  const costs: AiModelCosts = {};
+  if (!value?.trim()) return costs;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (!isRecord(item)) continue;
+        const provider = readString(item.provider);
+        const model = readString(item.model);
+        if (!provider || !model) continue;
+        addModelCost(costs, `${provider}/${model}`, item);
+      }
+      return costs;
+    }
+
+    if (!isRecord(parsed)) return costs;
+
+    for (const [key, config] of Object.entries(parsed)) {
+      const directEntry = parseModelCostEntry(config);
+      if (directEntry) {
+        costs[normalizeCostKey(key)] = directEntry;
+        continue;
+      }
+
+      if (!isRecord(config)) continue;
+      for (const [model, modelConfig] of Object.entries(config)) {
+        addModelCost(costs, `${key}/${model}`, modelConfig);
+      }
+    }
+  } catch {
+    console.warn("[AI] AI_MODEL_COSTS_JSON is invalid; model cost overrides disabled");
+  }
+
+  return costs;
 }
 
 function parseFrontendUrls() {
@@ -69,6 +159,7 @@ export const env = {
   jwtSecret: jwtSecret ?? "change_me_in_development",
   openAiApiKey: process.env.OPENAI_API_KEY,
   openAiBaseUrl: process.env.OPENAI_BASE_URL,
+  aiModelCosts: parseAiModelCostsJson(process.env.AI_MODEL_COSTS_JSON),
   openAiInputCostPer1M: optionalNumber(process.env.OPENAI_INPUT_COST_PER_1M),
   openAiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
   openAiOutputCostPer1M: optionalNumber(process.env.OPENAI_OUTPUT_COST_PER_1M),

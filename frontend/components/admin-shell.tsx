@@ -1,6 +1,6 @@
 "use client";
 
-import { Award, BarChart3, BookOpen, Bot, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, Home, Link as LinkIcon, Menu, School, Settings, ShieldCheck, User, X } from "lucide-react";
+import { Activity, Award, BarChart3, BookOpen, Bot, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, Home, Link as LinkIcon, Menu, School, Settings, ShieldCheck, User, X } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { AccessibilityToolbar } from "@/components/accessibility-toolbar";
@@ -13,6 +13,7 @@ import type { Locale } from "@/lib/i18n";
 const adminNavItems = [
   { href: "/admin", icon: Home, label: "Tổng quan" },
   { href: "/admin/analytics", icon: BarChart3, label: "Analytics" },
+  { href: "/admin/ai-usage", icon: Activity, label: "Sử dụng AI" },
   { href: "/admin/users", icon: User, label: "Học viên" },
   { href: "/admin/questions", icon: BookOpen, label: "Câu hỏi" },
   { href: "/admin/tags", icon: ClipboardList, label: "Tags" },

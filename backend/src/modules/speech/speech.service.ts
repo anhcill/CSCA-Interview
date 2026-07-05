@@ -1,8 +1,10 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { ai_task_type } from "@prisma/client";
 import OpenAI from "openai";
 import { env, type OpenAiTtsVoice } from "../../config/env.js";
+import { logAiUsage } from "../ai/ai-usage.service.js";
 
 const openai = env.openAiApiKey
   ? new OpenAI({
@@ -113,6 +115,15 @@ export type SynthesizeResult = {
   contentType: string;
 };
 
+export type SpeechUsageOptions = {
+  userId?: string | null;
+};
+
+type SpeechUsageOperation = "speech.transcribe" | "speech.synthesize";
+
+// Temporary bucket until Prisma gets speech-specific ai_task_type values.
+const speechAiUsageTaskType = ai_task_type.IMPROVE_ANSWER;
+
 function isWhisperTranscriptionModel(model: string) {
   return model.toLowerCase().endsWith("whisper-1");
 }
@@ -128,16 +139,20 @@ function supportsTtsSpeed(model: string) {
 export async function transcribeAudio(
   audioBase64: string,
   mimeType: string = "audio/webm",
-  language?: string
+  language?: string,
+  options: SpeechUsageOptions = {}
 ): Promise<TranscribeResult> {
   const client = requireOpenAi();
 
   // Write base64 to temp file (OpenAI transcription API needs a file)
   const ext = mimeType.includes("wav") ? "wav" : mimeType.includes("mp3") ? "mp3" : "webm";
   const tmpFile = path.join(os.tmpdir(), `speech_${Date.now()}.${ext}`);
+  const transcriptionModel = env.openAiSttModel;
+  let audioBytes: number | null = null;
 
   try {
     const buffer = Buffer.from(audioBase64, "base64");
+    audioBytes = buffer.length;
 
     // Limit: 10MB
     if (buffer.length > 10 * 1024 * 1024) {
@@ -148,7 +163,6 @@ export async function transcribeAudio(
 
     const startedAt = Date.now();
     const createTranscription = client.audio.transcriptions.create as unknown as (body: Record<string, unknown>) => Promise<VerboseTranscriptionResponse>;
-    const transcriptionModel = env.openAiSttModel;
     const transcriptionInput: Record<string, unknown> = {
       file: fs.createReadStream(tmpFile),
       model: transcriptionModel,
@@ -158,8 +172,28 @@ export async function transcribeAudio(
     if (isWhisperTranscriptionModel(transcriptionModel)) {
       transcriptionInput.timestamp_granularities = ["word"];
     }
-    const transcription = await createTranscription(transcriptionInput);
-    console.log(`[AI] stt.transcribe model=${transcriptionModel} ${Date.now() - startedAt}ms`);
+    let transcription: VerboseTranscriptionResponse;
+    try {
+      transcription = await createTranscription(transcriptionInput);
+    } catch (error) {
+      await logSpeechAiUsage({
+        errorMessage: error instanceof Error ? error.message : String(error),
+        latencyMs: Date.now() - startedAt,
+        model: transcriptionModel,
+        operation: "speech.transcribe",
+        requestPayload: {
+          audioBytes,
+          language: language ?? null,
+          mimeType,
+          responseFormat: transcriptionInput.response_format
+        },
+        userId: options.userId ?? null
+      });
+      throw error;
+    }
+
+    const latencyMs = Date.now() - startedAt;
+    console.log(`[AI] stt.transcribe model=${transcriptionModel} ${latencyMs}ms`);
 
     const detectedLang = transcription.language ?? language ?? "unknown";
     const duration = transcription.duration ?? undefined;
@@ -171,6 +205,25 @@ export async function transcribeAudio(
     const speechMetrics = duration
       ? analyzeSpeech(transcription.text, duration, words, detectedLang)
       : undefined;
+
+    await logSpeechAiUsage({
+      latencyMs,
+      model: transcriptionModel,
+      operation: "speech.transcribe",
+      requestPayload: {
+        audioBytes,
+        language: language ?? null,
+        mimeType,
+        responseFormat: transcriptionInput.response_format
+      },
+      responsePayload: {
+        detectedLanguage: detectedLang,
+        durationSec: duration ?? null,
+        textLength: transcription.text.length,
+        wordSegments: words.length
+      },
+      userId: options.userId ?? null
+    });
 
     return {
       text: transcription.text,
@@ -195,7 +248,8 @@ export async function transcribeAudio(
 export async function synthesizeSpeech(
   text: string,
   voice: OpenAiTtsVoice = env.openAiTtsVoice,
-  speed: number = 1.0
+  speed: number = 1.0,
+  options: SpeechUsageOptions = {}
 ): Promise<SynthesizeResult> {
   const client = requireOpenAi();
 
@@ -208,22 +262,83 @@ export async function synthesizeSpeech(
 
   const startedAt = Date.now();
   const ttsModel = env.openAiTtsModel;
-  const response = await client.audio.speech.create({
-    model: ttsModel,
-    voice,
-    input: trimmedText,
-    ...(supportsTtsSpeed(ttsModel) ? { speed: Math.max(0.25, Math.min(4.0, speed)) } : {}),
-    response_format: "mp3"
+  const normalizedSpeed = Math.max(0.25, Math.min(4.0, speed));
+  const ttsSupportsSpeed = supportsTtsSpeed(ttsModel);
+
+  try {
+    const response = await client.audio.speech.create({
+      model: ttsModel,
+      voice,
+      input: trimmedText,
+      ...(ttsSupportsSpeed ? { speed: normalizedSpeed } : {}),
+      response_format: "mp3"
+    });
+
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = Buffer.from(arrayBuffer);
+    const latencyMs = Date.now() - startedAt;
+    console.log(`[AI] tts.synthesize model=${ttsModel} voice=${voice} ${latencyMs}ms`);
+
+    await logSpeechAiUsage({
+      latencyMs,
+      model: ttsModel,
+      operation: "speech.synthesize",
+      requestPayload: {
+        inputChars: trimmedText.length,
+        speed: ttsSupportsSpeed ? normalizedSpeed : null,
+        voice
+      },
+      responsePayload: {
+        audioBytes: audioBuffer.length,
+        contentType: "audio/mpeg"
+      },
+      userId: options.userId ?? null
+    });
+
+    return {
+      audioBuffer,
+      contentType: "audio/mpeg"
+    };
+  } catch (error) {
+    await logSpeechAiUsage({
+      errorMessage: error instanceof Error ? error.message : String(error),
+      latencyMs: Date.now() - startedAt,
+      model: ttsModel,
+      operation: "speech.synthesize",
+      requestPayload: {
+        inputChars: trimmedText.length,
+        speed: ttsSupportsSpeed ? normalizedSpeed : null,
+        voice
+      },
+      userId: options.userId ?? null
+    });
+    throw error;
+  }
+}
+
+async function logSpeechAiUsage(input: {
+  errorMessage?: string | null;
+  latencyMs: number;
+  model: string;
+  operation: SpeechUsageOperation;
+  requestPayload?: Record<string, unknown>;
+  responsePayload?: Record<string, unknown>;
+  userId?: string | null;
+}) {
+  await logAiUsage({
+    errorMessage: input.errorMessage ?? null,
+    latencyMs: input.latencyMs,
+    model: input.model,
+    provider: "openai",
+    requestPayload: {
+      feature: "speech",
+      operation: input.operation,
+      ...(input.requestPayload ?? {})
+    },
+    responsePayload: input.responsePayload,
+    taskType: speechAiUsageTaskType,
+    userId: input.userId ?? null
   });
-
-  const arrayBuffer = await response.arrayBuffer();
-  const audioBuffer = Buffer.from(arrayBuffer);
-  console.log(`[AI] tts.synthesize model=${ttsModel} voice=${voice} ${Date.now() - startedAt}ms`);
-
-  return {
-    audioBuffer,
-    contentType: "audio/mpeg"
-  };
 }
 
 // ---------------------------------------------------------------------------

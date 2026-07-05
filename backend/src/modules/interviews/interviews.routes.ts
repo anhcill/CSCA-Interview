@@ -16,13 +16,13 @@ import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { env } from "../../config/env.js";
 import { requireAuth, type AuthenticatedUser } from "../auth/auth.middleware.js";
+import { checkAiCallBudget } from "../ai/ai-budget.service.js";
 import { generateInterviewQuestions, scoreInterviewAnswerWithAi } from "../ai/ai.service.js";
 import { createAdaptiveQuestion } from "./adaptive-interview.engine.js";
 import { buildSessionAnalysis } from "./detailed-scoring.service.js";
 import { buildInterviewRagContext } from "./rag-context.service.js";
 import {
   buildPreparedQuestions as buildPreparedQuestionsFromService,
-  checkAiCallBudget as checkAiCallBudgetFromService,
   delay as delayFromService,
   findBankQuestions as findBankQuestionsFromService,
   getQuestionLimitForDuration,
@@ -116,7 +116,6 @@ const skipQuestionSchema = z.object({
 
 const maxSessionQuestions = 10;
 const initialSessionQuestions = 5;
-const maxAiCallsPerUserPerDay = Number(process.env.AI_DAILY_CALL_LIMIT ?? 40);
 
 function rejectLockedSession(res: Response, status: InterviewStatus) {
   if (status === InterviewStatus.PAUSED) {
@@ -377,7 +376,7 @@ interviewsRouter.post("/", async (req, res) => {
     });
     const needsAiSeedQuestions = bankQuestions.length < targetQuestionCount;
     if (needsAiSeedQuestions) {
-      const aiBudget = await checkAiCallBudgetFromService(user.id);
+      const aiBudget = await checkAiCallBudget(user.id);
       if (!aiBudget.ok) {
         res.status(429).json({ message: aiBudget.message });
         return;
@@ -748,6 +747,12 @@ interviewsRouter.post("/analyze-study-plan", async (req, res) => {
         message: resolvedStudyPlan.parseMetadata.warnings[0] ?? "Kế hoạch học tập quá ngắn hoặc không hợp lệ",
         parseMetadata: resolvedStudyPlan.parseMetadata
       });
+      return;
+    }
+
+    const aiBudget = await checkAiCallBudget(user.id);
+    if (!aiBudget.ok) {
+      res.status(429).json({ message: aiBudget.message });
       return;
     }
 
@@ -1683,7 +1688,7 @@ interviewsRouter.post("/:sessionId/next-question", async (req, res) => {
       return;
     }
 
-    const aiBudget = await checkAiCallBudgetFromService(user.id);
+    const aiBudget = await checkAiCallBudget(user.id);
     if (!aiBudget.ok) {
       if (existingNext) {
         res.json({
@@ -1750,7 +1755,7 @@ interviewsRouter.post("/:sessionId/complete", async (req, res) => {
   const answersToScore = session.answers.filter((answer) => {
     return Boolean(answer.answerText?.trim()) && !answer.scoreTotal;
   });
-  const aiBudget = await checkAiCallBudgetFromService(user.id, answersToScore.length);
+  const aiBudget = await checkAiCallBudget(user.id, answersToScore.length);
   if (!aiBudget.ok) {
     res.status(429).json({ message: aiBudget.message });
     return;
@@ -2077,36 +2082,6 @@ function toVoiceLanguage(value: string | null | undefined, fallback: LanguageCod
   if (normalized === "zh" || normalized === "zh-cn" || normalized === "cn") return LanguageCode.ZH;
   if (normalized === "en" || normalized === "en-us") return LanguageCode.EN;
   return fallback;
-}
-
-async function checkAiCallBudget(userId: string, requestedCalls = 1) {
-  if (requestedCalls <= 0) {
-    return { ok: true as const };
-  }
-
-  if (!Number.isFinite(maxAiCallsPerUserPerDay) || maxAiCallsPerUserPerDay <= 0) {
-    return { ok: true as const };
-  }
-
-  const since = new Date();
-  since.setHours(0, 0, 0, 0);
-
-  const used = await prisma.ai_usage_logs.count({
-    where: {
-      created_at: { gte: since },
-      error_message: null,
-      user_id: userId
-    }
-  });
-
-  if (used + requestedCalls > maxAiCallsPerUserPerDay) {
-    return {
-      ok: false as const,
-      message: `Bạn đã đạt giới hạn ${maxAiCallsPerUserPerDay} lượt AI hôm nay. Vui lòng thử lại ngày mai.`
-    };
-  }
-
-  return { ok: true as const };
 }
 
 async function findBankQuestions(input: {

@@ -15,13 +15,14 @@ import { buildSessionAnalysis } from "./detailed-scoring.service.js";
 import { awardBadgesForUser } from "../gamification/gamification.service.js";
 import { normalizeSearchText, rankSearchCandidate } from "../../utils/search-normalize.js";
 
+export { checkAiCallBudget, maxAiCallsPerUserPerDay } from "../ai/ai-budget.service.js";
+
 // ── Constants ──────────────────────────────────────────────────────────
 const defaultPlannedDurationMinutes = 30;
 const estimatedMinutesPerQuestion = 6;
 const minSessionQuestions = 3;
 export const maxSessionQuestions = 30;
 export const initialSessionQuestions = 5;
-export const maxAiCallsPerUserPerDay = Number(process.env.AI_DAILY_CALL_LIMIT ?? 40);
 
 // ── Types ──────────────────────────────────────────────────────────────
 export type PreparedQuestion = {
@@ -189,36 +190,6 @@ export function getQuestionLimitForDuration(plannedDurationMinutes?: number | nu
 function clampQuestionLimit(value: number) {
   if (!Number.isFinite(value)) return initialSessionQuestions;
   return Math.max(minSessionQuestions, Math.min(maxSessionQuestions, Math.floor(value)));
-}
-
-export async function checkAiCallBudget(userId: string, requestedCalls = 1) {
-  if (requestedCalls <= 0) {
-    return { ok: true as const };
-  }
-
-  if (!Number.isFinite(maxAiCallsPerUserPerDay) || maxAiCallsPerUserPerDay <= 0) {
-    return { ok: true as const };
-  }
-
-  const since = new Date();
-  since.setHours(0, 0, 0, 0);
-
-  const used = await prisma.ai_usage_logs.count({
-    where: {
-      created_at: { gte: since },
-      error_message: null,
-      user_id: userId
-    }
-  });
-
-  if (used + requestedCalls > maxAiCallsPerUserPerDay) {
-    return {
-      ok: false as const,
-      message: `Bạn đã đạt giới hạn ${maxAiCallsPerUserPerDay} lượt AI hôm nay. Vui lòng thử lại ngày mai.`
-    };
-  }
-
-  return { ok: true as const };
 }
 
 type BankQuestionLookupInput = {

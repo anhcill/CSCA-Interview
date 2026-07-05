@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { checkAiCallBudget } from "../ai/ai-budget.service.js";
 import { scoreInterviewAnswerWithAi, type DetailedScore } from "../ai/ai.service.js";
 import { buildInterviewRagContext } from "./rag-context.service.js";
-import { checkAiCallBudget } from "./interviews.service.js";
 
 const answerScoringInclude = {
   session: true,
