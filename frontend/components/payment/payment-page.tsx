@@ -159,11 +159,11 @@ export function PaymentPage() {
   }
 
   return (
-    <section className="bg-[#fff7f7] px-4 py-6 sm:px-6 lg:py-8">
-      <div className="mx-auto max-w-[1180px] overflow-hidden rounded-lg border border-[#ffd3d7] bg-white shadow-[0_24px_70px_rgba(185,28,28,0.08)]">
+    <section className="bg-[#fff7f7] px-3 py-3 sm:px-5 lg:py-4">
+      <div className="mx-auto max-w-[1240px] overflow-hidden rounded-lg border border-[#ffd3d7] bg-white shadow-[0_24px_70px_rgba(185,28,28,0.08)]">
         <HeroPanel />
 
-        <div className="grid gap-5 px-4 pb-4 sm:px-7 sm:pb-7 lg:grid-cols-[1fr_16rem] xl:grid-cols-[1fr_18rem]">
+        <div className="grid gap-3 px-3 pb-3 sm:px-5 sm:pb-5 lg:grid-cols-[1fr_14.5rem] xl:grid-cols-[1fr_16rem]">
           <div>
             {loadError ? (
               <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
@@ -171,7 +171,7 @@ export function PaymentPage() {
               </div>
             ) : null}
 
-            <div className="grid gap-5 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-3">
               {loadingPlans
                 ? Array.from({ length: 3 }).map((_, index) => <PlanSkeleton key={index} />)
                 : interviewPlans.map((plan) => (
@@ -188,7 +188,7 @@ export function PaymentPage() {
             <PaymentBadges />
           </div>
 
-          <aside className="space-y-4">
+          <aside className="space-y-3">
             {activeOrder ? (
               <PaymentOrderPanel order={activeOrder} onContinue={nextPath ? () => router.push(nextPath) : undefined} onCopy={copyText} />
             ) : (
@@ -217,29 +217,29 @@ function sanitizeNextPath(value: string | null) {
 
 function HeroPanel() {
   return (
-    <div className="relative min-h-[13rem] overflow-hidden px-6 py-8 sm:px-12 lg:min-h-[12rem]">
+    <div className="relative min-h-[8.5rem] overflow-hidden px-5 py-5 sm:px-8 lg:min-h-[8rem]">
       <div
         className="absolute inset-y-0 right-0 w-full bg-cover bg-center opacity-25 blur-[1px] sm:w-[62%] sm:opacity-45"
         style={{ backgroundImage: "url('/auth/image/study_abroad_hero.png')" }}
       />
       <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff_0%,rgba(255,255,255,0.96)_42%,rgba(255,255,255,0.5)_100%)]" />
-      <div className="absolute right-8 top-7 hidden h-16 w-16 rounded-full bg-[#fecdd3]/70 blur-2xl md:block" />
+      <div className="absolute right-8 top-7 hidden h-12 w-12 rounded-full bg-[#fecdd3]/70 blur-2xl md:block" />
 
       <div className="relative max-w-2xl">
-        <h1 className="text-4xl font-black leading-tight tracking-normal text-[#09090b] sm:text-5xl">
+        <h1 className="text-3xl font-black leading-tight tracking-normal text-[#09090b] sm:text-4xl">
           Bảng giá <span className="text-[#ef233c]">Interview</span>
         </h1>
-        <p className="mt-4 max-w-xl text-base font-black text-[#1f2937] sm:text-lg">
+        <p className="mt-2 max-w-xl text-sm font-black text-[#1f2937] sm:text-base">
           Luyện phỏng vấn AI - tự tin chinh phục học bổng!
         </p>
 
-        <div className="mt-7 flex max-w-xl items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fff1f2] text-[#ef233c]">
-            <ShieldCheck size={20} />
+        <div className="mt-3 flex max-w-xl items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#fff1f2] text-[#ef233c]">
+            <ShieldCheck size={18} />
           </span>
           <div>
             <p className="text-sm font-black text-[#111827]">An toàn - Bảo mật - Hỗ trợ tận tâm</p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-[#6b7280]">
+            <p className="mt-0.5 text-xs font-semibold leading-4 text-[#6b7280]">
               Thanh toán qua SePay/VietQR, thông tin chuyển khoản được tạo riêng cho từng đơn.
             </p>
           </div>
@@ -261,33 +261,33 @@ function PlanCard({
   recommended?: boolean;
 }) {
   return (
-    <article className={`relative rounded-lg border bg-white p-5 text-center shadow-[0_18px_45px_rgba(15,23,42,0.06)] transition ${plan.highlighted ? "border-[#ff4055] ring-1 ring-[#ff4055]/40" : "border-[#ffe0e3]"}`}>
+    <article className={`relative rounded-lg border bg-white p-4 text-center shadow-[0_18px_45px_rgba(15,23,42,0.06)] transition ${plan.highlighted ? "border-[#ff4055] ring-1 ring-[#ff4055]/40" : "border-[#ffe0e3]"}`}>
       {plan.highlighted ? (
-        <div className="absolute -top-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#ef233c] px-4 py-1.5 text-xs font-black text-white shadow-lg shadow-red-900/20">
+        <div className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#ef233c] px-3 py-1 text-[11px] font-black text-white shadow-lg shadow-red-900/20">
           <Sparkles size={13} />
           Phổ biến nhất
         </div>
       ) : null}
       {recommended && !plan.highlighted ? (
-        <div className="absolute -top-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#ef233c] px-4 py-1.5 text-xs font-black text-white shadow-lg shadow-red-900/20">
+        <div className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#ef233c] px-3 py-1 text-[11px] font-black text-white shadow-lg shadow-red-900/20">
           <Sparkles size={13} />
           Phù hợp flow
         </div>
       ) : null}
 
       <p className="mx-auto inline-flex rounded-md bg-[#fff1f2] px-3 py-1 text-xs font-black uppercase text-[#ef233c]">Gói 1 lần</p>
-      <h2 className="mt-3 text-2xl font-black text-[#ef233c]">{plan.label}</h2>
-      <p className="mt-1 text-2xl font-black text-[#111827]">{formatMoney(plan.amount)}</p>
+      <h2 className="mt-2 text-xl font-black text-[#ef233c]">{plan.label}</h2>
+      <p className="mt-0.5 text-xl font-black text-[#111827]">{formatMoney(plan.amount)}</p>
 
-      <div className="mx-auto mt-5 flex h-24 w-24 items-center justify-center rounded-full bg-[#fff1f2] text-[#ef233c]">
-        <div className="flex h-16 w-16 flex-col items-center justify-center rounded-full border-4 border-[#ff7b86] bg-white">
-          <Clock3 size={24} />
-          <span className="mt-0.5 text-xl font-black leading-none text-[#374151]">{plan.durationMinutes}</span>
-          <span className="text-[10px] font-black text-[#ef233c]">min</span>
+      <div className="mx-auto mt-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#fff1f2] text-[#ef233c]">
+        <div className="flex h-12 w-12 flex-col items-center justify-center rounded-full border-[3px] border-[#ff7b86] bg-white">
+          <Clock3 size={17} />
+          <span className="mt-0.5 text-base font-black leading-none text-[#374151]">{plan.durationMinutes}</span>
+          <span className="text-[8px] font-black text-[#ef233c]">min</span>
         </div>
       </div>
 
-      <ul className="mt-6 space-y-3 text-left text-xs font-semibold leading-5 text-[#374151]">
+      <ul className="mt-4 space-y-2 text-left text-xs font-semibold leading-4 text-[#374151]">
         {[
           `Phỏng vấn AI ${plan.durationMinutes} phút`,
           "Câu hỏi cá nhân hóa",
@@ -295,7 +295,7 @@ function PlanCard({
           "Báo cáo kết quả sau buổi phỏng vấn"
         ].map((item) => (
           <li key={item} className="flex gap-2">
-            <CheckCircle2 className="mt-0.5 shrink-0 text-[#ef233c]" size={15} />
+            <CheckCircle2 className="mt-0.5 shrink-0 text-[#ef233c]" size={14} />
             <span>{item}</span>
           </li>
         ))}
@@ -305,7 +305,7 @@ function PlanCard({
         type="button"
         onClick={onChoose}
         disabled={creating}
-        className={`mt-7 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-70 ${plan.highlighted ? "bg-[#ef233c] text-white shadow-lg shadow-red-900/15 hover:bg-[#d90429]" : "border border-[#ff5b68] bg-white text-[#ef233c] hover:bg-[#fff1f2]"}`}
+        className={`mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-70 ${plan.highlighted ? "bg-[#ef233c] text-white shadow-lg shadow-red-900/15 hover:bg-[#d90429]" : "border border-[#ff5b68] bg-white text-[#ef233c] hover:bg-[#fff1f2]"}`}
       >
         {creating ? <Loader2 className="animate-spin" size={16} /> : <CreditCard size={16} />}
         Chọn gói này
@@ -316,17 +316,17 @@ function PlanCard({
 
 function PlanSkeleton() {
   return (
-    <div className="h-[23rem] rounded-lg border border-[#ffe0e3] bg-white p-5">
+    <div className="h-[18rem] rounded-lg border border-[#ffe0e3] bg-white p-4">
       <div className="skeleton mx-auto h-7 w-24 rounded-lg" />
       <div className="skeleton mx-auto mt-4 h-8 w-28 rounded-lg" />
       <div className="skeleton mx-auto mt-3 h-8 w-32 rounded-lg" />
-      <div className="skeleton mx-auto mt-6 h-24 w-24 rounded-full" />
-      <div className="mt-7 space-y-3">
+      <div className="skeleton mx-auto mt-4 h-16 w-16 rounded-full" />
+      <div className="mt-5 space-y-2">
         <div className="skeleton h-4 rounded-lg" />
         <div className="skeleton h-4 rounded-lg" />
         <div className="skeleton h-4 rounded-lg" />
       </div>
-      <div className="skeleton mt-7 h-11 rounded-lg" />
+      <div className="skeleton mt-5 h-10 rounded-lg" />
     </div>
   );
 }
@@ -341,12 +341,12 @@ function AddOnCard({
   plan: PaymentPlan;
 }) {
   return (
-    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-4 shadow-[0_18px_45px_rgba(185,28,28,0.06)]">
+    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-3 shadow-[0_18px_45px_rgba(185,28,28,0.06)]">
       <p className="inline-flex rounded-md bg-white px-3 py-1 text-xs font-black uppercase text-[#ef233c]">Mua thêm thời gian</p>
-      <div className="mt-5 flex items-center gap-3">
-        <Timer className="shrink-0 text-[#ef233c]" size={44} />
+      <div className="mt-3 flex items-center gap-3">
+        <Timer className="shrink-0 text-[#ef233c]" size={32} />
         <div>
-          <p className="text-2xl font-black text-[#ef233c]">30 phút = {formatMoney(plan.amount)}</p>
+          <p className="text-xl font-black text-[#ef233c]">30 phút = {formatMoney(plan.amount)}</p>
           <p className="mt-1 text-xs font-bold text-[#6b7280]">Mỗi 30 phút = {formatMoney(plan.amount)}</p>
         </div>
       </div>
@@ -354,7 +354,7 @@ function AddOnCard({
         type="button"
         onClick={onChoose}
         disabled={creating}
-        className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ef233c] px-4 text-sm font-black text-white shadow-lg shadow-red-900/15 transition hover:bg-[#d90429] disabled:cursor-not-allowed disabled:opacity-70"
+        className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#ef233c] px-4 text-sm font-black text-white shadow-lg shadow-red-900/15 transition hover:bg-[#d90429] disabled:cursor-not-allowed disabled:opacity-70"
       >
         {creating ? <Loader2 className="animate-spin" size={16} /> : <WalletCards size={16} />}
         Mua thêm thời gian
@@ -372,19 +372,19 @@ function WhyChooseCard() {
   ];
 
   return (
-    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-4 shadow-[0_18px_45px_rgba(185,28,28,0.06)]">
+    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-3 shadow-[0_18px_45px_rgba(185,28,28,0.06)]">
       <h2 className="text-sm font-black text-[#111827]">Tại sao chọn InterviewAI?</h2>
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 space-y-2">
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.title} className="flex gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#ef233c]">
-                <Icon size={18} />
+            <div key={item.title} className="flex gap-2">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#ef233c]">
+                <Icon size={16} />
               </span>
               <div>
                 <p className="text-xs font-black text-[#111827]">{item.title}</p>
-                <p className="mt-1 text-[11px] font-semibold leading-4 text-[#6b7280]">{item.description}</p>
+                <p className="mt-0.5 text-[11px] font-semibold leading-4 text-[#6b7280]">{item.description}</p>
               </div>
             </div>
           );
@@ -484,7 +484,7 @@ function PaymentInfoRow({
 
 function PaymentBadges() {
   return (
-    <div className="mt-4 rounded-lg border border-[#ffe0e3] bg-[#fff8f8] px-4 py-3">
+    <div className="mt-3 hidden rounded-lg border border-[#ffe0e3] bg-[#fff8f8] px-4 py-3 xl:block">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#ef233c]">

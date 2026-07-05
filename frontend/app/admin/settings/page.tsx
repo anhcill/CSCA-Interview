@@ -157,9 +157,13 @@ export default function AdminSettingsPage() {
       <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-4 md:flex-row md:items-center">
         <div>
           <Link href="/admin" className="text-sm font-semibold text-indigo-600 hover:underline">&larr; Admin</Link>
-          <h1 className="mt-1 text-2xl font-bold">Settings & AI</h1>
-          <p className="mt-1 text-sm text-slate-500">System settings và AI prompt templates.</p>
+          <h1 className="mt-1 text-2xl font-bold">Cài đặt hệ thống & AI</h1>
+          <p className="mt-1 text-sm text-slate-500">Model AI theo chức năng nằm ở đầu trang, bên dưới là system settings và prompt templates.</p>
         </div>
+        <Link href="/admin/ai-models" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700">
+          <Bot size={16} />
+          Mở Model AI
+        </Link>
       </div>
 
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}

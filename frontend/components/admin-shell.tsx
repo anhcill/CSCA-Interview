@@ -1,9 +1,10 @@
 "use client";
 
-import { Award, BarChart3, BookOpen, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, Home, Link as LinkIcon, Menu, School, Settings, ShieldCheck, User, X } from "lucide-react";
+import { Award, BarChart3, BookOpen, Bot, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, Home, Link as LinkIcon, Menu, School, Settings, ShieldCheck, User, X } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { AccessibilityToolbar } from "@/components/accessibility-toolbar";
+import { HideOnScrollHeader } from "@/components/hide-on-scroll-header";
 import { LogoutButton } from "@/components/logout-button";
 import { RoleSwitcher } from "@/components/role-switcher";
 import type { AuthUser } from "@/lib/auth-client";
@@ -19,6 +20,7 @@ const adminNavItems = [
   { href: "/admin/majors", icon: GraduationCap, label: "Ngành" },
   { href: "/admin/scholarships", icon: Award, label: "Học bổng" },
   { href: "/admin/mappings", icon: LinkIcon, label: "Mappings" },
+  { href: "/admin/ai-models", icon: Bot, label: "Model AI" },
   { href: "/admin/audit", icon: ClipboardList, label: "Audit logs" },
   { href: "/admin/settings", icon: Settings, label: "Cài đặt" }
 ] as const;
@@ -76,7 +78,7 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
         </nav>
       </aside>
 
-      <header className={`sticky top-0 z-30 border-b border-slate-200 bg-white/92 backdrop-blur dark:border-slate-800 dark:bg-slate-950/92 ${collapsed ? "lg:ml-20" : "lg:ml-72"}`}>
+      <HideOnScrollHeader className={`sticky top-0 z-30 border-b border-slate-200 bg-white/92 backdrop-blur dark:border-slate-800 dark:bg-slate-950/92 ${collapsed ? "lg:ml-20" : "lg:ml-72"}`}>
         <div className="flex min-h-16 items-center justify-between gap-4 px-4 lg:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" onClick={() => setMobileOpen(true)} className="focus-ring flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 lg:hidden dark:border-slate-700 dark:text-slate-200" aria-label="Mở menu quản trị">
@@ -97,7 +99,7 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
             <LogoutButton />
           </div>
         </div>
-      </header>
+      </HideOnScrollHeader>
 
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm lg:hidden dark:bg-slate-950/80">

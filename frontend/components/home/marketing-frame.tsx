@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { HideOnScrollHeader } from "@/components/hide-on-scroll-header";
 import { HomeFooter } from "./home-footer";
 import { HomeNavbar } from "./home-navbar";
 
@@ -19,11 +20,11 @@ type MarketingIntroProps = {
 export function MarketingFrame({ children }: MarketingFrameProps) {
   return (
     <main id="main-content" className="min-h-screen bg-[#f6f8fb] font-sans text-[#172033]">
-      <div className="sticky top-0 z-40 border-b border-[#ead8c2] bg-white/88 backdrop-blur-xl">
+      <HideOnScrollHeader className="sticky top-0 z-40 border-b border-[#ead8c2] bg-white/88 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <HomeNavbar />
         </div>
-      </div>
+      </HideOnScrollHeader>
       {children}
       <HomeFooter />
     </main>

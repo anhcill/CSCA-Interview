@@ -181,11 +181,15 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
   }
 
   return (
-    <section className="mb-6 rounded-lg border bg-white p-5">
+    <section id="ai-model-router" className="mb-6 rounded-lg border bg-white p-5">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-bold"><Bot size={18} />Router model AI</h2>
-          <p className="mt-1 text-sm text-slate-500">Đổi model cho từng agent text. STT/TTS vẫn giữ OpenAI để phần audio ổn định.</p>
+          <h2 className="flex items-center gap-2 text-lg font-bold"><Bot size={18} />Cài đặt model AI theo chức năng</h2>
+          <p className="mt-1 text-sm text-slate-500">Đổi provider/model cho từng AI text. STT/TTS vẫn giữ OpenAI để phần audio ổn định.</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+            <span className="rounded bg-indigo-50 px-2 py-1 text-indigo-700">Text AI đổi linh hoạt</span>
+            <span className="rounded bg-slate-100 px-2 py-1 text-slate-600">Audio OpenAI</span>
+          </div>
         </div>
         <button type="button" onClick={() => void load()} className="min-h-10 rounded-lg border px-4 text-sm font-bold" disabled={loading}>
           Tải lại
@@ -209,7 +213,7 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
           <table className="w-full min-w-[820px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-3 py-2">Agent</th>
+                <th className="px-3 py-2">Chức năng AI</th>
                 <th className="px-3 py-2">Provider</th>
                 <th className="px-3 py-2">Model</th>
                 <th className="px-3 py-2">Test</th>
@@ -250,7 +254,7 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
 
         <button type="submit" disabled={saving || loading} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white disabled:opacity-50">
           <Settings size={16} />
-          Lưu router AI
+          Lưu cấu hình model
         </button>
       </form>
     </section>

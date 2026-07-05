@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BookOpen, ClipboardList, GraduationCap, Upload, User } from "lucide-react";
+import { BarChart3, BookOpen, Bot, ClipboardList, GraduationCap, Upload, User } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -40,6 +40,7 @@ type UsersResponse = { data: AdminUser[] };
 const quickActions = [
   { href: "/admin/questions", icon: BookOpen, label: "Thêm câu hỏi", tone: "bg-red-600 text-white" },
   { href: "/admin/questions", icon: Upload, label: "Import Excel", tone: "bg-amber-400 text-slate-950" },
+  { href: "/admin/ai-models", icon: Bot, label: "Model AI", tone: "bg-indigo-600 text-white" },
   { href: "/admin/audit", icon: ClipboardList, label: "Audit logs", tone: "bg-slate-800 text-white" },
   { href: "/admin/mappings", icon: GraduationCap, label: "Mapping tuyển sinh", tone: "bg-slate-800 text-white" }
 ] as const;

@@ -15,6 +15,7 @@ import { AccessibilityToolbar } from "@/components/accessibility-toolbar";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { RoleSwitcher } from "@/components/role-switcher";
 import { clearAuthSession, logoutAccount, type AuthUser } from "@/lib/auth-client";
+import { useHideOnScroll } from "@/lib/hooks/use-hide-on-scroll";
 import { messages, type Locale } from "@/lib/i18n";
 
 const navItems = [
@@ -36,7 +37,7 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [hiddenOnScroll, setHiddenOnScroll] = useState(false);
+  const hiddenOnScroll = useHideOnScroll();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const t = messages[locale];
@@ -56,19 +57,6 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
     setMobileOpen(false);
     setUserMenuOpen(false);
   }, [activePathname]);
-
-  useEffect(() => {
-    let lastY = window.scrollY;
-
-    function handleScroll() {
-      const nextY = window.scrollY;
-      setHiddenOnScroll(nextY > 96 && nextY > lastY);
-      lastY = nextY;
-    }
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   async function handleLogout() {
     setIsLoggingOut(true);
