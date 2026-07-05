@@ -128,7 +128,7 @@ adminRouter.get("/stats/ai-cost", async (req, res) => {
 const userStatusSchema = z.object({ isActive: z.boolean() });
 const userRoleSchema = z.object({ role: z.nativeEnum(Role) });
 const resetPasswordSchema = z.object({
-  password: z.string().min(8, "Mat khau moi can toi thieu 8 ky tu")
+  password: z.string().min(8, "Mật khẩu mới cần tối thiểu 8 ký tự")
 });
 const csvImportSchema = z.object({
   csv: z.string().min(1, "CSV không được để trống")
@@ -213,7 +213,7 @@ function getAdmin(res: Response) {
 function requireSuperAdmin(res: Response) {
   const admin = getAdmin(res);
   if (admin.role !== "SUPER_ADMIN") {
-    res.status(403).json({ message: "Chi SUPER_ADMIN moi duoc dung chuc nang nay" });
+    res.status(403).json({ message: "Chỉ SUPER_ADMIN mới được dùng chức năng này" });
     return null;
   }
   return admin;
@@ -364,7 +364,7 @@ adminRouter.get("/stats", async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai thong ke admin" });
+    res.status(500).json({ message: "Không thể tải thống kê admin" });
   }
 });
 
@@ -430,7 +430,7 @@ adminRouter.get("/users", async (req, res) => {
     res.json(paginatedResponse(users, total, page, limit));
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai danh sach users" });
+    res.status(500).json({ message: "Không thể tải danh sách người dùng" });
   }
 });
 
@@ -469,14 +469,14 @@ adminRouter.get("/users/:id", async (req, res) => {
     });
 
     if (!user) {
-      res.status(404).json({ message: "Khong tim thay user" });
+      res.status(404).json({ message: "Không tìm thấy người dùng" });
       return;
     }
 
     res.json({ user });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai chi tiet user" });
+    res.status(500).json({ message: "Không thể tải chi tiết người dùng" });
   }
 });
 
@@ -532,13 +532,13 @@ adminRouter.get("/users/:id/study-plan/download", async (req, res) => {
 adminRouter.put("/users/:id/status", async (req, res) => {
   const parsed = userStatusSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Du lieu trang thai khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Dữ liệu trạng thái không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
 
   const admin = getAdmin(res);
   if (admin.id === req.params.id && !parsed.data.isActive) {
-    res.status(400).json({ message: "Khong the khoa chinh tai khoan dang dang nhap" });
+    res.status(400).json({ message: "Không thể khóa chính tài khoản đang đăng nhập" });
     return;
   }
 
@@ -569,10 +569,10 @@ adminRouter.put("/users/:id/status", async (req, res) => {
     res.json({ user });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay user" });
+      res.status(404).json({ message: "Không tìm thấy người dùng" });
       return;
     }
-    res.status(500).json({ message: "Khong the cap nhat trang thai user" });
+    res.status(500).json({ message: "Không thể cập nhật trạng thái người dùng" });
   }
 });
 
@@ -582,11 +582,11 @@ adminRouter.put("/users/:id/role", async (req, res) => {
 
   const parsed = userRoleSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Role khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Role không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
   if (admin.id === req.params.id) {
-    res.status(400).json({ message: "Khong the doi role cua chinh minh" });
+    res.status(400).json({ message: "Không thể đổi role của chính mình" });
     return;
   }
 
@@ -610,17 +610,17 @@ adminRouter.put("/users/:id/role", async (req, res) => {
     res.json({ user });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay user" });
+      res.status(404).json({ message: "Không tìm thấy người dùng" });
       return;
     }
-    res.status(500).json({ message: "Khong the cap nhat role user" });
+    res.status(500).json({ message: "Không thể cập nhật role người dùng" });
   }
 });
 
 adminRouter.post("/users/:id/reset-password", async (req, res) => {
   const parsed = resetPasswordSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Mat khau moi khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Mật khẩu mới không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
 
@@ -632,11 +632,11 @@ adminRouter.post("/users/:id/reset-password", async (req, res) => {
       select: publicUserSelect()
     });
     if (!target) {
-      res.status(404).json({ message: "Khong tim thay user" });
+      res.status(404).json({ message: "Không tìm thấy người dùng" });
       return;
     }
     if (target.role === "SUPER_ADMIN" && admin.role !== "SUPER_ADMIN") {
-      res.status(403).json({ message: "Chi SUPER_ADMIN moi reset duoc SUPER_ADMIN" });
+      res.status(403).json({ message: "Chỉ SUPER_ADMIN mới reset được SUPER_ADMIN" });
       return;
     }
 
@@ -655,10 +655,10 @@ adminRouter.post("/users/:id/reset-password", async (req, res) => {
       entityType: "user"
     });
 
-    res.json({ message: "Da reset mat khau va thu hoi phien dang nhap cu" });
+    res.json({ message: "Đã reset mật khẩu và thu hồi phiên đăng nhập cũ" });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the reset mat khau" });
+    res.status(500).json({ message: "Không thể reset mật khẩu" });
   }
 });
 
@@ -687,7 +687,7 @@ adminRouter.get("/audit-logs", async (req, res) => {
     res.json(paginatedResponse(logs, total, page, limit));
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai audit logs" });
+    res.status(500).json({ message: "Không thể tải audit logs" });
   }
 });
 
@@ -700,7 +700,7 @@ adminRouter.get("/settings", async (_req, res) => {
     res.json({ data: settings });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai settings" });
+    res.status(500).json({ message: "Không thể tải settings" });
   }
 });
 
@@ -751,7 +751,7 @@ adminRouter.get("/question-tags", async (_req, res) => {
     res.json({ data: tags });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai question tags" });
+    res.status(500).json({ message: "Không thể tải question tags" });
   }
 });
 
@@ -787,7 +787,7 @@ adminRouter.post("/questions/master-sheet/preview", async (req, res) => {
     res.json(result);
   } catch (error) {
     if (error instanceof MasterSheetImportError) {
-      res.status(error.status).json({ message: error.message });
+      res.status(error.status).json({ details: error.details, message: error.message });
       return;
     }
     console.error(error);
@@ -807,7 +807,7 @@ adminRouter.post("/questions/master-sheet/import", async (req, res) => {
     res.status(201).json(result);
   } catch (error) {
     if (error instanceof MasterSheetImportError) {
-      res.status(error.status).json({ message: error.message });
+      res.status(error.status).json({ details: error.details, message: error.message });
       return;
     }
     console.error(error);
@@ -818,7 +818,7 @@ adminRouter.post("/questions/master-sheet/import", async (req, res) => {
 adminRouter.post("/question-tags", async (req, res) => {
   const parsed = questionTagSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Tag khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Tag không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
   const admin = getAdmin(res);
@@ -839,17 +839,17 @@ adminRouter.post("/question-tags", async (req, res) => {
     res.status(201).json({ tag });
   } catch (error: any) {
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Tag da ton tai" });
+      res.status(409).json({ message: "Tag đã tồn tại" });
       return;
     }
-    res.status(500).json({ message: "Khong the tao tag" });
+    res.status(500).json({ message: "Không thể tạo tag" });
   }
 });
 
 adminRouter.put("/question-tags/:id", async (req, res) => {
   const parsed = questionTagSchema.partial().safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Tag khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Tag không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
   const admin = getAdmin(res);
@@ -870,14 +870,14 @@ adminRouter.put("/question-tags/:id", async (req, res) => {
     res.json({ tag });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay tag" });
+      res.status(404).json({ message: "Không tìm thấy tag" });
       return;
     }
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Tag da ton tai" });
+      res.status(409).json({ message: "Tag đã tồn tại" });
       return;
     }
-    res.status(500).json({ message: "Khong the cap nhat tag" });
+    res.status(500).json({ message: "Không thể cập nhật tag" });
   }
 });
 
@@ -892,20 +892,20 @@ adminRouter.delete("/question-tags/:id", async (req, res) => {
       entityId: before.id,
       entityType: "question_tag"
     });
-    res.json({ message: "Da xoa tag" });
+    res.json({ message: "Đã xóa tag" });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay tag" });
+      res.status(404).json({ message: "Không tìm thấy tag" });
       return;
     }
-    res.status(500).json({ message: "Khong the xoa tag" });
+    res.status(500).json({ message: "Không thể xóa tag" });
   }
 });
 
 adminRouter.put("/settings/:key", async (req, res) => {
   const parsed = settingSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Setting khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Setting không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
 
@@ -941,7 +941,7 @@ adminRouter.put("/settings/:key", async (req, res) => {
     res.json({ setting });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the luu setting" });
+    res.status(500).json({ message: "Không thể lưu setting" });
   }
 });
 
@@ -961,14 +961,14 @@ adminRouter.get("/prompt-templates", async (req, res) => {
     res.json({ data: templates, taskTypes: Object.values(ai_task_type) });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai prompt templates" });
+    res.status(500).json({ message: "Không thể tải prompt templates" });
   }
 });
 
 adminRouter.post("/prompt-templates", async (req, res) => {
   const parsed = promptTemplateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Prompt template khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Prompt template không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
 
@@ -998,17 +998,17 @@ adminRouter.post("/prompt-templates", async (req, res) => {
     res.status(201).json({ template });
   } catch (error: any) {
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Template trung task/name/version" });
+      res.status(409).json({ message: "Template trùng task/name/version" });
       return;
     }
-    res.status(500).json({ message: "Khong the tao prompt template" });
+    res.status(500).json({ message: "Không thể tạo prompt template" });
   }
 });
 
 adminRouter.put("/prompt-templates/:id", async (req, res) => {
   const parsed = promptTemplateSchema.partial().safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Prompt template khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Prompt template không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
 
@@ -1041,14 +1041,14 @@ adminRouter.put("/prompt-templates/:id", async (req, res) => {
     res.json({ template });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay prompt template" });
+      res.status(404).json({ message: "Không tìm thấy prompt template" });
       return;
     }
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Template trung task/name/version" });
+      res.status(409).json({ message: "Template trùng task/name/version" });
       return;
     }
-    res.status(500).json({ message: "Khong the cap nhat prompt template" });
+    res.status(500).json({ message: "Không thể cập nhật prompt template" });
   }
 });
 
@@ -1060,14 +1060,14 @@ adminRouter.get("/admission-seasons", async (_req, res) => {
     res.json({ data: seasons, statuses: Object.values(admission_season_status) });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai admission seasons" });
+    res.status(500).json({ message: "Không thể tải mùa tuyển sinh" });
   }
 });
 
 adminRouter.post("/admission-seasons", async (req, res) => {
   const parsed = seasonSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Mua tuyen sinh khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Mùa tuyển sinh không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
 
@@ -1093,17 +1093,17 @@ adminRouter.post("/admission-seasons", async (req, res) => {
     res.status(201).json({ season });
   } catch (error: any) {
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Mua tuyen sinh da ton tai" });
+      res.status(409).json({ message: "Mùa tuyển sinh đã tồn tại" });
       return;
     }
-    res.status(500).json({ message: "Khong the tao mua tuyen sinh" });
+    res.status(500).json({ message: "Không thể tạo mùa tuyển sinh" });
   }
 });
 
 adminRouter.put("/admission-seasons/:id", async (req, res) => {
   const parsed = seasonSchema.partial().safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Mua tuyen sinh khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Mùa tuyển sinh không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
 
@@ -1133,14 +1133,14 @@ adminRouter.put("/admission-seasons/:id", async (req, res) => {
     res.json({ season });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay mua tuyen sinh" });
+      res.status(404).json({ message: "Không tìm thấy mùa tuyển sinh" });
       return;
     }
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Mua tuyen sinh da ton tai" });
+      res.status(409).json({ message: "Mùa tuyển sinh đã tồn tại" });
       return;
     }
-    res.status(500).json({ message: "Khong the cap nhat mua tuyen sinh" });
+    res.status(500).json({ message: "Không thể cập nhật mùa tuyển sinh" });
   }
 });
 
@@ -1163,14 +1163,14 @@ adminRouter.get("/school-majors", async (req, res) => {
     res.json({ data: rows });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai mapping truong-nganh" });
+    res.status(500).json({ message: "Không thể tải mapping trường-ngành" });
   }
 });
 
 adminRouter.post("/school-majors", async (req, res) => {
   const parsed = schoolMajorSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Mapping truong-nganh khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Mapping trường-ngành không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
   const admin = getAdmin(res);
@@ -1193,10 +1193,10 @@ adminRouter.post("/school-majors", async (req, res) => {
     res.status(201).json({ item: row });
   } catch (error: any) {
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Mapping truong-nganh da ton tai" });
+      res.status(409).json({ message: "Mapping trường-ngành đã tồn tại" });
       return;
     }
-    res.status(500).json({ message: "Khong the tao mapping truong-nganh" });
+    res.status(500).json({ message: "Không thể tạo mapping trường-ngành" });
   }
 });
 
@@ -1211,13 +1211,13 @@ adminRouter.delete("/school-majors/:id", async (req, res) => {
       entityId: before.id,
       entityType: "school_major"
     });
-    res.json({ message: "Da xoa mapping truong-nganh" });
+    res.json({ message: "Đã xóa mapping trường-ngành" });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay mapping" });
+      res.status(404).json({ message: "Không tìm thấy mapping" });
       return;
     }
-    res.status(500).json({ message: "Khong the xoa mapping truong-nganh" });
+    res.status(500).json({ message: "Không thể xóa mapping trường-ngành" });
   }
 });
 
@@ -1240,14 +1240,14 @@ adminRouter.get("/school-scholarships", async (req, res) => {
     res.json({ data: rows });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Khong the tai mapping truong-hoc bong" });
+    res.status(500).json({ message: "Không thể tải mapping trường-học bổng" });
   }
 });
 
 adminRouter.post("/school-scholarships", async (req, res) => {
   const parsed = schoolScholarshipSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ message: "Mapping truong-hoc bong khong hop le", errors: parsed.error.flatten().fieldErrors });
+    res.status(400).json({ message: "Mapping trường-học bổng không hợp lệ", errors: parsed.error.flatten().fieldErrors });
     return;
   }
   const admin = getAdmin(res);
@@ -1270,10 +1270,10 @@ adminRouter.post("/school-scholarships", async (req, res) => {
     res.status(201).json({ item: row });
   } catch (error: any) {
     if (error.code === "P2002") {
-      res.status(409).json({ message: "Mapping truong-hoc bong da ton tai" });
+      res.status(409).json({ message: "Mapping trường-học bổng đã tồn tại" });
       return;
     }
-    res.status(500).json({ message: "Khong the tao mapping truong-hoc bong" });
+    res.status(500).json({ message: "Không thể tạo mapping trường-học bổng" });
   }
 });
 
@@ -1288,12 +1288,12 @@ adminRouter.delete("/school-scholarships/:id", async (req, res) => {
       entityId: before.id,
       entityType: "school_scholarship"
     });
-    res.json({ message: "Da xoa mapping truong-hoc bong" });
+    res.json({ message: "Đã xóa mapping trường-học bổng" });
   } catch (error: any) {
     if (error.code === "P2025") {
-      res.status(404).json({ message: "Khong tim thay mapping" });
+      res.status(404).json({ message: "Không tìm thấy mapping" });
       return;
     }
-    res.status(500).json({ message: "Khong the xoa mapping truong-hoc bong" });
+    res.status(500).json({ message: "Không thể xóa mapping trường-học bổng" });
   }
 });

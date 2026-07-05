@@ -1,11 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Điều khoản sử dụng | Moly Interview",
-  description: "Điều khoản sử dụng dịch vụ luyện phỏng vấn Moly Interview."
-};
+  description: "Điều khoản sử dụng dịch vụ luyện phỏng vấn Moly Interview.",
+  path: "/terms"
+});
 
 const sections = [
   {

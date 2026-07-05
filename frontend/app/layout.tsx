@@ -5,23 +5,11 @@ import Script from "next/script";
 import { AppShell } from "@/components/app-shell";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/ui/toast";
+import { createPageMetadata, getStructuredData } from "@/lib/seo";
 import "./design-tokens.css";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "AI Phỏng Vấn Du Học",
-  description: "AI interview practice for China scholarship applications",
-  icons: {
-    icon: "/favicon.png",
-  },
-  alternates: {
-    languages: {
-      en: "/?lang=en",
-      vi: "/?lang=vi",
-      zh: "/?lang=zh"
-    }
-  }
-};
+export const metadata: Metadata = createPageMetadata();
 
 export default async function RootLayout({
   children
@@ -30,6 +18,7 @@ export default async function RootLayout({
 }>) {
   const locale = await getLocale();
   const intlMessages = await getMessages();
+  const structuredData = getStructuredData();
 
   return (
     <html lang={locale} suppressHydrationWarning>
@@ -64,6 +53,13 @@ export default async function RootLayout({
             })();
           `}
         </Script>
+        <script
+          id="seo-structured-data"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData).replace(/</g, "\\u003c")
+          }}
+        />
         <NextIntlClientProvider locale={locale} messages={intlMessages}>
           <ThemeProvider>
             <ToastProvider>

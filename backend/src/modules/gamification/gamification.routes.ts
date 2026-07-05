@@ -27,7 +27,7 @@ gamificationRouter.put("/preferences", async (req, res) => {
 
   if (!parsed.success) {
     res.status(400).json({
-      message: "Du lieu tuy chon khong hop le",
+      message: "Dữ liệu tùy chọn không hợp lệ",
       errors: parsed.error.flatten().fieldErrors
     });
     return;

@@ -8,7 +8,7 @@ export function HomeFooter() {
         <div>
           <BrandLogo />
           <p className="mt-3 max-w-md text-sm font-semibold leading-7 text-[#4b5563]">
-            Nền tảng luyện phỏng vấn học bổng Trung Quốc bằng AI, tập trung vào hồ sơ apply, mạch hỏi thật và phản hồi có thể hành động.
+            Nền tảng luyện phỏng vấn học bổng Trung Quốc bằng AI, tập trung vào hồ sơ nộp, mạch hỏi thật và phản hồi có thể hành động.
           </p>
         </div>
 

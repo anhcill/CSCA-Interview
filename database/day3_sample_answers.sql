@@ -18,12 +18,12 @@ SET sample_answer = CASE
     ELSE 'A strong answer should answer the question directly, connect personal experience with the target program, include a concrete example, and end with a clear future plan.'
   END
   ELSE CASE category
-    WHEN 'PERSONAL' THEN 'Em ten la ..., den tu Viet Nam. Nen tang hoc tap cua em gan voi muc tieu apply vi em da hoc ... va co kinh nghiem qua du an, cuoc thi hoac thuc tap. Em chon chuong trinh nay vi phu hop voi dinh huong dai han. Khi nhap hoc, em se cung co kien thuc nen, tham gia du an/nghien cuu va ung dung kien thuc cho nghe nghiep tuong lai.'
-    WHEN 'SCHOOL_MAJOR' THEN 'Em chon truong va nganh nay vi chuong trinh hoc, huong nghien cuu va nguon luc thuc hanh phu hop voi muc tieu cua em. Kinh nghiem truoc day ve ... giup em co nen tang cho nganh. Em du dinh tap trung hoc ..., tham gia du an lien quan va phat trien nang luc giai quyet van de thuc te.'
-    WHEN 'STUDY_PLAN' THEN 'Ke hoach hoc tap cua em gom ba giai doan: dau tien thich nghi moi truong hoc va bo sung kien thuc nen; tiep theo chon huong nghien cuu, tham gia du an/mon hoc chuyen sau; cuoi cung hoan thanh san pham hoc thuat hoac thuc tien va chuan bi cho muc tieu nghe nghiep.'
-    WHEN 'SCHOLARSHIP' THEN 'Em xin hoc bong nay vi no giup em tap trung vao hoc tap va nghien cuu. Em da co nen tang hoc thuat, ke hoach hoc tap ro rang va cam ket duy tri ket qua tot, tham gia hoat dong, dong gop bang ket qua cu the.'
-    WHEN 'CAREER_PLAN' THEN 'Sau khi tot nghiep, em muon lam viec trong linh vuc .... Muc tieu ngan han la tich luy kinh nghiem tai doanh nghiep/to chuc lien quan; muc tieu trung han la dam nhan du an chuyen mon; muc tieu dai han la dong gop cho hop tac Viet-Trung hoac su phat trien cua nganh.'
-    ELSE 'Cau tra loi tot nen tra loi truc tiep cau hoi, gan voi trai nghiem ca nhan, neu vi du cu the, lien he voi truong/nganh/hoc bong va ket thuc bang ke hoach ro rang.'
+    WHEN 'PERSONAL' THEN 'Em tên là ..., đến từ Việt Nam. Nền tảng học tập của em gắn với mục tiêu apply vì em đã học ... và có kinh nghiệm qua dự án, cuộc thi hoặc thực tập. Em chọn chương trình này vì phù hợp với định hướng dài hạn. Khi nhập học, em sẽ củng cố kiến thức nền, tham gia dự án/nghiên cứu và ứng dụng kiến thức cho nghề nghiệp tương lai.'
+    WHEN 'SCHOOL_MAJOR' THEN 'Em chọn trường và ngành này vì chương trình học, hướng nghiên cứu và nguồn lực thực hành phù hợp với mục tiêu của em. Kinh nghiệm trước đây về ... giúp em có nền tảng cho ngành. Em dự định tập trung học ..., tham gia dự án liên quan và phát triển năng lực giải quyết vấn đề thực tế.'
+    WHEN 'STUDY_PLAN' THEN 'Kế hoạch học tập của em gồm ba giai đoạn: đầu tiên thích nghi môi trường học và bổ sung kiến thức nền; tiếp theo chọn hướng nghiên cứu, tham gia dự án/môn học chuyên sâu; cuối cùng hoàn thành sản phẩm học thuật hoặc thực tiễn và chuẩn bị cho mục tiêu nghề nghiệp.'
+    WHEN 'SCHOLARSHIP' THEN 'Em xin học bổng này vì nó giúp em tập trung vào học tập và nghiên cứu. Em đã có nền tảng học thuật, kế hoạch học tập rõ ràng và cam kết duy trì kết quả tốt, tham gia hoạt động, đóng góp bằng kết quả cụ thể.'
+    WHEN 'CAREER_PLAN' THEN 'Sau khi tốt nghiệp, em muốn làm việc trong lĩnh vực .... Mục tiêu ngắn hạn là tích lũy kinh nghiệm tại doanh nghiệp/tổ chức liên quan; mục tiêu trung hạn là đảm nhận dự án chuyên môn; mục tiêu dài hạn là đóng góp cho hợp tác Việt-Trung hoặc sự phát triển của ngành.'
+    ELSE 'Câu trả lời tốt nên trả lời trực tiếp câu hỏi, gắn với trải nghiệm cá nhân, nêu ví dụ cụ thể, liên hệ với trường/ngành/học bổng và kết thúc bằng kế hoạch rõ ràng.'
   END
 END
 WHERE sample_answer IS NULL OR btrim(sample_answer) = '';

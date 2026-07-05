@@ -11,6 +11,11 @@ import {
   parseInterviewSheetCsv,
   type ParsedInterviewSheetQuestion
 } from "./interview-sheet-parser.js";
+import {
+  parseNormalizedMasterSheetCsv,
+  type NormalizedMasterSheetIssue,
+  type NormalizedMasterSheetSkippedRow
+} from "./normalized-master-sheet-parser.js";
 
 export const defaultQuestionMasterSheetUrl = "https://docs.google.com/spreadsheets/d/10xNUES4YGjjrvfFQFMer7zZcQElB2s8gmA557FRE_BE/edit?pli=1&gid=2018224967#gid=2018224967";
 
@@ -31,22 +36,36 @@ type SchoolLookup = Pick<School, "id" | "name" | "nameEn" | "nameZh">;
 type MajorLookup = Pick<Major, "degreeLevel" | "id" | "name">;
 type QuestionLookup = Pick<Question, "degreeLevel" | "id" | "language" | "majorId" | "questionText" | "schoolId">;
 
+type MasterSheetIssue = NormalizedMasterSheetIssue;
+type MasterSheetSkippedRow = NormalizedMasterSheetSkippedRow;
+
 type PreparedMasterSheet = {
   csvHash: string;
   csvUrl: string | null;
   duplicateQuestionsInSheet: number;
+  errors: MasterSheetIssue[];
   indexes: Awaited<ReturnType<typeof loadImportIndexes>>;
+  parseStats: {
+    generatedRecords: number;
+    readyRows: number | null;
+    skippedRows: number;
+    sourceRows: number | null;
+  };
   questions: ParsedInterviewSheetQuestion[];
+  skippedRows: MasterSheetSkippedRow[];
   sourceUrl: string | null;
-  warnings: ReturnType<typeof parseInterviewSheetCsv>["warnings"];
+  sourceFormat: "legacy" | "normalized";
+  warnings: MasterSheetIssue[];
 };
 
 export class MasterSheetImportError extends Error {
+  details?: unknown;
   status: number;
 
-  constructor(message: string, status = 400) {
+  constructor(message: string, status = 400, details?: unknown) {
     super(message);
     this.name = "MasterSheetImportError";
+    this.details = details;
     this.status = status;
   }
 }
@@ -58,17 +77,30 @@ export async function previewQuestionMasterSheet(input: MasterSheetSourceInput) 
 
 export async function importQuestionMasterSheet(req: Request, user: AuthenticatedUser, input: MasterSheetImportInput) {
   const prepared = await prepareMasterSheet(input);
+  const blockingErrors = prepared.errors.filter((issue) => issue.severity === "error");
+  if (blockingErrors.length) {
+    throw new MasterSheetImportError(
+      `Sheet còn ${blockingErrors.length} lỗi dữ liệu. Vui lòng sửa lỗi trong phần kiểm tra sheet trước khi import.`,
+      400,
+      { preview: buildPreview(prepared) }
+    );
+  }
+
   const createMissingSchools = input.createMissingSchools ?? true;
   const createMissingMajors = input.createMissingMajors ?? true;
   const updateExisting = input.updateExisting ?? true;
-  const skipped: Array<{ reason: string; sourceColumn: number; sourceRow: number }> = [];
+  const skipped: Array<{ questionCode?: string | null; reason: string; sourceColumn?: number; sourceColumnName?: string | null; sourceRow: number }> = prepared.skippedRows.map((row) => ({
+    questionCode: row.questionCode,
+    reason: row.reason,
+    sourceRow: row.sourceRow
+  }));
   const stats = {
     createdQuestions: 0,
     createdMajors: 0,
     createdSchools: 0,
     duplicateQuestionsInSheet: prepared.duplicateQuestionsInSheet,
     linkedSchoolMajors: 0,
-    skippedQuestions: 0,
+    skippedQuestions: prepared.skippedRows.length,
     unchangedQuestions: 0,
     updatedQuestions: 0
   };
@@ -79,6 +111,7 @@ export async function importQuestionMasterSheet(req: Request, user: Authenticate
       skipped.push({
         reason: "Trường chưa có trong hệ thống và tùy chọn tạo trường đang tắt.",
         sourceColumn: question.sourceColumn,
+        sourceColumnName: question.sourceColumnName,
         sourceRow: question.sourceRow
       });
       stats.skippedQuestions += 1;
@@ -114,6 +147,9 @@ export async function importQuestionMasterSheet(req: Request, user: Authenticate
             keywords: data.keywords,
             language: data.language,
             majorId: data.majorId,
+            commonMistakes: data.commonMistakes,
+            sampleAnswer: data.sampleAnswer,
+            scoringRubric: data.scoringRubric,
             schoolId: data.schoolId,
             suggestedAnswerLogic: data.suggestedAnswerLogic,
             updatedBy: user.id
@@ -183,18 +219,47 @@ export async function importQuestionMasterSheet(req: Request, user: Authenticate
 
 async function prepareMasterSheet(input: MasterSheetSourceInput): Promise<PreparedMasterSheet> {
   const source = await resolveMasterSheetCsv(input);
-  const parsed = parseInterviewSheetCsv(source.csv);
-  const { duplicateQuestionsInSheet, questions } = dedupeSheetQuestions(parsed.questions);
+  const normalized = parseNormalizedMasterSheetCsv(source.csv);
+  const parsed = normalized ? null : parseInterviewSheetCsv(source.csv);
+  const rawQuestions = normalized ? normalized.questions : parsed!.questions;
+  const { duplicateIssues, duplicateQuestionsInSheet, questions } = dedupeSheetQuestions(rawQuestions);
   const indexes = await loadImportIndexes();
+  const sourceFormat = normalized ? "normalized" : "legacy";
+  const warnings = [
+    ...(normalized
+      ? normalized.issues.filter((issue) => issue.severity === "warning")
+      : parsed!.warnings.map((warning) => ({
+          code: "LEGACY_PARSE_WARNING",
+          message: warning.message,
+          preview: warning.preview,
+          severity: "warning" as const,
+          sourceColumn: warning.sourceColumn,
+          sourceColumnName: null,
+          sourceRow: warning.sourceRow ?? 0
+        }))),
+    ...duplicateIssues
+  ];
+  const errors = normalized ? normalized.issues.filter((issue) => issue.severity === "error") : [];
 
   return {
     csvHash: createHash("sha256").update(source.csv).digest("hex"),
     csvUrl: source.csvUrl,
     duplicateQuestionsInSheet,
+    errors,
     indexes,
+    parseStats: normalized
+      ? normalized.stats
+      : {
+          generatedRecords: questions.length,
+          readyRows: null,
+          skippedRows: 0,
+          sourceRows: null
+        },
     questions,
+    skippedRows: normalized?.skippedRows ?? [],
     sourceUrl: source.sourceUrl,
-    warnings: parsed.warnings
+    sourceFormat,
+    warnings
   };
 }
 
@@ -343,33 +408,58 @@ function buildPreview(prepared: PreparedMasterSheet) {
     source: {
       csvHash: prepared.csvHash,
       csvUrl: prepared.csvUrl,
+      sourceFormat: prepared.sourceFormat,
       sourceUrl: prepared.sourceUrl
     },
     stats: {
       duplicateQuestionsInSheet: prepared.duplicateQuestionsInSheet,
+      errors: prepared.errors.length,
       existingQuestions,
+      generatedRecords: prepared.parseStats.generatedRecords,
       matchedMajors,
       matchedSchools,
       missingMajors: Math.max(0, majorKeys.size - matchedMajors),
       missingSchools,
       newQuestions,
       questions: prepared.questions.length,
+      readyRows: prepared.parseStats.readyRows,
       schools: schools.length,
+      skippedRows: prepared.skippedRows.length,
+      sourceRows: prepared.parseStats.sourceRows,
       totalMajors: majorKeys.size,
       warnings: prepared.warnings.length
     },
+    errors: prepared.errors,
+    skippedRows: prepared.skippedRows,
     warnings: prepared.warnings
   };
 }
 
 function dedupeSheetQuestions(questions: ParsedInterviewSheetQuestion[]) {
   const byKey = new Map<string, ParsedInterviewSheetQuestion>();
+  const duplicateIssues: MasterSheetIssue[] = [];
 
   questions.forEach((question) => {
-    byKey.set(createSheetQuestionKey(question), question);
+    const key = createSheetQuestionKey(question);
+    const existing = byKey.get(key);
+    if (existing) {
+      duplicateIssues.push({
+        code: "DUPLICATE_QUESTION_IN_SHEET",
+        message: `Câu hỏi trùng với dòng ${existing.sourceRow}; hệ thống sẽ bỏ qua bản trùng này khi import.`,
+        preview: question.questionText.slice(0, 180),
+        questionCode: question.questionCode,
+        severity: "warning",
+        sourceColumn: question.sourceColumn,
+        sourceColumnName: question.sourceColumnName,
+        sourceRow: question.sourceRow
+      });
+      return;
+    }
+    byKey.set(key, question);
   });
 
   return {
+    duplicateIssues,
     duplicateQuestionsInSheet: Math.max(0, questions.length - byKey.size),
     questions: Array.from(byKey.values())
   };
@@ -521,22 +611,30 @@ function createQuestionKey(input: {
 }
 
 function buildQuestionData(question: ParsedInterviewSheetQuestion, schoolId: string, majorId: string | null) {
+  const sourceNote = `Nguồn: Google Sheet câu hỏi phỏng vấn chính, dòng ${question.sourceRow}, cột ${question.sourceColumn}${question.sourceColumnName ? ` (${question.sourceColumnName})` : ""}${question.majorName ? `, ngành ${question.majorName}` : ""}.`;
+
   return {
-    category: inferCategory(question.questionText),
+    category: question.category ?? inferCategory(question.questionText),
+    commonMistakes: question.commonMistakes ?? null,
     degreeLevel: question.degreeLevel,
-    difficulty: inferDifficulty(question.questionText),
+    difficulty: question.difficulty ?? inferDifficulty(question.questionText),
     keywords: buildKeywords(question),
     language: question.language,
     majorId,
     questionText: question.questionText,
+    sampleAnswer: question.sampleAnswer ?? null,
+    scoringRubric: question.scoringRubric === undefined || question.scoringRubric === null ? Prisma.JsonNull : toJson(question.scoringRubric),
     schoolId,
-    suggestedAnswerLogic: `Nguồn: Google Sheet câu hỏi phỏng vấn chính, dòng ${question.sourceRow}, cột ${question.sourceColumn}${question.majorName ? `, ngành ${question.majorName}` : ""}.`
+    suggestedAnswerLogic: question.suggestedAnswerLogic ? `${question.suggestedAnswerLogic}\n${sourceNote}` : sourceNote
   };
 }
 
 function buildKeywords(question: ParsedInterviewSheetQuestion) {
+  if (question.keywords?.trim()) return question.keywords.trim();
+
   return [
     "google-sheet-chinh",
+    question.questionCode,
     question.schoolName,
     question.majorName,
     question.degreeLevel === "MASTER" ? "thạc sĩ" : "đại học"

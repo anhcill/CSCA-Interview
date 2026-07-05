@@ -18,12 +18,12 @@ export default function AdminAiModelsPage() {
             Model AI theo chức năng
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Chọn provider và model riêng cho tạo câu hỏi, hỏi tiếp, chấm điểm và phân tích Study Plan. Audio vẫn giữ OpenAI STT/TTS.
+            Chọn provider và model riêng cho tạo câu hỏi, hỏi tiếp, chấm điểm và phân tích kế hoạch học tập. Audio vẫn giữ OpenAI STT/TTS.
           </p>
         </div>
         <Link href="/admin/settings" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">
           <Settings size={16} />
-          Settings khác
+          Cài đặt khác
         </Link>
       </div>
 

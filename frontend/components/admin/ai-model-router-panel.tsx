@@ -162,7 +162,7 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
   async function testRoute(routeKey: string) {
     const route = routes[routeKey] ?? defaultRoute;
     setTestingKey(routeKey);
-    setTestResults((current) => ({ ...current, [routeKey]: { ok: false, message: "Đang test model..." } }));
+      setTestResults((current) => ({ ...current, [routeKey]: { ok: false, message: "Đang kiểm tra model..." } }));
     try {
       const result = await apiPost<AiTestResponse>("/api/admin/ai-model-router/test", {
         baseUrl: route.provider === "9router" ? nineRouterBaseUrl.trim() || null : null,
@@ -185,9 +185,9 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-bold"><Bot size={18} />Cài đặt model AI theo chức năng</h2>
-          <p className="mt-1 text-sm text-slate-500">Đổi provider/model cho từng AI text. STT/TTS vẫn giữ OpenAI để phần audio ổn định.</p>
+          <p className="mt-1 text-sm text-slate-500">Đổi provider/model cho từng AI văn bản. STT/TTS vẫn giữ OpenAI để phần audio ổn định.</p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-            <span className="rounded bg-indigo-50 px-2 py-1 text-indigo-700">Text AI đổi linh hoạt</span>
+            <span className="rounded bg-indigo-50 px-2 py-1 text-indigo-700">AI văn bản đổi linh hoạt</span>
             <span className="rounded bg-slate-100 px-2 py-1 text-slate-600">Audio OpenAI</span>
           </div>
         </div>
@@ -216,7 +216,7 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
                 <th className="px-3 py-2">Chức năng AI</th>
                 <th className="px-3 py-2">Provider</th>
                 <th className="px-3 py-2">Model</th>
-                <th className="px-3 py-2">Test</th>
+                <th className="px-3 py-2">Kiểm tra</th>
                 <th className="px-3 py-2">Kết quả</th>
               </tr>
             </thead>
@@ -318,7 +318,7 @@ function ModelRouteRow(props: {
           onClick={() => props.onTest(props.routeKey)}
         >
           <Bot size={14} />
-          {props.testing ? "Đang test" : "Test"}
+          {props.testing ? "Đang kiểm tra" : "Kiểm tra"}
         </button>
       </td>
       <td className="px-3 py-3">
@@ -326,7 +326,7 @@ function ModelRouteRow(props: {
           <p className={props.result.ok ? "text-xs font-semibold text-emerald-700" : "text-xs font-semibold text-red-700"}>
             {props.result.ok ? `OK${props.result.latencyMs ? ` - ${props.result.latencyMs}ms` : ""}` : props.result.message}
           </p>
-        ) : <span className="text-xs text-slate-400">Chưa test</span>}
+        ) : <span className="text-xs text-slate-400">Chưa kiểm tra</span>}
       </td>
     </tr>
   );

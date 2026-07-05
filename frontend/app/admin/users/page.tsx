@@ -99,7 +99,7 @@ export default function AdminUsersPage() {
       setTotal(response.total);
       setTotalPages(response.totalPages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải danh sách user");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách người dùng");
     } finally {
       setLoading(false);
     }
@@ -113,7 +113,7 @@ export default function AdminUsersPage() {
       setSelectedUser(response.user);
       setSelectedId(id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải chi tiết user");
+      setError(err instanceof Error ? err.message : "Không thể tải chi tiết người dùng");
     } finally {
       setDetailLoading(false);
     }
@@ -142,7 +142,7 @@ export default function AdminUsersPage() {
         await loadUserDetail(user.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể cập nhật trạng thái user");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật trạng thái người dùng");
     } finally {
       setActionId(null);
     }
@@ -161,7 +161,7 @@ export default function AdminUsersPage() {
         await loadUserDetail(user.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể cập nhật role user");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật role người dùng");
     } finally {
       setActionId(null);
     }
@@ -225,7 +225,7 @@ export default function AdminUsersPage() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px]">
         <section className="overflow-hidden rounded-lg border bg-white">
-          <div className="border-b bg-slate-50 px-4 py-3 text-sm font-bold">Danh sách user</div>
+          <div className="border-b bg-slate-50 px-4 py-3 text-sm font-bold">Danh sách người dùng</div>
           {loading ? (
             <div className="p-4"><ListSkeleton rows={6} /></div>
           ) : users.length ? (
@@ -233,10 +233,10 @@ export default function AdminUsersPage() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Người dùng</th>
                     <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Session</th>
-                    <th className="px-4 py-3">Login cuoi</th>
+                    <th className="px-4 py-3">Buổi</th>
+                    <th className="px-4 py-3">Đăng nhập cuối</th>
                     <th className="px-4 py-3">Trạng thái</th>
                     <th className="px-4 py-3">Thao tác</th>
                   </tr>
@@ -273,7 +273,7 @@ export default function AdminUsersPage() {
                           className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:opacity-50 ${user.isActive ? "border-red-200 text-red-700 hover:bg-red-50" : "border-green-200 text-green-700 hover:bg-green-50"}`}
                         >
                           {user.isActive ? <Lock size={14} /> : <Unlock size={14} />}
-                          {user.isActive ? "Khóa" : "Mo"}
+                          {user.isActive ? "Khóa" : "Mở"}
                         </button>
                       </td>
                     </tr>
@@ -305,7 +305,7 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                   <InfoPill label="Role" value={selectedUser.role} />
-                  <InfoPill label="Ngay tao" value={formatDate(selectedUser.createdAt)} />
+                  <InfoPill label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
                 </div>
                 <div className="mt-3 flex flex-col gap-2 rounded-lg border bg-slate-50 p-3">
                   <label className="text-xs font-bold text-slate-600" htmlFor="admin-reset-password">Mật khẩu mới</label>
@@ -332,7 +332,7 @@ export default function AdminUsersPage() {
               </div>
 
               <div>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><UserCheck size={16} />Ho so ung vien</h3>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><UserCheck size={16} />Hồ sơ ứng viên</h3>
                 {selectedUser.profile ? (
                   <div className="grid gap-2 text-sm">
                     <InfoRow label="Bậc học" value={selectedUser.profile.degreeLevel} />
@@ -343,7 +343,7 @@ export default function AdminUsersPage() {
                     <InfoRow label="HSK/HSKK" value={[selectedUser.profile.hskLevel, selectedUser.profile.hskkLevel].filter(Boolean).join(" / ")} />
                     <InfoRow label="IELTS/TOEFL" value={[selectedUser.profile.ieltsScore, selectedUser.profile.toeflScore].filter(Boolean).join(" / ")} />
                     <div className="grid grid-cols-[120px_1fr] gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                      <span className="text-slate-500">Study Plan</span>
+                      <span className="text-slate-500">Kế hoạch học tập</span>
                       <span className="font-medium text-slate-900">
                         {selectedUser.profile.studyPlanFileName ? (
                           <a
@@ -362,12 +362,12 @@ export default function AdminUsersPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">User chưa tạo profile.</p>
+                  <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Người dùng chưa tạo hồ sơ.</p>
                 )}
               </div>
 
               <div>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Calendar size={16} />20 session gần nhất</h3>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Calendar size={16} />20 buổi gần nhất</h3>
                 <div className="space-y-2">
                   {selectedUser.interviewSessions.map((session) => (
                     <div key={session.id} className="rounded-lg border p-3 text-sm">
@@ -385,7 +385,7 @@ export default function AdminUsersPage() {
             </div>
           ) : (
             <div className="p-6">
-              <EmptyState title="Chọn user" description="Chọn một user trong bảng để xem profile và lịch sử." />
+              <EmptyState title="Chọn người dùng" description="Chọn một người dùng trong bảng để xem hồ sơ và lịch sử." />
             </div>
           )}
         </aside>

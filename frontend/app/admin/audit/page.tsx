@@ -54,7 +54,7 @@ export default function AdminAuditPage() {
       setTotal(response.total);
       setTotalPages(response.totalPages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải audit logs");
+      setError(err instanceof Error ? err.message : "Không thể tải nhật ký audit");
     } finally {
       setLoading(false);
     }
@@ -69,12 +69,12 @@ export default function AdminAuditPage() {
       <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-4 md:flex-row md:items-center">
         <div>
           <Link href="/admin" className="text-sm font-semibold text-indigo-600 hover:underline">&larr; Admin</Link>
-          <h1 className="mt-1 text-2xl font-bold">Audit logs</h1>
+          <h1 className="mt-1 text-2xl font-bold">Nhật ký audit</h1>
           <p className="mt-1 text-sm text-slate-500">{total} thao tác admin</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 text-sm font-bold hover:bg-slate-50 disabled:opacity-50">
           <RefreshCw size={16} />
-          Refresh
+          Làm mới
         </button>
       </div>
 
@@ -83,10 +83,10 @@ export default function AdminAuditPage() {
       <section className="mb-5 grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-[1fr_180px_150px_150px]">
         <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3">
           <Search size={16} className="text-slate-400" />
-          <input className="w-full border-0 text-sm outline-none" placeholder="Action..." value={action} onChange={(event) => { setAction(event.target.value); setPage(1); }} />
+          <input className="w-full border-0 text-sm outline-none" placeholder="Hành động..." value={action} onChange={(event) => { setAction(event.target.value); setPage(1); }} />
         </label>
         <select className="rounded-lg border px-3 py-2 text-sm" value={entityType} onChange={(event) => { setEntityType(event.target.value); setPage(1); }}>
-          {entityTypes.map((item) => <option key={item || "all"} value={item}>{item || "Tất cả entity"}</option>)}
+          {entityTypes.map((item) => <option key={item || "all"} value={item}>{item || "Tất cả đối tượng"}</option>)}
         </select>
         <input className="rounded-lg border px-3 py-2 text-sm" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} />
         <input className="rounded-lg border px-3 py-2 text-sm" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} />
@@ -100,12 +100,12 @@ export default function AdminAuditPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Time</th>
-                  <th className="px-4 py-3">Admin</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Entity</th>
+                  <th className="px-4 py-3">Thời gian</th>
+                  <th className="px-4 py-3">Quản trị viên</th>
+                  <th className="px-4 py-3">Hành động</th>
+                  <th className="px-4 py-3">Đối tượng</th>
                   <th className="px-4 py-3">IP</th>
-                  <th className="px-4 py-3">Data</th>
+                  <th className="px-4 py-3">Dữ liệu</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,7 +134,7 @@ export default function AdminAuditPage() {
             </table>
           </div>
         ) : (
-          <div className="p-6"><EmptyState title="Không có log" description="Bộ lọc hiện tại chưa có thao tác nào." /></div>
+          <div className="p-6"><EmptyState title="Không có nhật ký" description="Bộ lọc hiện tại chưa có thao tác nào." /></div>
         )}
       </section>
 

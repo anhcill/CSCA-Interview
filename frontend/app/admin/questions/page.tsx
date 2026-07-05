@@ -81,8 +81,10 @@ const emptyAudioForm = {
 
 const categories = ["PERSONAL", "ACADEMIC", "STUDY_PLAN", "SCHOOL_MAJOR", "SCHOLARSHIP", "CAREER_PLAN", "SITUATION", "LANGUAGE", "RESEARCH", "OTHER"];
 const difficulties = ["EASY", "MEDIUM", "HARD"];
+const questionLanguages = ["VI", "ZH", "EN"] as const;
 const audioSources: AudioSource[] = ["AI_TTS", "HUMAN_RECORDED", "USER_RECORDING"];
 const diffLabel: Record<string, string> = { EASY: "Dễ", HARD: "Khó", MEDIUM: "TB" };
+const languageLabel: Record<string, string> = { EN: "Tiếng Anh", VI: "Tiếng Việt", ZH: "Tiếng Trung" };
 
 export default function AdminQuestionsPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -98,6 +100,7 @@ export default function AdminQuestionsPage() {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("");
   const [filterDiff, setFilterDiff] = useState("");
+  const [filterLang, setFilterLang] = useState("");
   const [filterSchool, setFilterSchool] = useState("");
   const [schools, setSchools] = useState<SelectItem[]>([]);
   const [majors, setMajors] = useState<SelectItem[]>([]);
@@ -117,6 +120,7 @@ export default function AdminQuestionsPage() {
       let url = `/api/questions?active=all&page=${page}&limit=50&search=${encodeURIComponent(debouncedSearch)}`;
       if (filterCat) url += `&category=${filterCat}`;
       if (filterDiff) url += `&difficulty=${filterDiff}`;
+      if (filterLang) url += `&language=${filterLang}`;
       if (filterSchool) url += `&schoolId=${filterSchool}`;
       const res = await apiGet<ListResponse>(url, { token });
       setQuestions(res.data);
@@ -127,7 +131,7 @@ export default function AdminQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterCat, filterDiff, filterSchool, page, token]);
+  }, [debouncedSearch, filterCat, filterDiff, filterLang, filterSchool, page, token]);
 
   const loadAudios = useCallback(async (questionId: string) => {
     setAudioLoading(true);
@@ -200,6 +204,15 @@ export default function AdminQuestionsPage() {
   }
 
   function startEdit(question: Question) {
+    if (editId === question.id && showForm) {
+      setEditId(null);
+      setForm(emptyForm);
+      setShowForm(false);
+      return;
+    }
+
+    setAudioQuestion(null);
+    setAudios([]);
     setEditId(question.id);
     setForm({
       category: question.category || "",
@@ -235,6 +248,15 @@ export default function AdminQuestionsPage() {
   }
 
   async function openAudioPanel(question: Question) {
+    if (audioQuestion?.id === question.id) {
+      setAudioQuestion(null);
+      setAudios([]);
+      return;
+    }
+
+    setEditId(null);
+    setForm(emptyForm);
+    setShowForm(false);
     setAudioQuestion(question);
     setAudioForm(emptyAudioForm);
     await loadAudios(question.id);
@@ -303,6 +325,151 @@ export default function AdminQuestionsPage() {
     }
   }
 
+  function renderQuestionForm(className: string) {
+    return (
+      <form onSubmit={handleSubmit} className={`${className} space-y-3 rounded-lg border bg-white p-5`}>
+        <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+          <label className="block">
+            <span className="text-sm font-bold text-indigo-900">1. Chọn trường áp dụng</span>
+            <select className="mt-2 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2" value={form.schoolId} onChange={(event) => setForm({ ...form, schoolId: event.target.value })}>
+              <option value="">Câu hỏi chung cho mọi trường</option>
+              {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
+            </select>
+          </label>
+          <p className="mt-2 text-sm font-semibold text-indigo-800">
+            Nếu chọn trường, câu hỏi và đáp án mẫu này sẽ ưu tiên xuất hiện khi ứng viên chọn đúng trường đó.
+          </p>
+        </div>
+        <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Nội dung câu hỏi *" value={form.questionText} onChange={(event) => setForm({ ...form, questionText: event.target.value })} rows={3} required />
+        <div className="grid gap-3 md:grid-cols-4">
+          <select className="rounded-lg border px-3 py-2" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>
+            <option value="">-- Danh mục --</option>
+            {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select>
+          <select className="rounded-lg border px-3 py-2" value={form.difficulty} onChange={(event) => setForm({ ...form, difficulty: event.target.value })}>
+            {difficulties.map((difficulty) => <option key={difficulty} value={difficulty}>{diffLabel[difficulty]}</option>)}
+          </select>
+          <select className="rounded-lg border px-3 py-2" value={form.language} onChange={(event) => setForm({ ...form, language: event.target.value })}>
+            <option value="VI">Tiếng Việt</option>
+            <option value="ZH">Tiếng Trung</option>
+            <option value="EN">Tiếng Anh</option>
+          </select>
+          <select className="rounded-lg border px-3 py-2" value={form.degreeLevel} onChange={(event) => setForm({ ...form, degreeLevel: event.target.value })}>
+            <option value="">-- Bậc học --</option>
+            <option value="BACHELOR">Đại học</option>
+            <option value="MASTER">Thạc sĩ</option>
+          </select>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <select className="rounded-lg border px-3 py-2" value={form.majorId} onChange={(event) => setForm({ ...form, majorId: event.target.value })}>
+            <option value="">-- Ngành --</option>
+            {majors.map((major) => <option key={major.id} value={major.id}>{major.name}</option>)}
+          </select>
+          <select className="rounded-lg border px-3 py-2" value={form.scholarshipId} onChange={(event) => setForm({ ...form, scholarshipId: event.target.value })}>
+            <option value="">-- Học bổng --</option>
+            {scholarships.map((scholarship) => <option key={scholarship.id} value={scholarship.id}>{scholarship.name}</option>)}
+          </select>
+        </div>
+        <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Gợi ý logic trả lời" value={form.suggestedAnswerLogic} onChange={(event) => setForm({ ...form, suggestedAnswerLogic: event.target.value })} rows={2} />
+        <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Câu trả lời mẫu" value={form.sampleAnswer} onChange={(event) => setForm({ ...form, sampleAnswer: event.target.value })} rows={2} />
+        <input className="w-full rounded-lg border px-3 py-2" placeholder="Từ khóa" value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} />
+        <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Lỗi sai thường gặp / điểm trừ khi chấm" value={form.commonMistakes} onChange={(event) => setForm({ ...form, commonMistakes: event.target.value })} rows={2} />
+        <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Rubric / ghi chú AI khi chấm điểm. Có thể nhập văn bản hoặc JSON." value={form.scoringRubric} onChange={(event) => setForm({ ...form, scoringRubric: event.target.value })} rows={3} />
+        <div className="flex gap-2">
+          <button type="submit" disabled={saving} className="rounded-lg bg-indigo-600 px-5 py-2 font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+            {editId ? "Cập nhật" : "Tạo câu hỏi"}
+          </button>
+          {editId ? <button type="button" onClick={() => { setEditId(null); setForm(emptyForm); setShowForm(false); }} className="rounded-lg border px-4 py-2 hover:bg-slate-50">Hủy</button> : null}
+        </div>
+      </form>
+    );
+  }
+
+  function renderAudioPanel() {
+    if (!audioQuestion) return null;
+
+    return (
+      <section className="mt-4 rounded-lg border border-sky-100 bg-sky-50/40 p-5">
+        <div className="flex flex-col justify-between gap-3 border-b border-sky-100 pb-4 md:flex-row md:items-start">
+          <div>
+            <p className="text-sm font-bold text-sky-700">Audio câu hỏi</p>
+            <h2 className="mt-1 text-lg font-bold">{audioQuestion.questionText}</h2>
+          </div>
+          <button type="button" onClick={() => { setAudioQuestion(null); setAudios([]); }} className="inline-flex min-h-9 items-center gap-2 rounded-lg border bg-white px-3 text-sm font-bold hover:bg-slate-50">
+            <X size={16} />Đóng
+          </button>
+        </div>
+
+        <form onSubmit={handleAudioSubmit} className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="space-y-3">
+            <input
+              className="w-full rounded-lg border px-3 py-2"
+              placeholder="Link audio TTS hoặc bản ghi thật"
+              value={audioForm.fileUrl}
+              onChange={(event) => setAudioForm({ ...audioForm, audioFileBase64: "", fileName: "", fileUrl: event.target.value, mimeType: "" })}
+            />
+            <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border bg-white px-3 text-sm font-bold hover:bg-slate-50">
+              <Upload size={16} />Tải file audio lên
+              <input type="file" accept="audio/*" className="hidden" onChange={handleAudioFile} />
+            </label>
+            {audioForm.fileName ? <p className="text-xs font-semibold text-slate-500">Đã chọn: {audioForm.fileName}</p> : null}
+            <div className="grid gap-3 md:grid-cols-3">
+              <select className="rounded-lg border px-3 py-2" value={audioForm.source} onChange={(event) => setAudioForm({ ...audioForm, source: event.target.value as AudioSource })}>
+                {audioSources.map((source) => <option key={source} value={source}>{source}</option>)}
+              </select>
+              <select className="rounded-lg border px-3 py-2" value={audioForm.language} onChange={(event) => setAudioForm({ ...audioForm, language: event.target.value })}>
+                <option value="VI">VI</option>
+                <option value="ZH">ZH</option>
+                <option value="EN">EN</option>
+              </select>
+              <input className="rounded-lg border px-3 py-2" type="number" min="0" step="0.1" placeholder="Giây" value={audioForm.durationSeconds} onChange={(event) => setAudioForm({ ...audioForm, durationSeconds: event.target.value })} />
+            </div>
+          </div>
+          <div className="space-y-3">
+            <input className="w-full rounded-lg border px-3 py-2" placeholder="Tên giọng đọc" value={audioForm.voiceName} onChange={(event) => setAudioForm({ ...audioForm, voiceName: event.target.value })} />
+            <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Bản ghi lời thoại" value={audioForm.transcript} onChange={(event) => setAudioForm({ ...audioForm, transcript: event.target.value })} rows={4} />
+            <button type="submit" disabled={audioSaving || (!audioForm.fileUrl && !audioForm.audioFileBase64)} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-sky-700 px-4 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50">
+              <Volume2 size={16} />Lưu audio
+            </button>
+          </div>
+        </form>
+
+        <div className="mt-5">
+          {audioLoading ? (
+            <ListSkeleton rows={3} />
+          ) : audios.length ? (
+            <div className="space-y-3">
+              {audios.map((audio) => (
+                <div key={audio.id} className="rounded-lg border bg-white p-3">
+                  <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+                    <div>
+                      <p className="text-sm font-bold">{audio.source} - {audio.language}</p>
+                      <p className="mt-1 text-xs text-slate-500">{audio.voice_name || "Chưa có giọng"} - {formatAudioDuration(audio.duration_seconds)}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <a href={resolveAudioUrl(audio.file_url)} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50">
+                        <LinkIcon size={14} />Mở link
+                      </a>
+                      <button type="button" onClick={() => void handleAudioDelete(audio)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700 hover:bg-red-50">
+                        <Trash2 size={14} />Xóa
+                      </button>
+                    </div>
+                  </div>
+                  <audio className="mt-3 w-full" controls src={resolveAudioUrl(audio.file_url)}>
+                    <track kind="captions" />
+                  </audio>
+                  {audio.transcript ? <p className="mt-2 text-sm text-slate-600">{audio.transcript}</p> : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="Chưa có audio" description="Thêm link TTS hoặc tải file ghi âm thật cho câu hỏi này." />
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function renderQuestionCard(question: Question) {
     return (
       <div key={question.id} className="rounded-lg border bg-white p-4">
@@ -327,7 +494,7 @@ export default function AdminQuestionsPage() {
               {diffLabel[question.difficulty] || question.difficulty}
             </span>
           ) : null}
-          {question.language ? <span className="rounded bg-slate-100 px-2 py-0.5">{question.language}</span> : null}
+          {question.language ? <span className="rounded bg-slate-100 px-2 py-0.5">{languageLabel[question.language] ?? question.language}</span> : null}
           {question.school ? <span className="rounded bg-purple-50 px-2 py-0.5 text-purple-700">{question.school.name}</span> : null}
           {question.major ? <span className="rounded bg-teal-50 px-2 py-0.5 text-teal-700">{question.major.name}</span> : null}
           {question.scholarship ? <span className="rounded bg-orange-50 px-2 py-0.5 text-orange-700">{question.scholarship.name}</span> : null}
@@ -336,6 +503,8 @@ export default function AdminQuestionsPage() {
             {question.isActive ? "Hoạt động" : "Tắt"}
           </span>
         </div>
+        {editId === question.id && showForm ? renderQuestionForm("mt-4 border-indigo-200 bg-indigo-50/30") : null}
+        {audioQuestion?.id === question.id ? renderAudioPanel() : null}
       </div>
     );
   }
@@ -353,9 +522,11 @@ export default function AdminQuestionsPage() {
         <button
           type="button"
           onClick={() => {
-            setShowForm((current) => !current);
+            setShowForm((current) => editId ? true : !current);
             setEditId(null);
             setForm(emptyForm);
+            setAudioQuestion(null);
+            setAudios([]);
           }}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700"
         >
@@ -368,7 +539,7 @@ export default function AdminQuestionsPage() {
       <MasterSheetImporter token={token} onImported={load} />
       <QuestionsImporter token={token} onImported={load} />
 
-      {showForm ? (
+      {showForm && !editId ? (
         <form onSubmit={handleSubmit} className="mb-8 space-y-3 rounded-lg border bg-white p-5">
           <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
             <label className="block">
@@ -436,6 +607,10 @@ export default function AdminQuestionsPage() {
           <option value="">Tất cả danh mục</option>
           {categories.map((category) => <option key={category} value={category}>{category}</option>)}
         </select>
+        <select className="rounded-lg border px-3 py-2" value={filterLang} onChange={(event) => { setFilterLang(event.target.value); setPage(1); }}>
+          <option value="">Tất cả ngôn ngữ</option>
+          {questionLanguages.map((language) => <option key={language} value={language}>{languageLabel[language]}</option>)}
+        </select>
         <select className="rounded-lg border px-3 py-2" value={filterDiff} onChange={(event) => { setFilterDiff(event.target.value); setPage(1); }}>
           <option value="">Tất cả độ khó</option>
           {difficulties.map((difficulty) => <option key={difficulty} value={difficulty}>{diffLabel[difficulty]}</option>)}
@@ -444,7 +619,7 @@ export default function AdminQuestionsPage() {
 
       {loading ? (
         <ListSkeleton rows={5} />
-      ) : questions.length > 12 ? (
+      ) : questions.length > 12 && !editId && !audioQuestion ? (
         <VirtualList
           className="rounded-lg border border-slate-100"
           estimateSize={132}
@@ -468,12 +643,12 @@ export default function AdminQuestionsPage() {
         </div>
       ) : null}
 
-      {audioQuestion ? (
+      {false && audioQuestion ? (
         <section className="mt-8 rounded-lg border bg-white p-5">
           <div className="flex flex-col justify-between gap-3 border-b pb-4 md:flex-row md:items-start">
             <div>
               <p className="text-sm font-bold text-sky-700">Audio câu hỏi</p>
-              <h2 className="mt-1 text-lg font-bold">{audioQuestion.questionText}</h2>
+              <h2 className="mt-1 text-lg font-bold">{audioQuestion?.questionText ?? ""}</h2>
             </div>
             <button type="button" onClick={() => { setAudioQuestion(null); setAudios([]); }} className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-sm font-bold hover:bg-slate-50">
               <X size={16} />Đóng
@@ -484,12 +659,12 @@ export default function AdminQuestionsPage() {
             <div className="space-y-3">
               <input
                 className="w-full rounded-lg border px-3 py-2"
-                placeholder="Link audio TTS/human recorded"
+                placeholder="Link audio TTS hoặc bản ghi thật"
                 value={audioForm.fileUrl}
                 onChange={(event) => setAudioForm({ ...audioForm, audioFileBase64: "", fileName: "", fileUrl: event.target.value, mimeType: "" })}
               />
               <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-bold hover:bg-slate-50">
-                <Upload size={16} />Upload audio file
+                <Upload size={16} />Tải file audio lên
                 <input type="file" accept="audio/*" className="hidden" onChange={handleAudioFile} />
               </label>
               {audioForm.fileName ? <p className="text-xs font-semibold text-slate-500">Đã chọn: {audioForm.fileName}</p> : null}
@@ -506,8 +681,8 @@ export default function AdminQuestionsPage() {
               </div>
             </div>
             <div className="space-y-3">
-              <input className="w-full rounded-lg border px-3 py-2" placeholder="Voice name" value={audioForm.voiceName} onChange={(event) => setAudioForm({ ...audioForm, voiceName: event.target.value })} />
-              <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Transcript" value={audioForm.transcript} onChange={(event) => setAudioForm({ ...audioForm, transcript: event.target.value })} rows={4} />
+              <input className="w-full rounded-lg border px-3 py-2" placeholder="Tên giọng đọc" value={audioForm.voiceName} onChange={(event) => setAudioForm({ ...audioForm, voiceName: event.target.value })} />
+              <textarea className="w-full rounded-lg border px-3 py-2" placeholder="Bản ghi lời thoại" value={audioForm.transcript} onChange={(event) => setAudioForm({ ...audioForm, transcript: event.target.value })} rows={4} />
               <button type="submit" disabled={audioSaving || (!audioForm.fileUrl && !audioForm.audioFileBase64)} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-sky-700 px-4 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50">
                 <Volume2 size={16} />Lưu audio
               </button>
@@ -524,7 +699,7 @@ export default function AdminQuestionsPage() {
                     <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                       <div>
                         <p className="text-sm font-bold">{audio.source} - {audio.language}</p>
-                        <p className="mt-1 text-xs text-slate-500">{audio.voice_name || "No voice"} - {formatAudioDuration(audio.duration_seconds)}</p>
+                        <p className="mt-1 text-xs text-slate-500">{audio.voice_name || "Chưa có giọng"} - {formatAudioDuration(audio.duration_seconds)}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <a href={resolveAudioUrl(audio.file_url)} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold hover:bg-slate-50">
@@ -543,7 +718,7 @@ export default function AdminQuestionsPage() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="Chưa có audio" description="Thêm link TTS hoặc upload file human recorded cho câu hỏi này." />
+              <EmptyState title="Chưa có audio" description="Thêm link TTS hoặc tải file ghi âm thật cho câu hỏi này." />
             )}
           </div>
         </section>

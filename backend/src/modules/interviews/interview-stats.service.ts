@@ -43,12 +43,12 @@ function suggestionForCategory(category: QuestionCategory) {
     CAREER_PLAN: "Liên kết ngành học với kế hoạch nghề nghiệp 3-5 năm sau tốt nghiệp.",
     LANGUAGE: "Luyện câu trả lời ngắn bằng tiếng Trung, ưu tiên phát âm rõ và câu nối.",
     OTHER: "Bổ sung ví dụ cá nhân cụ thể để câu trả lời bớt chung chung.",
-    PERSONAL: "Chuẩn bị câu chuyện cá nhân, điểm mạnh và động lực apply.",
+    PERSONAL: "Chuẩn bị câu chuyện cá nhân, điểm mạnh và động lực nộp hồ sơ.",
     RESEARCH: "Nêu rõ hướng nghiên cứu, phương pháp và lý do phù hợp với trường.",
     SCHOLARSHIP: "Làm rõ vì sao bạn phù hợp với học bổng và cam kết sau nhận học bổng.",
     SCHOOL_MAJOR: "Nêu lý do chọn trường/ngành bằng môn học, lab, ranking hoặc giảng viên.",
     SITUATION: "Luyện cấu trúc STAR: tình huống, hành động, kết quả, bài học.",
-    STUDY_PLAN: "Tách study plan thành mục tiêu, kế hoạch từng kỳ và đầu ra mong muốn."
+    STUDY_PLAN: "Tách kế hoạch học tập thành mục tiêu, kế hoạch từng kỳ và đầu ra mong muốn."
   };
 
   return suggestions[category] ?? suggestions.OTHER;

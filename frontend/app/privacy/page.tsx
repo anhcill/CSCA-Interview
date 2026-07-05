@@ -1,11 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Chính sách bảo mật | Moly Interview",
-  description: "Chính sách thu thập, sử dụng và bảo vệ dữ liệu cá nhân trên Moly Interview."
-};
+  description: "Chính sách thu thập, sử dụng và bảo vệ dữ liệu cá nhân trên Moly Interview.",
+  path: "/privacy"
+});
 
 const sections = [
   {

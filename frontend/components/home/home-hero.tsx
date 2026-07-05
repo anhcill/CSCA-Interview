@@ -7,15 +7,15 @@ import { homeIcons } from "./home-icons";
 const proofPoints = [
   "Câu hỏi theo hồ sơ CSC, trường, ngành",
   "Luyện trả lời Trung / Việt / Anh",
-  "Feedback sửa study plan và động lực apply"
+  "Phản hồi sửa kế hoạch học tập và động lực nộp hồ sơ"
 ] as const;
 
 const cityBadges = ["北京", "上海", "杭州"] as const;
 
 const sessionRows = [
   { icon: MessageSquareText, label: "中文面试", value: "Why this university?", tone: "primary" },
-  { icon: FileText, label: "Study Plan", value: "Logic + examples", tone: "gold" },
-  { icon: Mic, label: "Speaking", value: "Clarity feedback", tone: "jade" }
+  { icon: FileText, label: "Kế hoạch học tập", value: "Logic + ví dụ", tone: "gold" },
+  { icon: Mic, label: "Nói", value: "Phản hồi độ rõ", tone: "jade" }
 ] as const;
 
 export function HomeHero() {
@@ -23,7 +23,7 @@ export function HomeHero() {
     <section className="relative isolate min-h-[calc(100vh-4.5rem)] overflow-hidden border-b border-[#ead8c2] bg-[#17120f] text-white">
       <Image
         src="/home/hero-interview.png"
-        alt="AI interview practice dashboard"
+        alt="Bảng luyện phỏng vấn AI"
         fill
         priority
         sizes="100vw"
@@ -44,7 +44,7 @@ export function HomeHero() {
           </h1>
 
           <p className="mt-5 max-w-2xl text-base font-semibold leading-8 text-white/78 sm:text-lg">
-            Chuẩn bị câu trả lời cho học bổng CSC, trường Trung Quốc, study plan và phỏng vấn tiếng Trung trong một luồng luyện rõ ràng.
+            Chuẩn bị câu trả lời cho học bổng CSC, trường Trung Quốc, kế hoạch học tập và phỏng vấn tiếng Trung trong một luồng luyện rõ ràng.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
@@ -112,9 +112,9 @@ function ChinaStudyVisual() {
       <div className="absolute bottom-10 right-0 w-[430px] rounded-lg border border-white/18 bg-[#17120f]/76 p-5 shadow-2xl shadow-black/28 backdrop-blur-xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-wide text-[#e5a93b]">Scholarship dossier</p>
+            <p className="text-xs font-black uppercase tracking-wide text-[#e5a93b]">Hồ sơ học bổng</p>
             <h2 className="mt-2 text-3xl font-black">CSC 2026</h2>
-            <p className="mt-2 text-sm font-bold leading-6 text-white/64">Campus interview · scholarship review</p>
+            <p className="mt-2 text-sm font-bold leading-6 text-white/64">Phỏng vấn trường · duyệt học bổng</p>
           </div>
           <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[#e5a93b]/45 bg-[#e5a93b] text-2xl font-black text-[#17120f]">
             留
@@ -142,12 +142,12 @@ function ChinaStudyVisual() {
         <div className="mt-5 rounded-lg border border-[#e5a93b]/30 bg-[#e5a93b]/12 p-4">
           <div className="flex items-center gap-2 text-xs font-black uppercase text-[#fef3c7]">
             <MapPin size={14} />
-            Application route
+            Lộ trình nộp hồ sơ
           </div>
           <div className="mt-3 flex items-center justify-between text-sm font-black">
             <span>Việt Nam</span>
             <span className="h-px flex-1 bg-[#e5a93b]/42 mx-3" />
-            <span>China</span>
+            <span>Trung Quốc</span>
           </div>
         </div>
       </div>

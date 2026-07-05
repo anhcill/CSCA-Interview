@@ -73,7 +73,7 @@ export default function AdminSettingsPage() {
         setPromptForm((current) => nextPrompts.taskTypes.includes(current.taskType) ? current : { ...current, taskType: nextPrompts.taskTypes[0] });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải settings");
+      setError(err instanceof Error ? err.message : "Không thể tải cài đặt");
     } finally {
       setLoading(false);
     }
@@ -95,7 +95,7 @@ export default function AdminSettingsPage() {
       setSettingForm(emptySetting);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể lưu setting");
+      setError(err instanceof Error ? err.message : "Không thể lưu cài đặt");
     } finally {
       setSaving(false);
     }
@@ -158,7 +158,7 @@ export default function AdminSettingsPage() {
         <div>
           <Link href="/admin" className="text-sm font-semibold text-indigo-600 hover:underline">&larr; Admin</Link>
           <h1 className="mt-1 text-2xl font-bold">Cài đặt hệ thống & AI</h1>
-          <p className="mt-1 text-sm text-slate-500">Model AI theo chức năng nằm ở đầu trang, bên dưới là system settings và prompt templates.</p>
+          <p className="mt-1 text-sm text-slate-500">Model AI theo chức năng nằm ở đầu trang, bên dưới là cài đặt hệ thống và mẫu prompt.</p>
         </div>
         <Link href="/admin/ai-models" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700">
           <Bot size={16} />
@@ -172,29 +172,29 @@ export default function AdminSettingsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
         <section className="rounded-lg border bg-white p-5">
-          <h2 className="flex items-center gap-2 text-lg font-bold"><Settings size={18} />System setting</h2>
+          <h2 className="flex items-center gap-2 text-lg font-bold"><Settings size={18} />Cài đặt hệ thống</h2>
           <form onSubmit={saveSetting} className="mt-4 space-y-3">
             <input className="min-h-10 w-full rounded-lg border px-3 text-sm" placeholder="setting_key" value={settingForm.key} onChange={(event) => setSettingForm({ ...settingForm, key: event.target.value })} required />
             <input className="min-h-10 w-full rounded-lg border px-3 text-sm" placeholder="Mô tả" value={settingForm.description} onChange={(event) => setSettingForm({ ...settingForm, description: event.target.value })} />
             <textarea className="min-h-40 w-full rounded-lg border px-3 py-2 font-mono text-xs" value={settingForm.value} onChange={(event) => setSettingForm({ ...settingForm, value: event.target.value })} />
             <button type="submit" disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white disabled:opacity-50">
               <Settings size={16} />
-              Lưu setting
+              Lưu cài đặt
             </button>
           </form>
         </section>
 
         <section className="rounded-lg border bg-white p-5">
-          <h2 className="text-lg font-bold">Settings hiện có</h2>
+          <h2 className="text-lg font-bold">Cài đặt hiện có</h2>
           {loading ? <div className="mt-4"><ListSkeleton rows={4} /></div> : settings.length ? (
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Key</th>
-                    <th className="px-3 py-2">Value</th>
-                    <th className="px-3 py-2">Updated</th>
-                    <th className="px-3 py-2">Action</th>
+                    <th className="px-3 py-2">Khóa</th>
+                    <th className="px-3 py-2">Giá trị</th>
+                    <th className="px-3 py-2">Cập nhật</th>
+                    <th className="px-3 py-2">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -209,14 +209,14 @@ export default function AdminSettingsPage() {
                 </tbody>
               </table>
             </div>
-          ) : <div className="mt-4"><EmptyState title="Chưa có setting" description="Tạo setting đầu tiên bên trái." /></div>}
+          ) : <div className="mt-4"><EmptyState title="Chưa có cài đặt" description="Tạo cài đặt đầu tiên bên trái." /></div>}
         </section>
       </div>
 
       <section className="mt-6 rounded-lg border bg-white p-5">
-        <h2 className="flex items-center gap-2 text-lg font-bold"><Bot size={18} />AI prompt template</h2>
+        <h2 className="flex items-center gap-2 text-lg font-bold"><Bot size={18} />Mẫu prompt AI</h2>
         <form onSubmit={savePrompt} className="mt-4 grid gap-3 lg:grid-cols-2">
-          <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Name" value={promptForm.name} onChange={(event) => setPromptForm({ ...promptForm, name: event.target.value })} required />
+          <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Tên" value={promptForm.name} onChange={(event) => setPromptForm({ ...promptForm, name: event.target.value })} required />
           <div className="grid gap-3 sm:grid-cols-[1fr_110px_120px]">
             <select className="min-h-10 rounded-lg border px-3 text-sm" value={promptForm.taskType} onChange={(event) => setPromptForm({ ...promptForm, taskType: event.target.value })}>
               {taskTypes.map((taskType) => <option key={taskType} value={taskType}>{taskType}</option>)}
@@ -224,12 +224,12 @@ export default function AdminSettingsPage() {
             <input className="min-h-10 rounded-lg border px-3 text-sm" min={1} type="number" value={promptForm.version} onChange={(event) => setPromptForm({ ...promptForm, version: Number(event.target.value) })} />
             <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm">
               <input checked={promptForm.isActive} type="checkbox" onChange={(event) => setPromptForm({ ...promptForm, isActive: event.target.checked })} />
-              Active
+              Đang bật
             </label>
           </div>
-          <textarea className="min-h-44 rounded-lg border px-3 py-2 text-sm" placeholder="System prompt" value={promptForm.systemPrompt} onChange={(event) => setPromptForm({ ...promptForm, systemPrompt: event.target.value })} required />
-          <textarea className="min-h-44 rounded-lg border px-3 py-2 text-sm" placeholder="User prompt template" value={promptForm.userPromptTemplate} onChange={(event) => setPromptForm({ ...promptForm, userPromptTemplate: event.target.value })} required />
-          <textarea className="min-h-28 rounded-lg border px-3 py-2 font-mono text-xs lg:col-span-2" placeholder="Output schema JSON" value={promptForm.outputSchema} onChange={(event) => setPromptForm({ ...promptForm, outputSchema: event.target.value })} />
+          <textarea className="min-h-44 rounded-lg border px-3 py-2 text-sm" placeholder="Prompt hệ thống" value={promptForm.systemPrompt} onChange={(event) => setPromptForm({ ...promptForm, systemPrompt: event.target.value })} required />
+          <textarea className="min-h-44 rounded-lg border px-3 py-2 text-sm" placeholder="Mẫu prompt người dùng" value={promptForm.userPromptTemplate} onChange={(event) => setPromptForm({ ...promptForm, userPromptTemplate: event.target.value })} required />
+          <textarea className="min-h-28 rounded-lg border px-3 py-2 font-mono text-xs lg:col-span-2" placeholder="Schema đầu ra JSON" value={promptForm.outputSchema} onChange={(event) => setPromptForm({ ...promptForm, outputSchema: event.target.value })} />
           <div className="flex gap-2 lg:col-span-2">
             <button type="submit" disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white disabled:opacity-50">
               <Settings size={16} />
@@ -246,12 +246,12 @@ export default function AdminSettingsPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Version</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Updated</th>
-                  <th className="px-4 py-3">Action</th>
+                  <th className="px-4 py-3">Tác vụ</th>
+                  <th className="px-4 py-3">Tên</th>
+                  <th className="px-4 py-3">Phiên bản</th>
+                  <th className="px-4 py-3">Trạng thái</th>
+                  <th className="px-4 py-3">Cập nhật</th>
+                  <th className="px-4 py-3">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -260,7 +260,7 @@ export default function AdminSettingsPage() {
                     <td className="px-4 py-3 font-mono text-xs">{template.task_type}</td>
                     <td className="px-4 py-3 font-bold">{template.name}</td>
                     <td className="px-4 py-3">{template.version}</td>
-                    <td className="px-4 py-3">{template.is_active ? "Active" : "Off"}</td>
+                    <td className="px-4 py-3">{template.is_active ? "Bật" : "Tắt"}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">{formatDate(template.updated_at)}</td>
                     <td className="px-4 py-3"><button type="button" onClick={() => editPrompt(template)} className="text-xs font-bold text-indigo-700 hover:underline">Sửa</button></td>
                   </tr>

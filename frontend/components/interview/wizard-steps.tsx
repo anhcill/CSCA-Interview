@@ -79,7 +79,7 @@ export function ProfileWizardStep({
   return (
     <section className="grid gap-5 lg:grid-cols-[1fr_0.82fr]">
       <div className="rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)]">
-        <StepHeader eyebrow="Bước 1" icon={User} title="Profile cá nhân" />
+        <StepHeader eyebrow="Bước 1" icon={User} title="Hồ sơ cá nhân" />
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <TextInput label="Tên tiếng Trung" value={form.applicantNameZh} placeholder="Ví dụ: Nguyễn Minh An" onChange={(value) => onChange("applicantNameZh", value)} />
           <TextInput label="GPA" value={form.gpa} placeholder="Ví dụ: 3.6/4.0" onChange={(value) => onChange("gpa", value)} />
@@ -95,7 +95,7 @@ export function ProfileWizardStep({
 
       <div className="rounded-lg border border-border bg-primary/5 p-5">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-black text-foreground">Hồ sơ apply</h2>
+          <h2 className="text-lg font-black text-foreground">Hồ sơ nộp</h2>
           <span className={`rounded-full px-3 py-1 text-xs font-black ${isProfileReady ? "bg-[hsl(var(--success))] text-white" : "bg-accent text-accent-foreground"}`}>
             {isProfileReady ? "Sẵn sàng" : `${readyCount}/${readyItems.length} mục`}
           </span>
@@ -315,7 +315,7 @@ export function ConfirmWizardStep({
           </div>
         </div>
         <div className="space-y-3 p-5">
-          <PreviewRow label="Trạng thái" value={isProfileReady ? "Sẵn sàng" : "Thiếu profile"} />
+    <PreviewRow label="Trạng thái" value={isProfileReady ? "Sẵn sàng" : "Thiếu hồ sơ"} />
           <PreviewRow label="HSK / IELTS" value={[form.hskLevel, form.ieltsScore].filter(Boolean).join(" / ") || "Chưa nhập"} />
           <p className="rounded-lg border border-white/15 bg-white/10 p-4 text-sm font-semibold leading-6 text-white/82">
             {form.studyPlan || profile?.studyPlan || "Study plan chưa có dữ liệu."}
@@ -727,7 +727,7 @@ export function StudyPlanAnalysisWizardStep({
           <span>📋 Các câu hỏi phỏng vấn dự kiến (AI tạo)</span>
         </h3>
         <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-          Giáo sư AI dự kiến sẽ đặt các câu hỏi sau dựa trên thông tin Study Plan của bạn. Hãy chuẩn bị kỹ câu trả lời.
+          Giáo sư AI dự kiến sẽ đặt các câu hỏi sau dựa trên thông tin kế hoạch học tập của bạn. Hãy chuẩn bị kỹ câu trả lời.
         </p>
         <div className="space-y-3">
           {generatedQuestions.map((item: string, idx: number) => (

@@ -51,7 +51,7 @@ export default function AdminAnalyticsPage() {
       const response = await apiGet<AdminStats>(`/api/admin/stats${suffix}`, { token });
       setStats(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải analytics");
+      setError(err instanceof Error ? err.message : "Không thể tải phân tích");
     } finally {
       setLoading(false);
     }
@@ -62,13 +62,13 @@ export default function AdminAnalyticsPage() {
   }, [loadStats]);
 
   const cards = stats ? [
-    { icon: User, label: "Tổng user", value: stats.totalUsers, detail: `${stats.activeUsers} active, ${stats.inactiveUsers} khóa` },
-    { icon: ClipboardList, label: "Tổng session", value: stats.totalSessions, detail: `${stats.completedSessions} đã hoàn thành` },
-    { icon: Target, label: "Điểm trung bình", value: formatScore(stats.avgScore), detail: "Session completed" },
+    { icon: User, label: "Tổng người dùng", value: stats.totalUsers, detail: `${stats.activeUsers} đang hoạt động, ${stats.inactiveUsers} khóa` },
+    { icon: ClipboardList, label: "Tổng buổi", value: stats.totalSessions, detail: `${stats.completedSessions} đã hoàn thành` },
+    { icon: Target, label: "Điểm trung bình", value: formatScore(stats.avgScore), detail: "Buổi đã hoàn thành" },
     { icon: Brain, label: "Ngân hàng câu hỏi", value: stats.totalQuestions, detail: `${stats.activeQuestions} đang bật` },
-    { icon: Activity, label: "AI calls", value: stats.aiCallsToday, detail: "Request thành cong" },
+    { icon: Activity, label: "Lượt gọi AI", value: stats.aiCallsToday, detail: "Request thành công" },
     { icon: BarChart3, label: "AI tokens", value: stats.aiTokens, detail: `$${stats.aiCostUsd.toFixed(4)}` },
-    { icon: BarChart3, label: "Admin accounts", value: stats.adminUsers, detail: "ADMIN va SUPER_ADMIN" }
+    { icon: BarChart3, label: "Tài khoản admin", value: stats.adminUsers, detail: "ADMIN và SUPER_ADMIN" }
   ] : [];
 
   return (
@@ -76,14 +76,14 @@ export default function AdminAnalyticsPage() {
       <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-4 md:flex-row md:items-center">
         <div>
           <Link href="/admin" className="text-sm font-semibold text-indigo-600 hover:underline">&larr; Admin</Link>
-          <h1 className="mt-1 text-2xl font-bold">Admin analytics</h1>
-          <p className="mt-1 text-sm text-slate-500">Tổng quan user, session, điểm và câu hỏi yếu.</p>
+          <h1 className="mt-1 text-2xl font-bold">Phân tích admin</h1>
+          <p className="mt-1 text-sm text-slate-500">Tổng quan người dùng, buổi phỏng vấn, điểm và câu hỏi yếu.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input className="min-h-10 rounded-lg border px-3 text-sm" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
           <input className="min-h-10 rounded-lg border px-3 text-sm" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
           <button type="button" onClick={() => void loadStats()} disabled={loading} className="rounded-lg border px-4 py-2 text-sm font-bold hover:bg-slate-50 disabled:opacity-50">
-            Refresh
+            Làm mới
           </button>
         </div>
       </div>

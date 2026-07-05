@@ -223,11 +223,11 @@ export default function AdminMappingsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2">Year</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Range</th>
-                    <th className="px-3 py-2">Action</th>
+                    <th className="px-3 py-2">Tên</th>
+                    <th className="px-3 py-2">Năm</th>
+                    <th className="px-3 py-2">Trạng thái</th>
+                    <th className="px-3 py-2">Thời gian</th>
+                    <th className="px-3 py-2">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -243,7 +243,7 @@ export default function AdminMappingsPage() {
                 </tbody>
               </table>
             </div>
-          ) : <div className="mt-4"><EmptyState title="Chưa có mùa" description="Thêm mùa tuyen sinh dau tien." /></div>}
+          ) : <div className="mt-4"><EmptyState title="Chưa có mùa" description="Thêm mùa tuyển sinh đầu tiên." /></div>}
         </section>
       </section>
 
@@ -312,7 +312,7 @@ function MappingPanel(props: {
           <option value="">Không gắn mùa</option>
           {props.seasons.map((season) => <option key={season.id} value={season.id}>{season.name} {season.admission_year}</option>)}
         </select>
-        <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Note" value={props.form.note} onChange={(event) => props.setForm({ ...props.form, note: event.target.value })} />
+        <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Ghi chú" value={props.form.note} onChange={(event) => props.setForm({ ...props.form, note: event.target.value })} />
         <button type="submit" className="min-h-10 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white md:col-span-2">Thêm mapping</button>
       </form>
 
@@ -324,8 +324,8 @@ function MappingPanel(props: {
                 <tr>
                   <th className="px-3 py-2">Trường</th>
                   <th className="px-3 py-2">{props.kind === "major" ? "Ngành" : "Học bổng"}</th>
-                  <th className="px-3 py-2">Mua</th>
-                  <th className="px-3 py-2">Action</th>
+                  <th className="px-3 py-2">Mùa</th>
+                  <th className="px-3 py-2">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -339,7 +339,7 @@ function MappingPanel(props: {
                       <td className="px-3 py-2">
                         <button type="button" onClick={() => props.onDelete(row.id)} className="inline-flex items-center gap-1 text-xs font-bold text-red-700 hover:underline">
                           <Trash2 size={13} />
-                          X?a
+                          Xóa
                         </button>
                       </td>
                     </tr>
@@ -348,7 +348,7 @@ function MappingPanel(props: {
               </tbody>
             </table>
           </div>
-        ) : <EmptyState title="Chưa có mapping" description="Thêm mapping bang form ben tren." />}
+        ) : <EmptyState title="Chưa có mapping" description="Thêm mapping bằng form bên trên." />}
       </div>
     </section>
   );

@@ -1,11 +1,20 @@
 export type ParsedInterviewSheetQuestion = {
+  category?: "PERSONAL" | "ACADEMIC" | "STUDY_PLAN" | "SCHOLARSHIP" | "CAREER_PLAN" | "LANGUAGE" | "SITUATION" | "RESEARCH" | "SCHOOL_MAJOR" | "OTHER";
+  commonMistakes?: string | null;
   degreeLevel: "BACHELOR" | "MASTER";
+  difficulty?: "EASY" | "MEDIUM" | "HARD";
+  keywords?: string | null;
   language: "VI" | "ZH" | "EN";
   majorName: string | null;
+  questionCode?: string | null;
   questionText: string;
+  sampleAnswer?: string | null;
+  scoringRubric?: unknown | null;
   schoolName: string;
   sourceColumn: number;
+  sourceColumnName?: string | null;
   sourceRow: number;
+  suggestedAnswerLogic?: string | null;
 };
 
 export type ParsedInterviewSheet = {

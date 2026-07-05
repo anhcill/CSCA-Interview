@@ -1,13 +1,14 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { faqs, pricing, pricingNotes } from "@/components/home/home-data";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Gói sử dụng | AI Phỏng Vấn Du Học",
-  description: "Các gói sử dụng InterviewAI cho luyện phỏng vấn học bổng Trung Quốc."
-};
+  description: "Các gói sử dụng Moly Interview cho luyện phỏng vấn học bổng Trung Quốc.",
+  path: "/pricing"
+});
 
 export default function PricingPage() {
   return (

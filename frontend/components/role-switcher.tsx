@@ -19,7 +19,7 @@ export function RoleSwitcher({ active, className = "", variant = "light" }: Role
 
   return (
     <nav
-      aria-label="Chuyen doi User Admin"
+      aria-label="Chuyển đổi User Admin"
       className={`inline-flex items-center rounded-lg border p-1 ${
         dark ? "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" : "border-border bg-muted/50"
       } ${className}`}

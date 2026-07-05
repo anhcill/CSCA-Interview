@@ -324,9 +324,7 @@ function uniqueList(values: string[]) {
 
 function isLegacyGenericTip(value: string) {
   return value.includes("60-90")
-    || value.includes("3 vĂ")
     || value.includes("3 ví")
-    || value.includes("Ghi Ă¢m")
     || value.includes("Ghi âm");
 }
 
@@ -364,11 +362,11 @@ function compareWithSampleAnswer(answerText: string, sampleAnswer: string | null
   const lengthRatio = sampleTokens.length ? answerTokens.length / sampleTokens.length : 0;
   const notes: string[] = [];
 
-  if (coveragePercent < 45) notes.push("Thieu nhieu y chinh so voi cau tra loi mau.");
-  if (coveragePercent >= 45 && coveragePercent < 75) notes.push("Da cham mot phan y chinh, can bo sung cac keyword con thieu.");
-  if (coveragePercent >= 75) notes.push("Bao phu tot cac y quan trong trong cau tra loi mau.");
-  if (lengthRatio < 0.45) notes.push("Cau tra loi dang ngan hon nhieu so voi mau, nen them vi du va ke hoach cu the.");
-  if (lengthRatio > 1.8) notes.push("Cau tra loi dai hon mau, nen rut gon y trung lap.");
+  if (coveragePercent < 45) notes.push("Thiếu nhiều ý chính so với câu trả lời mẫu.");
+  if (coveragePercent >= 45 && coveragePercent < 75) notes.push("Đã bao quát một phần ý chính, cần bổ sung các từ khóa còn thiếu.");
+  if (coveragePercent >= 75) notes.push("Bao phủ tốt các ý quan trọng trong câu trả lời mẫu.");
+  if (lengthRatio < 0.45) notes.push("Câu trả lời đang ngắn hơn nhiều so với mẫu, nên thêm ví dụ và kế hoạch cụ thể.");
+  if (lengthRatio > 1.8) notes.push("Câu trả lời dài hơn mẫu, nên rút gọn ý trùng lặp.");
 
   return {
     coveragePercent,

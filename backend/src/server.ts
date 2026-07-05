@@ -127,7 +127,7 @@ async function collectHealthStatus() {
         clients: realtimeState.websocketClients,
         endpoint: "/ws/realtime",
         status: websocket,
-        note: websocket === "ok" ? "WebSocket server ready." : "WebSocket server chua cau hinh."
+        note: websocket === "ok" ? "WebSocket server ready." : "WebSocket server chưa cấu hình."
       }
     },
     security: {

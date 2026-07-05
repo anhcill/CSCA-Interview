@@ -58,11 +58,11 @@ CREATE INDEX IF NOT EXISTS idx_user_weekly_goals_user_id ON user_weekly_goals(us
 
 INSERT INTO gamification_badges (code, label, description, icon, requirement_type, requirement_value)
 VALUES
-  ('FIRST_SESSION', 'Phong van dau tien', 'Hoan thanh buoi phong van dau tien.', '🎯', 'completed_sessions', 1),
-  ('THREE_SESSION_WEEK', 'Muc tieu tuan', 'Hoan thanh 3 buoi trong mot tuan.', '📅', 'weekly_completed', 3),
-  ('SEVEN_DAY_STREAK', '7 ngay lien tiep', 'Luyen tap 7 ngay lien tiep.', '🔥', 'streak_days', 7),
-  ('HIGH_SCORE_8', 'Diem 8+', 'Dat diem trung binh tu 8 tro len.', '⭐', 'max_score', 8),
-  ('TWENTY_SESSIONS', 'Hoc khong ngung', 'Hoan thanh 20 buoi phong van.', '📚', 'completed_sessions', 20)
+  ('FIRST_SESSION', 'Phỏng vấn đầu tiên', 'Hoàn thành buổi phỏng vấn đầu tiên.', '🎯', 'completed_sessions', 1),
+  ('THREE_SESSION_WEEK', 'Mục tiêu tuần', 'Hoàn thành 3 buổi trong một tuần.', '📅', 'weekly_completed', 3),
+  ('SEVEN_DAY_STREAK', '7 ngày liên tiếp', 'Luyện tập 7 ngày liên tiếp.', '🔥', 'streak_days', 7),
+  ('HIGH_SCORE_8', 'Điểm 8+', 'Đạt điểm trung bình từ 8 trở lên.', '⭐', 'max_score', 8),
+  ('TWENTY_SESSIONS', 'Học không ngừng', 'Hoàn thành 20 buổi phỏng vấn.', '📚', 'completed_sessions', 20)
 ON CONFLICT (code) DO UPDATE SET
   label = EXCLUDED.label,
   description = EXCLUDED.description,

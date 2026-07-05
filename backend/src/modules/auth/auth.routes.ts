@@ -206,7 +206,7 @@ authRouter.post("/refresh", asyncRoute(async (req, res) => {
   });
   } catch (error) {
     if (getErrorCode(error) === "P1001") {
-      res.status(503).json({ message: "Khong ket noi duoc co so du lieu. Vui long thu lai sau." });
+      res.status(503).json({ message: "Không kết nối được cơ sở dữ liệu. Vui lòng thử lại sau." });
       return;
     }
 

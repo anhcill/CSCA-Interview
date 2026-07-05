@@ -1,14 +1,15 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { detailFeatures, featurePageGroups, interviewPreview } from "@/components/home/home-data";
 import { homeIcons } from "@/components/home/home-icons";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Tính năng | AI Phỏng Vấn Du Học",
-  description: "Chi tiết tính năng luyện phỏng vấn học bổng Trung Quốc bằng AI."
-};
+  description: "Chi tiết tính năng luyện phỏng vấn học bổng Trung Quốc bằng AI.",
+  path: "/features"
+});
 
 export default function FeaturesPage() {
   return (

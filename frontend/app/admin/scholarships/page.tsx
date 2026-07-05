@@ -132,14 +132,14 @@ export default function AdminScholarshipsPage() {
       <form onSubmit={handleSubmit} className="mb-8 grid gap-3 rounded border bg-white p-5 md:grid-cols-3">
         <TextField label="Tên học bổng *" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
         <TextField label="Mã" value={form.code || ""} onChange={(value) => setForm({ ...form, code: value })} placeholder="CSC, ASEAN..." />
-        <TextField label="Deadline" value={form.deadline || ""} onChange={(value) => setForm({ ...form, deadline: value })} placeholder="2026-03-31 hoặc varies by school" />
+        <TextField label="Hạn nộp" value={form.deadline || ""} onChange={(value) => setForm({ ...form, deadline: value })} placeholder="2026-03-31 hoặc tùy trường" />
         <TextArea label="Mô tả" value={form.description || ""} onChange={(value) => setForm({ ...form, description: value })} />
         <TextArea label="Yêu cầu" value={form.requirements || ""} onChange={(value) => setForm({ ...form, requirements: value })} />
-        <TextArea label="Coverage" value={form.coverage || ""} onChange={(value) => setForm({ ...form, coverage: value })} />
-        <TextArea label="Yêu cầu study plan" value={form.studyPlanRequirements || ""} onChange={(value) => setForm({ ...form, studyPlanRequirements: value })} />
+        <TextArea label="Quyền lợi" value={form.coverage || ""} onChange={(value) => setForm({ ...form, coverage: value })} />
+        <TextArea label="Yêu cầu kế hoạch học tập" value={form.studyPlanRequirements || ""} onChange={(value) => setForm({ ...form, studyPlanRequirements: value })} />
         <TextArea label="Hình thức phỏng vấn" value={form.interviewFormat || ""} onChange={(value) => setForm({ ...form, interviewFormat: value })} />
         <TextArea label="Câu hỏi thường gặp" value={form.commonInterviewQuestions} onChange={(value) => setForm({ ...form, commonInterviewQuestions: value })} placeholder="Mỗi dòng một câu hoặc JSON array" />
-        <TextArea label="Tips học bổng" value={form.tips || ""} onChange={(value) => setForm({ ...form, tips: value })} />
+        <TextArea label="Gợi ý học bổng" value={form.tips || ""} onChange={(value) => setForm({ ...form, tips: value })} />
 
         <div className="flex items-end gap-2">
           <button type="submit" disabled={loading} className="rounded bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50">
@@ -167,7 +167,7 @@ export default function AdminScholarshipsPage() {
               <tr key={scholarship.id} className="border-t hover:bg-slate-50">
                 <td className="px-3 py-2 font-medium">{scholarship.name}</td>
                 <td className="px-3 py-2 text-slate-500">{scholarship.code || "—"}</td>
-                <td className="px-3 py-2 text-xs text-slate-600">{scholarship.requirements || scholarship.coverage || scholarship.interviewFormat ? "Có context" : "—"}</td>
+                <td className="px-3 py-2 text-xs text-slate-600">{scholarship.requirements || scholarship.coverage || scholarship.interviewFormat ? "Có ngữ cảnh" : "—"}</td>
                 <td className="px-3 py-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs ${scholarship.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                     {scholarship.isActive ? "Hoạt động" : "Tắt"}

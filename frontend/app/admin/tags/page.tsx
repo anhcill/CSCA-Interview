@@ -96,8 +96,8 @@ export default function AdminTagsPage() {
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
 
       <form onSubmit={handleSubmit} className="mb-6 grid gap-3 rounded-lg border bg-white p-5 md:grid-cols-[240px_1fr_auto]">
-        <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Tag name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-        <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Dễscription" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+        <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Tên tag" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+        <input className="min-h-10 rounded-lg border px-3 text-sm" placeholder="Mô tả" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
         <div className="flex gap-2">
           <button type="submit" disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white disabled:opacity-50">
             <BookOpen size={15} />
@@ -115,11 +115,11 @@ export default function AdminTagsPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Dễscription</th>
-                  <th className="px-4 py-3">Questions</th>
-                  <th className="px-4 py-3">Created</th>
-                  <th className="px-4 py-3">Action</th>
+                  <th className="px-4 py-3">Tên</th>
+                  <th className="px-4 py-3">Mô tả</th>
+                  <th className="px-4 py-3">Câu hỏi</th>
+                  <th className="px-4 py-3">Ngày tạo</th>
+                  <th className="px-4 py-3">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,7 +134,7 @@ export default function AdminTagsPage() {
                         <button type="button" onClick={() => startEdit(tag)} className="text-xs font-bold text-indigo-700 hover:underline">Sửa</button>
                         <button type="button" onClick={() => void handleDelete(tag)} className="inline-flex items-center gap-1 text-xs font-bold text-red-700 hover:underline">
                           <Trash2 size={13} />
-                          X?a
+                          Xóa
                         </button>
                       </div>
                     </td>
@@ -144,7 +144,7 @@ export default function AdminTagsPage() {
             </table>
           </div>
         ) : (
-          <div className="p-6"><EmptyState title="Chưa có tag" description="Thêm tag dau tien bang form ben tren." /></div>
+          <div className="p-6"><EmptyState title="Chưa có tag" description="Thêm tag đầu tiên bằng form bên trên." /></div>
         )}
       </section>
     </main>

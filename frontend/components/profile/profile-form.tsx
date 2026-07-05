@@ -259,7 +259,7 @@ export function ProfileForm() {
           ) : null}
 
           <div className="mt-7 grid gap-7">
-            <FormSection title="Thông tin apply" description="Các trường bắt buộc để hệ thống chọn câu hỏi phù hợp.">
+      <FormSection title="Thông tin nộp hồ sơ" description="Các trường bắt buộc để hệ thống chọn câu hỏi phù hợp.">
               <div className="grid gap-5 md:grid-cols-2">
                 <SelectField
                   label="Hệ apply"

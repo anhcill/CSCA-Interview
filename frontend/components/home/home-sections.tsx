@@ -36,10 +36,10 @@ export function ChinaPathSection() {
           <div>
             <p className="text-sm font-black uppercase text-[#b91c1c]">Du học Trung Quốc</p>
             <h2 className="mt-3 text-3xl font-black leading-tight text-[#111827] sm:text-4xl">
-              Không chỉ là luyện phỏng vấn, mà là luyện đúng bối cảnh apply Trung
+              Không chỉ là luyện phỏng vấn, mà là luyện đúng bối cảnh nộp hồ sơ Trung Quốc
             </h2>
             <p className="mt-4 text-sm font-semibold leading-7 text-[#4b5563] sm:text-base">
-              Giao diện mới đặt người học vào mạch chọn trường, xin học bổng và vấn đáp tiếng Trung, thay vì cảm giác một web luyện interview chung chung.
+              Giao diện mới đặt người học vào mạch chọn trường, xin học bổng và vấn đáp tiếng Trung, thay vì cảm giác một web luyện phỏng vấn chung chung.
             </p>
           </div>
 
@@ -108,7 +108,7 @@ export function DetailFeaturesSection() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <SectionHeading
           eyebrow="Tính năng chính"
-          title="Một phòng luyện phỏng vấn đúng ngữ cảnh apply"
+          title="Một phòng luyện phỏng vấn đúng ngữ cảnh nộp hồ sơ"
           description="Giao diện được thiết kế cho ứng viên cần luyện vấn đáp học bổng: rõ câu hỏi, rõ phản hồi, rõ bước tiếp theo."
         />
 
@@ -172,7 +172,7 @@ export function GuideSection() {
         <div>
           <p className="text-sm font-black uppercase text-[#fde68a]">Quy trình luyện</p>
           <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">
-            Từ hồ sơ apply đến câu trả lời sẵn sàng dùng
+            Từ hồ sơ nộp đến câu trả lời sẵn sàng dùng
           </h2>
           <p className="mt-4 text-base font-semibold leading-8 text-[#cbd5e1]">
             Không cần tự đoán câu hỏi. Bạn đi theo một luồng rõ ràng: nhập mục tiêu, vào phòng luyện, nhận phản hồi và luyện lại phần yếu.

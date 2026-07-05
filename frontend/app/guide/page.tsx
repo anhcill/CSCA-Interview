@@ -1,13 +1,14 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { guidePageStages, scholarshipFocus, steps } from "@/components/home/home-data";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Quy trình luyện | AI Phỏng Vấn Du Học",
-  description: "Quy trình luyện phỏng vấn học bổng Trung Quốc từ hồ sơ apply đến báo cáo sau buổi luyện."
-};
+  description: "Quy trình luyện phỏng vấn học bổng Trung Quốc từ hồ sơ apply đến báo cáo sau buổi luyện.",
+  path: "/guide"
+});
 
 export default function GuidePage() {
   return (

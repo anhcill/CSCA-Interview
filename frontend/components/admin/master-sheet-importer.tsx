@@ -1,8 +1,26 @@
 "use client";
 
-import { AlertCircle, CheckCircle, ClipboardList, RefreshCw, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle, ClipboardList, Download, RefreshCw, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { apiPost } from "@/lib/api";
+
+type MasterSheetIssue = {
+  code: string;
+  message: string;
+  preview?: string;
+  questionCode?: string | null;
+  severity: "error" | "warning";
+  sourceColumn?: number;
+  sourceColumnName?: string | null;
+  sourceRow: number;
+};
+
+type MasterSheetSkippedRow = {
+  questionCode?: string | null;
+  reason: string;
+  sourceRow: number;
+  status?: string | null;
+};
 
 type MasterSheetSchoolPreview = {
   existingQuestions: number;
@@ -16,30 +34,46 @@ type MasterSheetSchoolPreview = {
 };
 
 type MasterSheetPreview = {
+  errors: MasterSheetIssue[];
   recordsPreview: Array<{
     degreeLevel: "BACHELOR" | "MASTER";
     language: "VI" | "ZH" | "EN";
     majorName: string | null;
+    questionCode?: string | null;
     questionText: string;
+    sampleAnswer?: string | null;
     schoolName: string;
     sourceColumn: number;
+    sourceColumnName?: string | null;
     sourceRow: number;
   }>;
   schools: MasterSheetSchoolPreview[];
+  skippedRows: MasterSheetSkippedRow[];
+  source?: {
+    csvHash: string;
+    csvUrl: string | null;
+    sourceFormat?: "legacy" | "normalized";
+    sourceUrl: string | null;
+  };
   stats: {
     duplicateQuestionsInSheet: number;
+    errors: number;
     existingQuestions: number;
+    generatedRecords?: number;
     matchedMajors: number;
     matchedSchools: number;
     missingMajors: number;
     missingSchools: number;
     newQuestions: number;
     questions: number;
+    readyRows?: number | null;
     schools: number;
+    skippedRows?: number;
+    sourceRows?: number | null;
     totalMajors: number;
     warnings: number;
   };
-  warnings: Array<{ message: string; preview?: string; sourceColumn?: number; sourceRow?: number }>;
+  warnings: MasterSheetIssue[];
 };
 
 type MasterSheetImportResponse = {
@@ -49,6 +83,7 @@ type MasterSheetImportResponse = {
   duplicateQuestionsInSheet: number;
   linkedSchoolMajors: number;
   preview: MasterSheetPreview;
+  skipped: Array<{ questionCode?: string | null; reason: string; sourceColumn?: number; sourceColumnName?: string | null; sourceRow: number }>;
   skippedQuestions: number;
   unchangedQuestions: number;
   updatedQuestions: number;
@@ -60,6 +95,7 @@ type MasterSheetImporterProps = {
 };
 
 const defaultSheetUrl = "https://docs.google.com/spreadsheets/d/10xNUES4YGjjrvfFQFMer7zZcQElB2s8gmA557FRE_BE/edit?pli=1&gid=2018224967#gid=2018224967";
+const templateUrl = "/templates/cau-hoi-phong-van-master-template.xlsx";
 
 export function MasterSheetImporter({ onImported, token }: MasterSheetImporterProps) {
   const [sourceUrl, setSourceUrl] = useState(defaultSheetUrl);
@@ -80,6 +116,8 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
       .slice(0, 12);
   }, [preview]);
 
+  const canImport = Boolean(preview) && !preview?.stats.errors && !busy;
+
   async function handlePreview() {
     setBusy(true);
     setError("");
@@ -90,6 +128,7 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
       }, { timeoutMs: 90_000, token });
       setPreview(nextPreview);
     } catch (err) {
+      setPreview(null);
       setError(err instanceof Error ? err.message : "Không thể kiểm tra Google Sheet");
     } finally {
       setBusy(false);
@@ -97,7 +136,15 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
   }
 
   async function handleImport() {
-    if (preview?.stats.missingSchools && createMissingSchools) {
+    if (!preview) {
+      setError("Cần kiểm tra sheet trước khi import.");
+      return;
+    }
+    if (preview.stats.errors > 0) {
+      setError(`Sheet còn ${preview.stats.errors} lỗi dữ liệu. Vui lòng sửa lỗi rồi kiểm tra lại.`);
+      return;
+    }
+    if (preview.stats.missingSchools && createMissingSchools) {
       const ok = confirm(`Sheet có ${preview.stats.missingSchools} trường chưa có trong hệ thống. Tạo mới các trường này và import câu hỏi?`);
       if (!ok) return;
     }
@@ -129,18 +176,23 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
             <ClipboardList size={20} />
           </div>
           <div>
-            <h2 className="text-sm font-black">Google Sheet chính</h2>
+            <h2 className="text-sm font-black">Import sheet câu hỏi chuẩn</h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              {preview ? `${preview.stats.questions} câu hỏi, ${preview.stats.schools} trường, ${preview.stats.totalMajors} ngành.` : "Kiểm tra trường, ngành và câu hỏi trước khi đồng bộ."}
+              {preview
+                ? `${preview.stats.questions} bản ghi phỏng vấn, ${preview.stats.schools} trường, ${preview.stats.totalMajors} ngành.`
+                : "Kiểm tra lỗi dòng/cột trước, sau đó mới import vào ngân hàng câu hỏi."}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <a href={templateUrl} download className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 text-sm font-bold hover:bg-slate-50">
+            <Download size={16} />Tải template
+          </a>
           <button type="button" onClick={() => void handlePreview()} disabled={busy} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 text-sm font-bold hover:bg-slate-50 disabled:opacity-50">
             <RefreshCw size={16} />Kiểm tra sheet
           </button>
-          <button type="button" onClick={() => void handleImport()} disabled={busy || !sourceUrl.trim()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
-            <Upload size={16} />Import / đồng bộ
+          <button type="button" onClick={() => void handleImport()} disabled={!canImport} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
+            <Upload size={16} />Import vào DB
           </button>
         </div>
       </div>
@@ -151,6 +203,7 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
           value={sourceUrl}
           onChange={(event) => {
             setSourceUrl(event.target.value);
+            setPreview(null);
             setResult(null);
           }}
         />
@@ -171,13 +224,19 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
       </div>
 
       {preview ? (
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <StatBox label="Trường thiếu" tone={preview.stats.missingSchools ? "warn" : "ok"} value={preview.stats.missingSchools} />
+        <div className="mt-4 grid gap-3 md:grid-cols-6">
+          <StatBox label="Lỗi" tone={preview.stats.errors ? "danger" : "ok"} value={preview.stats.errors} />
+          <StatBox label="Cảnh báo" tone={preview.stats.warnings ? "warn" : "ok"} value={preview.stats.warnings} />
+          <StatBox label="Bỏ qua" tone={preview.stats.skippedRows ? "warn" : "neutral"} value={preview.stats.skippedRows ?? 0} />
           <StatBox label="Câu mới" value={preview.stats.newQuestions} />
           <StatBox label="Câu đã có" value={preview.stats.existingQuestions} />
-          <StatBox label="Cảnh báo" tone={preview.stats.warnings ? "warn" : "ok"} value={preview.stats.warnings} />
+          <StatBox label="Trường thiếu" tone={preview.stats.missingSchools ? "warn" : "ok"} value={preview.stats.missingSchools} />
         </div>
       ) : null}
+
+      {preview?.errors.length ? <IssueList title="Lỗi cần sửa trước khi import" issues={preview.errors} tone="danger" /> : null}
+      {preview?.warnings.length ? <IssueList title="Cảnh báo khi đọc sheet" issues={preview.warnings.slice(0, 12)} tone="warn" /> : null}
+      {preview?.skippedRows.length ? <SkippedRows rows={preview.skippedRows.slice(0, 12)} /> : null}
 
       {visibleSchools.length ? (
         <div className="mt-4 overflow-hidden rounded-lg border">
@@ -205,7 +264,7 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
 
       {result ? (
         <p className="mt-4 rounded-lg bg-green-50 p-3 text-sm font-bold text-green-700">
-          Đã tạo {result.createdQuestions} câu hỏi, cập nhật {result.updatedQuestions} câu, tạo {result.createdSchools} trường và {result.createdMajors} ngành.
+          Đã tạo {result.createdQuestions} câu hỏi, cập nhật {result.updatedQuestions} câu, giữ nguyên {result.unchangedQuestions} câu, bỏ qua {result.skippedQuestions} dòng/câu, tạo {result.createdSchools} trường và {result.createdMajors} ngành.
         </p>
       ) : null}
       {error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
@@ -213,12 +272,49 @@ export function MasterSheetImporter({ onImported, token }: MasterSheetImporterPr
   );
 }
 
-function StatBox({ label, tone = "neutral", value }: { label: string; tone?: "neutral" | "ok" | "warn"; value: number }) {
-  const toneClass = tone === "warn"
-    ? "border-amber-200 bg-amber-50 text-amber-800"
-    : tone === "ok"
-      ? "border-green-200 bg-green-50 text-green-800"
-      : "border-slate-200 bg-slate-50 text-slate-800";
+function IssueList({ issues, title, tone }: { issues: MasterSheetIssue[]; title: string; tone: "danger" | "warn" }) {
+  const toneClass = tone === "danger" ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-800";
+
+  return (
+    <div className={`mt-4 rounded-lg border p-3 ${toneClass}`}>
+      <p className="text-sm font-black">{title}</p>
+      <div className="mt-2 divide-y divide-black/10">
+        {issues.map((issue, index) => (
+          <div key={`${issue.code}-${issue.sourceRow}-${issue.sourceColumn ?? index}`} className="py-2 text-sm">
+            <p className="font-bold">
+              Dòng {issue.sourceRow}{issue.sourceColumnName ? `, cột ${issue.sourceColumnName}` : issue.sourceColumn ? `, cột ${issue.sourceColumn}` : ""}: {issue.message}
+            </p>
+            {issue.preview ? <p className="mt-1 line-clamp-2 text-xs opacity-80">{issue.preview}</p> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SkippedRows({ rows }: { rows: MasterSheetSkippedRow[] }) {
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-800">
+      <p className="text-sm font-black">Dòng chưa import</p>
+      <div className="mt-2 divide-y divide-slate-200">
+        {rows.map((row) => (
+          <p key={`${row.sourceRow}-${row.questionCode ?? ""}`} className="py-2 text-sm font-semibold">
+            Dòng {row.sourceRow}{row.questionCode ? `, mã ${row.questionCode}` : ""}: {row.reason}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatBox({ label, tone = "neutral", value }: { label: string; tone?: "neutral" | "ok" | "warn" | "danger"; value: number }) {
+  const toneClass = tone === "danger"
+    ? "border-red-200 bg-red-50 text-red-800"
+    : tone === "warn"
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : tone === "ok"
+        ? "border-green-200 bg-green-50 text-green-800"
+        : "border-slate-200 bg-slate-50 text-slate-800";
 
   return (
     <div className={`rounded-lg border p-3 ${toneClass}`}>

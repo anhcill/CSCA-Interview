@@ -143,7 +143,7 @@ export default function AdminSchoolsPage() {
         <div>
           <Link href="/admin" className="text-sm text-indigo-600 hover:underline">← Admin</Link>
           <h1 className="mt-1 text-2xl font-bold">Quản lý trường</h1>
-          <p className="mt-1 text-sm text-slate-500">Dữ liệu này được dùng làm RAG context cho AI hỏi và chấm sát trường.</p>
+          <p className="mt-1 text-sm text-slate-500">Dữ liệu này được dùng làm ngữ cảnh RAG cho AI hỏi và chấm sát trường.</p>
         </div>
       </div>
 
@@ -156,15 +156,15 @@ export default function AdminSchoolsPage() {
         <TextField label="Thành phố" value={form.city || ""} onChange={(value) => setForm({ ...form, city: value })} />
         <TextField label="Tỉnh/Bang" value={form.province || ""} onChange={(value) => setForm({ ...form, province: value })} />
         <TextField label="Website" value={form.websiteUrl || ""} onChange={(value) => setForm({ ...form, websiteUrl: value })} />
-        <TextField label="Ranking" value={form.ranking} onChange={(value) => setForm({ ...form, ranking: value })} type="number" />
-        <TextField label="Loại ranking" value={form.rankingType || ""} onChange={(value) => setForm({ ...form, rankingType: value })} placeholder="QS 2026, China ranking..." />
-        <TextField label="Ngôn ngữ chương trình" value={form.programLanguage || ""} onChange={(value) => setForm({ ...form, programLanguage: value })} placeholder="EN, ZH, mixed..." />
+        <TextField label="Xếp hạng" value={form.ranking} onChange={(value) => setForm({ ...form, ranking: value })} type="number" />
+        <TextField label="Loại xếp hạng" value={form.rankingType || ""} onChange={(value) => setForm({ ...form, rankingType: value })} placeholder="QS 2026, xếp hạng Trung Quốc..." />
+        <TextField label="Ngôn ngữ chương trình" value={form.programLanguage || ""} onChange={(value) => setForm({ ...form, programLanguage: value })} placeholder="Tiếng Anh, tiếng Trung, song ngữ..." />
         <TextArea label="Mô tả" value={form.description || ""} onChange={(value) => setForm({ ...form, description: value })} />
         <TextArea label="Ngành mạnh" value={form.strongMajors || ""} onChange={(value) => setForm({ ...form, strongMajors: value })} />
         <TextArea label="Hướng nghiên cứu" value={form.researchAreas || ""} onChange={(value) => setForm({ ...form, researchAreas: value })} />
         <TextArea label="Yêu cầu đầu vào" value={form.admissionRequirements || ""} onChange={(value) => setForm({ ...form, admissionRequirements: value })} />
-        <TextArea label="Tips phỏng vấn trường" value={form.interviewTips || ""} onChange={(value) => setForm({ ...form, interviewTips: value })} />
-        <TextArea label="Campus info" value={form.campusInfo || ""} onChange={(value) => setForm({ ...form, campusInfo: value })} />
+        <TextArea label="Gợi ý phỏng vấn trường" value={form.interviewTips || ""} onChange={(value) => setForm({ ...form, interviewTips: value })} />
+        <TextArea label="Thông tin campus" value={form.campusInfo || ""} onChange={(value) => setForm({ ...form, campusInfo: value })} />
         <TextArea label="Cựu sinh viên nổi bật" value={form.notableAlumni || ""} onChange={(value) => setForm({ ...form, notableAlumni: value })} />
         <TextArea label="Thành tích/điểm nổi bật" value={form.achievements || ""} onChange={(value) => setForm({ ...form, achievements: value })} />
 
@@ -197,7 +197,7 @@ export default function AdminSchoolsPage() {
                 <td className="px-3 py-2 text-slate-500">{school.nameZh || "—"}</td>
                 <td className="px-3 py-2">{school.city || "—"}</td>
                 <td className="px-3 py-2 text-xs text-slate-600">
-                  {school.ranking ? `#${school.ranking} ${school.rankingType || ""}` : school.strongMajors || school.researchAreas ? "Có context" : "—"}
+                  {school.ranking ? `#${school.ranking} ${school.rankingType || ""}` : school.strongMajors || school.researchAreas ? "Có ngữ cảnh" : "—"}
                 </td>
                 <td className="px-3 py-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs ${school.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>

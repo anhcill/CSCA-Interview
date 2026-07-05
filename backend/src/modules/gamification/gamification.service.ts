@@ -31,6 +31,29 @@ export type GamificationStatsSnapshot = {
   weeklyCompleted: number;
 };
 
+const localizedBadgeText: Record<string, { description: string; label: string }> = {
+  FIRST_SESSION: {
+    description: "Hoàn thành buổi phỏng vấn đầu tiên.",
+    label: "Phỏng vấn đầu tiên"
+  },
+  HIGH_SCORE_8: {
+    description: "Đạt điểm trung bình từ 8 trở lên.",
+    label: "Điểm 8+"
+  },
+  SEVEN_DAY_STREAK: {
+    description: "Luyện tập 7 ngày liên tiếp.",
+    label: "7 ngày liên tiếp"
+  },
+  THREE_SESSION_WEEK: {
+    description: "Hoàn thành 3 buổi trong một tuần.",
+    label: "Mục tiêu tuần"
+  },
+  TWENTY_SESSIONS: {
+    description: "Hoàn thành 20 buổi phỏng vấn.",
+    label: "Học không ngừng"
+  }
+};
+
 export function getWeekStart(date = new Date()) {
   const cursor = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const day = cursor.getUTCDay() || 7;
@@ -172,14 +195,17 @@ export async function getGamificationSummary(userId: string, snapshot?: Gamifica
   const earnedMap = new Map(earned.map((badge) => [badge.badge_id, badge.earned_at]));
 
   return {
-    badges: badges.map((badge) => ({
-      code: badge.code,
-      description: badge.description,
-      earned: earnedMap.has(badge.id),
-      earnedAt: earnedMap.get(badge.id) ?? null,
-      icon: badge.icon,
-      label: badge.label
-    })),
+    badges: badges.map((badge) => {
+      const text = getLocalizedBadgeText(badge);
+      return {
+        code: badge.code,
+        description: text.description,
+        earned: earnedMap.has(badge.id),
+        earnedAt: earnedMap.get(badge.id) ?? null,
+        icon: badge.icon,
+        label: text.label
+      };
+    }),
     preferences: {
       browserNotificationsEnabled: preferences.browser_notifications_enabled,
       onboardingCompleted: preferences.onboarding_completed,
@@ -192,6 +218,13 @@ export async function getGamificationSummary(userId: string, snapshot?: Gamifica
       target: weeklyGoal.target_sessions,
       weekStart: weeklyGoal.week_start.toISOString().slice(0, 10)
     }
+  };
+}
+
+function getLocalizedBadgeText(badge: { code: string; description: string; label: string }) {
+  return localizedBadgeText[badge.code] ?? {
+    description: badge.description,
+    label: badge.label
   };
 }
 

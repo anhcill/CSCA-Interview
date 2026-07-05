@@ -541,7 +541,7 @@ interviewsRouter.get("/stats", async (_req, res) => {
       .slice()
       .reverse()
       .map((session, index) => ({
-        label: `Buoi ${index + 1}`,
+        label: `Buổi ${index + 1}`,
         score: Number(session.totalScore ?? 0)
       }));
     const streak = calculateStreak(streakDays.map((row) => new Date(row.day)));
@@ -1509,7 +1509,7 @@ const streamAnswerFeedbackHandler = async (req: Request, res: Response) => {
       }
     });
 
-    const feedbackText = "Da luu cau tra loi. AI se cham diem sau khi hoan thanh buoi phong van.";
+    const feedbackText = "Đã lưu câu trả lời. AI sẽ chấm điểm sau khi hoàn thành buổi phỏng vấn.";
     const tokens = feedbackText.split(/\s+/).filter(Boolean);
     for (const token of tokens) {
       send("token", { token: `${token} ` });

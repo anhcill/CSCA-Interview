@@ -41,7 +41,7 @@ const quickActions = [
   { href: "/admin/questions", icon: BookOpen, label: "Thêm câu hỏi", tone: "bg-red-600 text-white" },
   { href: "/admin/questions", icon: Upload, label: "Import Excel", tone: "bg-amber-400 text-slate-950" },
   { href: "/admin/ai-models", icon: Bot, label: "Model AI", tone: "bg-indigo-600 text-white" },
-  { href: "/admin/audit", icon: ClipboardList, label: "Audit logs", tone: "bg-slate-800 text-white" },
+  { href: "/admin/audit", icon: ClipboardList, label: "Nhật ký audit", tone: "bg-slate-800 text-white" },
   { href: "/admin/mappings", icon: GraduationCap, label: "Mapping tuyển sinh", tone: "bg-slate-800 text-white" }
 ] as const;
 
@@ -74,10 +74,10 @@ export default function AdminPage() {
   }, [loadDashboard]);
 
   const cards = stats ? [
-    { detail: `${stats.activeUsers} active`, icon: User, label: "Tổng học viên", value: stats.totalUsers },
+    { detail: `${stats.activeUsers} đang hoạt động`, icon: User, label: "Tổng học viên", value: stats.totalUsers },
     { detail: `${stats.completedSessions} hoàn thành`, icon: ClipboardList, label: "Tổng phỏng vấn", value: stats.totalSessions },
-    { detail: "Completed sessions", icon: BarChart3, label: "Điểm TB", value: formatScore(stats.avgScore) },
-    { detail: `${stats.activeQuestions} đang bật`, icon: BookOpen, label: "Question bank", value: stats.totalQuestions }
+    { detail: "Buổi đã hoàn thành", icon: BarChart3, label: "Điểm TB", value: formatScore(stats.avgScore) },
+    { detail: `${stats.activeQuestions} đang bật`, icon: BookOpen, label: "Ngân hàng câu hỏi", value: stats.totalQuestions }
   ] : [];
   const maxSessions = Math.max(1, ...(stats?.activity7d.map((day) => day.sessions) ?? [1]));
 
@@ -85,12 +85,12 @@ export default function AdminPage() {
     <main className="mx-auto max-w-7xl px-4 py-8 text-slate-100 sm:px-6">
       <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-sm font-black uppercase tracking-wide text-red-300">Admin command center</p>
+          <p className="text-sm font-black uppercase tracking-wide text-red-300">Trung tâm quản trị</p>
           <h1 className="mt-2 text-3xl font-black text-white">Tổng quan hệ thống</h1>
           <p className="mt-2 text-sm font-semibold text-slate-400">Theo dõi học viên, phỏng vấn, điểm số và ngân hàng câu hỏi.</p>
         </div>
         <button type="button" onClick={() => void loadDashboard()} disabled={loading} className="focus-ring inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-700 px-4 text-sm font-black text-slate-100 hover:bg-slate-900 disabled:opacity-50">
-          Refresh
+          Làm mới
         </button>
       </div>
 
@@ -125,7 +125,7 @@ export default function AdminPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-black text-white">Hoạt động 7 ngày</h2>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">Session tạo mới và session completed.</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Buổi tạo mới và buổi đã hoàn thành.</p>
                 </div>
                 <BarChart3 size={20} className="text-red-300" />
               </div>
@@ -139,7 +139,7 @@ export default function AdminPage() {
                       </div>
                       <p className="text-xs font-black text-white">{day.sessions}</p>
                       <p className="truncate text-[11px] font-semibold text-slate-500">{formatShortDate(day.date)}</p>
-                      <p className="text-[11px] font-semibold text-green-300">{day.completed} done</p>
+                      <p className="text-[11px] font-semibold text-green-300">{day.completed} xong</p>
                     </div>
                   );
                 })}
@@ -147,7 +147,7 @@ export default function AdminPage() {
             </div>
 
             <div className="rounded-lg border border-slate-800 bg-slate-900 p-5">
-              <h2 className="text-sm font-black text-white">Quick actions</h2>
+              <h2 className="text-sm font-black text-white">Thao tác nhanh</h2>
               <div className="mt-4 grid gap-2">
                 {quickActions.map((action) => {
                   const Icon = action.icon;
@@ -182,9 +182,9 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs font-black">
-                    <span className="rounded bg-slate-800 px-2 py-1 text-slate-200">{user._count.interviewSessions} sessions</span>
+                    <span className="rounded bg-slate-800 px-2 py-1 text-slate-200">{user._count.interviewSessions} buổi</span>
                     <span className={`rounded px-2 py-1 ${user.isActive ? "bg-green-950 text-green-300" : "bg-red-950 text-red-300"}`}>
-                      {user.isActive ? "Active" : "Locked"}
+                      {user.isActive ? "Hoạt động" : "Đang khóa"}
                     </span>
                     <span className="rounded bg-slate-800 px-2 py-1 text-slate-200">{user.role}</span>
                   </div>

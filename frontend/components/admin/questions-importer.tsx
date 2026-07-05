@@ -130,14 +130,14 @@ export function QuestionsImporter({ onImported, token }: QuestionsImporterProps)
             <ClipboardList size={20} />
           </div>
           <div>
-            <h2 className="text-sm font-black">Import Excel/CSV</h2>
+            <h2 className="text-sm font-black">Nhập Excel/CSV</h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">Cột bắt buộc: questionText.</p>
           </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => void handleExportCsv()} disabled={busy} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 text-sm font-bold hover:bg-slate-50 disabled:opacity-50">
-            <Download size={16} />Export CSV
+            <Download size={16} />Xuất CSV
           </button>
           <label
             onDragEnter={() => setDragging(true)}
@@ -153,12 +153,12 @@ export function QuestionsImporter({ onImported, token }: QuestionsImporterProps)
 
         {preview.rows ? (
           <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-600">
-            {preview.valid ? `Sẵn sàng import ${preview.rows} dòng.` : preview.errors.slice(0, 3).join(" ")}
+            {preview.valid ? `Sẵn sàng nhập ${preview.rows} dòng.` : preview.errors.slice(0, 3).join(" ")}
           </div>
         ) : null}
         {result ? (
           <p className="mt-3 rounded-lg bg-green-50 p-3 text-sm font-bold text-green-700">
-            Đã import {result.created} câu hỏi. Bỏ qua {result.skipped.length} dòng.
+            Đã nhập {result.created} câu hỏi. Bỏ qua {result.skipped.length} dòng.
           </p>
         ) : null}
         {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
@@ -175,7 +175,7 @@ export function QuestionsImporter({ onImported, token }: QuestionsImporterProps)
           }}
         />
         <button type="button" onClick={() => void handleImportCsv()} disabled={busy || !csvText.trim() || !preview.valid} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-red-700 px-4 text-sm font-bold text-white hover:bg-red-800 disabled:opacity-50">
-          <Upload size={16} />Import
+          <Upload size={16} />Nhập
         </button>
       </div>
     </section>
