@@ -31,11 +31,10 @@ import {
 const currencyFormatter = new Intl.NumberFormat("vi-VN");
 
 const paymentBadges = [
-  { label: "momo", className: "bg-[#a50064] text-white" },
-  { label: "ZaloPay", className: "bg-white text-[#0068ff]" },
-  { label: "VNPAY", className: "bg-white text-[#005baa]" },
-  { label: "VISA", className: "bg-white text-[#174ea6]" },
-  { label: "●●", className: "bg-white text-[#ef4444]" }
+  { alt: "ZaloPay", className: "h-7 w-auto", label: "ZaloPay", src: "/payment/zalopay.png" },
+  { alt: "VNPAY", className: "h-11 w-auto", label: "VNPAY", src: "/payment/vnpay.png" },
+  { alt: "Visa", className: "h-7 w-auto", label: "Visa", src: "/payment/visa.svg" },
+  { alt: "Mastercard", className: "h-8 w-auto", label: "Mastercard", src: "/payment/mastercard.svg" }
 ];
 
 function formatMoney(amount: number) {
@@ -482,61 +481,13 @@ function PaymentInfoRow({
   );
 }
 
-function PaymentBrandLogo({ index, label }: { index: number; label: string }) {
-  const baseClass = "inline-flex h-10 min-w-[5.5rem] items-center justify-center rounded-lg border border-[#ffe0e3] bg-white px-3 shadow-sm";
-
-  if (index === 0) {
-    return (
-      <span aria-label="MoMo" className={`${baseClass} bg-[#a50064] text-white`}>
-        <span className="font-black leading-none tracking-normal">momo</span>
-      </span>
-    );
-  }
-
-  if (index === 1) {
-    return (
-      <span aria-label="ZaloPay" className={`${baseClass} gap-2`}>
-        <svg aria-hidden="true" className="h-6 w-6" viewBox="0 0 28 28">
-          <rect width="28" height="28" rx="7" fill="#0068ff" />
-          <circle cx="9" cy="10" r="3.2" fill="#fff" />
-          <circle cx="18" cy="9" r="3" fill="#00c853" />
-          <circle cx="15" cy="18" r="3.6" fill="#ffcd00" />
-          <circle cx="8.5" cy="18.5" r="2.7" fill="#ef233c" />
-        </svg>
-        <span className="text-sm font-black tracking-normal text-[#0068ff]">ZaloPay</span>
-      </span>
-    );
-  }
-
-  if (index === 2) {
-    return (
-      <span aria-label="VNPAY" className={`${baseClass} gap-1.5`}>
-        <span className="grid h-6 w-6 grid-cols-2 overflow-hidden rounded">
-          <span className="bg-[#005baa]" />
-          <span className="bg-[#ed1c24]" />
-          <span className="bg-[#00a651]" />
-          <span className="bg-[#f7941d]" />
-        </span>
-        <span className="text-sm font-black tracking-normal">
-          <span className="text-[#005baa]">VN</span><span className="text-[#ed1c24]">PAY</span>
-        </span>
-      </span>
-    );
-  }
-
-  if (index === 3) {
-    return (
-      <span aria-label="Visa" className={`${baseClass} relative overflow-hidden`}>
-        <span className="absolute left-3 top-2 h-1.5 w-6 skew-x-[-18deg] bg-[#f7b600]" />
-        <span className="relative text-lg font-black italic tracking-normal text-[#174ea6]">VISA</span>
-      </span>
-    );
-  }
-
+function PaymentBrandLogo({ badge }: { badge: typeof paymentBadges[number] }) {
   return (
-    <span aria-label={label} className={`${baseClass} gap-0`}>
-      <span className="h-6 w-6 rounded-full bg-[#eb001b]" />
-      <span className="-ml-2 h-6 w-6 rounded-full bg-[#f79e1b] opacity-90" />
+    <span
+      aria-label={badge.alt}
+      className="inline-flex h-12 min-w-[6.6rem] items-center justify-center rounded-lg border border-[#ffe0e3] bg-white px-4 shadow-sm"
+    >
+      <img alt={badge.alt} className={badge.className} src={badge.src} />
     </span>
   );
 }
@@ -555,8 +506,8 @@ function PaymentBadges() {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          {paymentBadges.map((badge, index) => (
-            <PaymentBrandLogo key={badge.label} index={index} label={badge.label} />
+          {paymentBadges.map((badge) => (
+            <PaymentBrandLogo key={badge.label} badge={badge} />
           ))}
         </div>
       </div>
