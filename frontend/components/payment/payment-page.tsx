@@ -41,6 +41,14 @@ function formatMoney(amount: number) {
   return `${currencyFormatter.format(amount)}đ`;
 }
 
+function formatRemainingTime(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function usePlanGroups(plans: PaymentPlan[]) {
   return useMemo(() => ({
     addOnPlan: plans.find((plan) => plan.type === "add_on") ?? null,
@@ -403,6 +411,20 @@ function PaymentOrderPanel({
   order: PaymentOrder;
 }) {
   const isPaid = order.status === "PAID";
+  const [now, setNow] = useState(() => Date.now());
+  const expiresAtMs = Date.parse(order.expiresAt);
+  const hasValidExpiry = Number.isFinite(expiresAtMs);
+  const remainingMs = hasValidExpiry ? Math.max(0, expiresAtMs - now) : 0;
+  const isExpired = !isPaid && hasValidExpiry && remainingMs <= 0;
+
+  useEffect(() => {
+    if (isPaid || !hasValidExpiry) return;
+
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+
+    return () => window.clearInterval(timer);
+  }, [hasValidExpiry, isPaid, order.expiresAt]);
 
   return (
     <article className="rounded-lg border border-[#ffd3d7] bg-[#fff8f8] p-4 shadow-[0_18px_45px_rgba(185,28,28,0.08)]">
@@ -424,6 +446,18 @@ function PaymentOrderPanel({
           className="aspect-square w-full rounded-lg object-contain"
         />
       </div>
+
+      {!isPaid ? (
+        <div className={`mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs font-black ${isExpired ? "bg-amber-50 text-amber-700" : "bg-white text-[#ef233c]"}`}>
+          <Timer className="mt-0.5 shrink-0" size={15} />
+          <div>
+            <p>{isExpired ? "Mã thanh toán đã hết thời gian khuyến nghị." : `Còn ${formatRemainingTime(remainingMs)} để thanh toán.`}</p>
+            <p className="mt-0.5 font-semibold leading-4 text-[#6b7280]">
+              Vui lòng hoàn tất trong {order.expiresInMinutes} phút và chuyển đúng nội dung để hệ thống tự xác nhận.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 space-y-2 text-xs">
         <PaymentInfoRow label="Ngân hàng" value={order.bank.bankCode} onCopy={() => onCopy(order.bank.bankCode, "ngân hàng")} />
@@ -447,9 +481,6 @@ function PaymentOrderPanel({
         </button>
       ) : null}
 
-      {order.webhookUrl ? (
-        <p className="mt-3 break-all text-[11px] font-semibold leading-4 text-[#9ca3af]">Webhook: {order.webhookUrl}</p>
-      ) : null}
     </article>
   );
 }

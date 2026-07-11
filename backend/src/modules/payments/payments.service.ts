@@ -30,6 +30,7 @@ const defaultBankConfig: BankConfig = {
   accountNumber: "96886693010847",
   bankCode: "MSB"
 };
+const paymentOrderExpiresInMinutes = 10;
 
 export function listPaymentPlans() {
   return paymentPlans;
@@ -45,15 +46,6 @@ function getBankConfig(): BankConfig {
     accountNumber: env.bankAccountNumber?.trim() || defaultBankConfig.accountNumber,
     bankCode: env.bankCode?.trim() || defaultBankConfig.bankCode
   };
-}
-
-function normalizePublicUrl(url: string | undefined) {
-  return url?.trim().replace(/\/+$/, "") || null;
-}
-
-function getWebhookUrl() {
-  const baseUrl = normalizePublicUrl(env.backendPublicUrl);
-  return baseUrl ? `${baseUrl}/api/payments/sepay/webhook` : null;
 }
 
 export function buildSepayQrUrl(input: {
@@ -88,6 +80,10 @@ function toNumberAmount(amount: payments["amount"]) {
   return Number(amount.toString());
 }
 
+function getPaymentExpiresAt(payment: payments) {
+  return new Date(payment.created_at.getTime() + paymentOrderExpiresInMinutes * 60_000);
+}
+
 function serializePayment(payment: payments) {
   const note = parsePaymentNote(payment.note);
   const bank = getBankConfig();
@@ -100,6 +96,8 @@ function serializePayment(payment: payments) {
     bank,
     createdAt: payment.created_at.toISOString(),
     currency: payment.currency,
+    expiresAt: getPaymentExpiresAt(payment).toISOString(),
+    expiresInMinutes: paymentOrderExpiresInMinutes,
     paidAt: payment.paid_at?.toISOString() ?? null,
     paymentCode,
     plan: note?.plan ?? null,
@@ -114,8 +112,7 @@ function serializePayment(payment: payments) {
       content: paymentCode
     }),
     status: payment.status,
-    transferContent: paymentCode,
-    webhookUrl: getWebhookUrl()
+    transferContent: paymentCode
   };
 }
 

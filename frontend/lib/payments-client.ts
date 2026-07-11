@@ -21,6 +21,8 @@ export type PaymentOrder = {
   };
   createdAt: string;
   currency: string;
+  expiresAt: string;
+  expiresInMinutes: number;
   paidAt: string | null;
   paymentCode: string;
   plan: {
@@ -35,7 +37,6 @@ export type PaymentOrder = {
   qrImageUrl: string;
   status: "PENDING" | "PAID" | "FAILED" | "REFUNDED" | "CANCELLED";
   transferContent: string;
-  webhookUrl: string | null;
 };
 
 export type PaymentEntitlement = {
