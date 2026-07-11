@@ -71,20 +71,20 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
   }
 
   return (
-    <header className={`sticky top-0 z-50 border-b border-border bg-background/90 text-foreground backdrop-blur-md transition-transform duration-200 ${hiddenOnScroll && !mobileOpen ? "-translate-y-full" : "translate-y-0"}`}>
-      <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between gap-3 px-4 sm:h-20 sm:px-6 xl:px-8">
-        <Link href="/dashboard" className="focus-ring flex min-w-[12.5rem] max-w-[15rem] items-center gap-3 rounded-lg xl:min-w-[14rem]" aria-label={t.app.name}>
-          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(184,29,36,0.22)]">
+    <header className={`sticky top-0 z-50 border-b border-border/80 bg-background/95 text-foreground shadow-[0_8px_30px_rgba(15,23,42,0.04)] backdrop-blur-xl transition-transform duration-200 ${hiddenOnScroll && !mobileOpen ? "-translate-y-full" : "translate-y-0"}`}>
+      <div className="flex h-16 w-full items-center gap-3 px-4 sm:h-[4.5rem] lg:px-5 2xl:gap-5 2xl:px-8">
+        <Link href="/dashboard" className="focus-ring flex shrink-0 items-center gap-2.5 rounded-lg" aria-label={t.app.name}>
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_10px_24px_rgba(184,29,36,0.2)]">
             <GraduationCap size={21} />
             <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-background bg-accent" />
           </span>
-          <span className="hidden min-w-0 sm:block">
-            <span className="block text-sm font-black leading-4 text-primary">{t.app.name}</span>
-            <span className="block max-w-[8.5rem] text-xs font-bold leading-4 text-muted-foreground xl:max-w-none">China interview studio</span>
+          <span className="hidden sm:block">
+            <span className="block whitespace-nowrap text-sm font-black leading-4 text-primary">{t.app.name}</span>
+            <span className="hidden whitespace-nowrap text-[11px] font-bold leading-4 text-muted-foreground 2xl:block">China interview studio</span>
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-1 lg:flex" aria-label={t.app.mainNav}>
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex" aria-label={t.app.mainNav}>
           {navItems.map((item) => {
             const active = activePathname === item.href || activePathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
@@ -92,24 +92,23 @@ export function UserNavbar({ currentUser, locale }: UserNavbarProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`focus-ring group relative inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-black transition xl:px-4 ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                className={`focus-ring inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2.5 text-sm font-black transition xl:px-3 ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                 aria-current={active ? "page" : undefined}
               >
                 <Icon size={17} />
-                {t.app.nav[item.labelKey]}
-                <span className={`absolute bottom-1 left-4 right-4 h-0.5 rounded-full bg-accent transition-transform ${active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
+                <span className="hidden xl:inline">{t.app.nav[item.labelKey]}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="hidden items-center gap-3 lg:flex">
-          {canSwitchRole ? <RoleSwitcher active="user" /> : null}
-          <AccessibilityToolbar />
+        <div className="hidden shrink-0 items-center gap-2 lg:flex">
+          {canSwitchRole ? <RoleSwitcher active="user" className="hidden 2xl:inline-flex" /> : null}
+          <div className="hidden xl:block"><AccessibilityToolbar compact /></div>
           <NotificationBell />
-          <Link href="/interview/setup" className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-black text-primary-foreground shadow-[0_12px_28px_rgba(184,29,36,0.18)]">
+          <Link href="/interview/setup" className="focus-ring inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-black text-primary-foreground shadow-[0_10px_22px_rgba(184,29,36,0.16)] 2xl:px-4">
             <GraduationCap size={16} />
-            {t.app.start}
+            <span className="hidden 2xl:inline">{t.app.start}</span>
           </Link>
           <div className="relative">
             <button

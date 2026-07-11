@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AdminShell } from "@/components/admin-shell";
+import { MarketingFrame } from "@/components/home/marketing-frame";
 import { PageAccessDeniedState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { UserNavbar } from "@/components/user-navbar";
 import { ensureAuthSession, getAuthToken, getStoredUser, type AuthUser } from "@/lib/auth-client";
@@ -29,6 +30,7 @@ const adminPrefetchPaths = [
 ];
 
 const publicPaths = new Set(["/", "/403-forbidden", "/features", "/guide", "/login", "/payment", "/pricing", "/privacy", "/register", "/terms"]);
+const optionalAuthPaths = new Set(["/payment"]);
 const fullScreenPaths = new Set(["/interview"]);
 const adminRoles: AuthUser["role"][] = ["ADMIN", "SUPER_ADMIN"];
 type AuthStatus = "checking" | "authenticated" | "error" | "forbidden" | "public" | "unauthenticated";
@@ -43,10 +45,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const activePathname = pathname ?? "/";
   const isPublicPath = publicPaths.has(activePathname);
+  const isOptionalAuthPath = optionalAuthPaths.has(activePathname);
   const isAdminPath = activePathname.startsWith("/admin");
   const canAccessAdmin = currentUser ? adminRoles.includes(currentUser.role) : false;
   const visibleNavItems = useMemo(() => canAccessAdmin ? [...navItems, adminNavItem] : [...navItems], [canAccessAdmin]);
-  const shouldUseShell = mounted && authStatus === "authenticated" && !isPublicPath && !fullScreenPaths.has(activePathname);
+  const shouldUseShell = mounted && authStatus === "authenticated" && (!isPublicPath || isOptionalAuthPath) && !fullScreenPaths.has(activePathname);
 
   useEffect(() => {
     setMounted(true);
@@ -67,7 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function checkRouteAccess() {
-      if (isPublicPath) {
+      if (isPublicPath && !isOptionalAuthPath) {
         setAuthStatus("public");
         setCurrentUser(null);
         return;
@@ -88,6 +91,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         session = await ensureAuthSession();
       } catch (error) {
         if (cancelled) return;
+        if (isOptionalAuthPath) {
+          setCurrentUser(null);
+          setAuthStatus("public");
+          return;
+        }
         setAuthError(error instanceof Error ? error.message : "Không kiểm tra được phiên đăng nhập. Vui lòng thử lại.");
         setAuthStatus("error");
         return;
@@ -97,6 +105,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       if (!session) {
         setCurrentUser(null);
+        if (isOptionalAuthPath) {
+          setAuthStatus("public");
+          return;
+        }
         setAuthStatus("unauthenticated");
         router.replace(`/login?next=${encodeURIComponent(activePathname)}`);
         return;
@@ -117,7 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activePathname, isAdminPath, isPublicPath, mounted, router]);
+  }, [activePathname, isAdminPath, isOptionalAuthPath, isPublicPath, mounted, router]);
 
   useEffect(() => {
     if (!mounted || authStatus !== "authenticated") return;
@@ -133,6 +145,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (!isPublicPath && (!mounted || authStatus === "checking" || authStatus === "unauthenticated")) {
     return <PageLoadingState description="Đang kiểm tra phiên đăng nhập và quyền truy cập." />;
+  }
+
+  if (isOptionalAuthPath && (!mounted || authStatus === "checking")) {
+    return <PageLoadingState description="Đang kiểm tra phiên đăng nhập." />;
   }
 
   if (!isPublicPath && authStatus === "error") {
@@ -163,7 +179,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!shouldUseShell) return <>{children}</>;
+  if (!shouldUseShell) {
+    return isOptionalAuthPath ? <MarketingFrame>{children}</MarketingFrame> : <>{children}</>;
+  }
 
   if (isAdminPath) {
     return (

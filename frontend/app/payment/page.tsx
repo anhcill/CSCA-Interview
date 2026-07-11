@@ -1,4 +1,3 @@
-import { MarketingFrame } from "@/components/home/marketing-frame";
 import { PaymentPage } from "@/components/payment/payment-page";
 import { createPageMetadata } from "@/lib/seo";
 
@@ -10,9 +9,5 @@ export const metadata = createPageMetadata({
 });
 
 export default function PaymentRoutePage() {
-  return (
-    <MarketingFrame>
-      <PaymentPage />
-    </MarketingFrame>
-  );
+  return <PaymentPage />;
 }

@@ -6,7 +6,7 @@ import { ThemeToggle } from "./theme-toggle";
 
 const fontKey = "ai_phongvan_font_scale";
 
-export function AccessibilityToolbar({ variant = "inline" }: { variant?: "floating" | "inline" }) {
+export function AccessibilityToolbar({ compact = false, variant = "inline" }: { compact?: boolean; variant?: "floating" | "inline" }) {
   const [locale, setLocale] = useState<Locale>("vi");
   const [fontScale, setFontScale] = useState(100);
 
@@ -42,17 +42,23 @@ export function AccessibilityToolbar({ variant = "inline" }: { variant?: "floati
   const t = messages[locale];
   const containerClass = variant === "floating"
     ? "fixed bottom-20 right-4 z-50 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 text-xs font-black shadow-xl dark:border-slate-700 dark:bg-slate-900/95 lg:bottom-4"
-    : "flex items-center gap-1 rounded-xl border border-border bg-background/80 p-1 text-xs font-black shadow-sm";
+    : compact
+      ? "flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1 text-xs font-black"
+      : "flex items-center gap-1 rounded-xl border border-border bg-background/80 p-1 text-xs font-black shadow-sm";
   const controlClass = variant === "floating"
     ? "min-h-11 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-900"
-    : "min-h-10 rounded-lg border border-border bg-background px-3";
+    : compact
+      ? "min-h-9 max-w-28 rounded-md border border-border bg-background px-2"
+      : "min-h-10 rounded-lg border border-border bg-background px-3";
   const buttonClass = variant === "floating"
     ? "min-h-11 min-w-11 rounded-xl border border-slate-200 dark:border-slate-700"
-    : "min-h-10 min-w-10 rounded-lg border border-border px-2";
+    : compact
+      ? "min-h-9 min-w-9 rounded-md border border-border px-1.5"
+      : "min-h-10 min-w-10 rounded-lg border border-border px-2";
 
   return (
     <div className={containerClass} role="region" aria-label={t.accessibility}>
-      <ThemeToggle />
+      <ThemeToggle compact={compact} />
       <label className="sr-only" htmlFor="accessibility-locale-switcher">{t.language}</label>
       <select id="accessibility-locale-switcher" value={locale} onChange={(event) => changeLocale(event.target.value as Locale)} className={controlClass} aria-label={t.language}>
         <option value="vi">{t.vietnamese}</option>

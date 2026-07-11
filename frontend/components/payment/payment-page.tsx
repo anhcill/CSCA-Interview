@@ -166,8 +166,8 @@ export function PaymentPage() {
   }
 
   return (
-    <section className="bg-[#fff7f7] px-3 py-3 sm:px-5 lg:py-4">
-      <div className="mx-auto max-w-[1240px] overflow-hidden rounded-lg border border-[#ffd3d7] bg-white shadow-[0_24px_70px_rgba(185,28,28,0.08)]">
+    <section className="bg-[#fff7f7] px-3 py-3 dark:bg-slate-950 sm:px-5 lg:py-4">
+      <div className="mx-auto max-w-[1240px] overflow-hidden rounded-lg border border-[#ffd3d7] bg-white shadow-[0_24px_70px_rgba(185,28,28,0.08)] dark:border-slate-800 dark:bg-slate-900">
         <HeroPanel />
 
         <div className="grid gap-3 px-3 pb-3 sm:px-5 sm:pb-5 lg:grid-cols-[1fr_14.5rem] xl:grid-cols-[1fr_16rem]">
@@ -229,14 +229,14 @@ function HeroPanel() {
         className="absolute inset-y-0 right-0 w-full bg-cover bg-center opacity-25 blur-[1px] sm:w-[62%] sm:opacity-45"
         style={{ backgroundImage: "url('/auth/image/study_abroad_hero.png')" }}
       />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff_0%,rgba(255,255,255,0.96)_42%,rgba(255,255,255,0.5)_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff_0%,rgba(255,255,255,0.96)_42%,rgba(255,255,255,0.5)_100%)] dark:bg-[linear-gradient(90deg,#0f172a_0%,rgba(15,23,42,0.96)_42%,rgba(15,23,42,0.72)_100%)]" />
       <div className="absolute right-8 top-7 hidden h-12 w-12 rounded-full bg-[#fecdd3]/70 blur-2xl md:block" />
 
       <div className="relative mx-auto flex max-w-3xl flex-col items-center text-center">
-        <h1 className="text-4xl font-black leading-tight tracking-normal text-[#09090b] sm:text-5xl">
+        <h1 className="text-4xl font-black leading-tight tracking-normal text-[#09090b] dark:text-white sm:text-5xl">
           Bảng giá <span className="text-[#ef233c]">Interview</span>
         </h1>
-        <p className="mt-2 max-w-2xl text-sm font-black text-[#1f2937] sm:text-base">
+        <p className="mt-2 max-w-2xl text-sm font-black text-[#1f2937] dark:text-slate-200 sm:text-base">
           Luyện phỏng vấn AI - tự tin chinh phục học bổng!
         </p>
 
@@ -245,8 +245,8 @@ function HeroPanel() {
             <ShieldCheck size={18} />
           </span>
           <div>
-            <p className="text-sm font-black text-[#111827]">An toàn - Bảo mật - Hỗ trợ tận tâm</p>
-            <p className="mt-0.5 text-xs font-semibold leading-4 text-[#6b7280]">
+              <p className="text-sm font-black text-[#111827] dark:text-slate-100">An toàn - Bảo mật - Hỗ trợ tận tâm</p>
+              <p className="mt-0.5 text-xs font-semibold leading-4 text-[#6b7280] dark:text-slate-400">
               Thanh toán qua SePay/VietQR, thông tin chuyển khoản được tạo riêng cho từng đơn.
             </p>
           </div>
@@ -268,7 +268,7 @@ function PlanCard({
   recommended?: boolean;
 }) {
   return (
-    <article className={`relative rounded-lg border bg-white p-4 text-center shadow-[0_18px_45px_rgba(15,23,42,0.06)] transition ${plan.highlighted ? "border-[#ff4055] ring-1 ring-[#ff4055]/40" : "border-[#ffe0e3]"}`}>
+    <article className={`relative rounded-lg border bg-white p-4 text-center shadow-[0_18px_45px_rgba(15,23,42,0.06)] transition dark:bg-slate-900 ${plan.highlighted ? "border-[#ff4055] ring-1 ring-[#ff4055]/40" : "border-[#ffe0e3] dark:border-slate-700"}`}>
       {plan.highlighted ? (
         <div className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#ef233c] px-3 py-1 text-[11px] font-black text-white shadow-lg shadow-red-900/20">
           <Sparkles size={13} />
@@ -284,17 +284,17 @@ function PlanCard({
 
       <p className="mx-auto inline-flex rounded-md bg-[#fff1f2] px-3 py-1 text-xs font-black uppercase text-[#ef233c]">Gói 1 lần</p>
       <h2 className="mt-2 text-xl font-black text-[#ef233c]">{plan.label}</h2>
-      <p className="mt-0.5 text-xl font-black text-[#111827]">{formatMoney(plan.amount)}</p>
+      <p className="mt-0.5 text-xl font-black text-[#111827] dark:text-white">{formatMoney(plan.amount)}</p>
 
       <div className="mx-auto mt-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#fff1f2] text-[#ef233c]">
-        <div className="flex h-12 w-12 flex-col items-center justify-center rounded-full border-[3px] border-[#ff7b86] bg-white">
+          <div className="flex h-12 w-12 flex-col items-center justify-center rounded-full border-[3px] border-[#ff7b86] bg-white dark:bg-slate-800">
           <Clock3 size={17} />
-          <span className="mt-0.5 text-base font-black leading-none text-[#374151]">{plan.durationMinutes}</span>
+            <span className="mt-0.5 text-base font-black leading-none text-[#374151] dark:text-slate-100">{plan.durationMinutes}</span>
           <span className="text-[8px] font-black text-[#ef233c]">min</span>
         </div>
       </div>
 
-      <ul className="mt-4 space-y-2 text-left text-xs font-semibold leading-4 text-[#374151]">
+      <ul className="mt-4 space-y-2 text-left text-xs font-semibold leading-4 text-[#374151] dark:text-slate-300">
         {[
           `Phỏng vấn AI ${plan.durationMinutes} phút`,
           "Câu hỏi cá nhân hóa",
@@ -312,7 +312,7 @@ function PlanCard({
         type="button"
         onClick={onChoose}
         disabled={creating}
-        className={`mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-70 ${plan.highlighted ? "bg-[#ef233c] text-white shadow-lg shadow-red-900/15 hover:bg-[#d90429]" : "border border-[#ff5b68] bg-white text-[#ef233c] hover:bg-[#fff1f2]"}`}
+          className={`mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-70 ${plan.highlighted ? "bg-[#ef233c] text-white shadow-lg shadow-red-900/15 hover:bg-[#d90429]" : "border border-[#ff5b68] bg-white text-[#ef233c] hover:bg-[#fff1f2] dark:bg-slate-900 dark:hover:bg-slate-800"}`}
       >
         {creating ? <Loader2 className="animate-spin" size={16} /> : <CreditCard size={16} />}
         Chọn gói này
@@ -323,7 +323,7 @@ function PlanCard({
 
 function PlanSkeleton() {
   return (
-    <div className="h-[18rem] rounded-lg border border-[#ffe0e3] bg-white p-4">
+    <div className="h-[18rem] rounded-lg border border-[#ffe0e3] bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div className="skeleton mx-auto h-7 w-24 rounded-lg" />
       <div className="skeleton mx-auto mt-4 h-8 w-28 rounded-lg" />
       <div className="skeleton mx-auto mt-3 h-8 w-32 rounded-lg" />
@@ -348,13 +348,13 @@ function AddOnCard({
   plan: PaymentPlan;
 }) {
   return (
-    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-3 shadow-[0_18px_45px_rgba(185,28,28,0.06)]">
+    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-3 shadow-[0_18px_45px_rgba(185,28,28,0.06)] dark:border-slate-700 dark:bg-slate-900">
       <p className="inline-flex rounded-md bg-white px-3 py-1 text-xs font-black uppercase text-[#ef233c]">Mua thêm thời gian</p>
       <div className="mt-3 flex items-center gap-3">
         <Timer className="shrink-0 text-[#ef233c]" size={32} />
         <div>
           <p className="text-xl font-black text-[#ef233c]">30 phút = {formatMoney(plan.amount)}</p>
-          <p className="mt-1 text-xs font-bold text-[#6b7280]">Mỗi 30 phút = {formatMoney(plan.amount)}</p>
+        <p className="mt-1 text-xs font-bold text-[#6b7280] dark:text-slate-400">Mỗi 30 phút = {formatMoney(plan.amount)}</p>
         </div>
       </div>
       <button
@@ -379,19 +379,19 @@ function WhyChooseCard() {
   ];
 
   return (
-    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-3 shadow-[0_18px_45px_rgba(185,28,28,0.06)]">
-      <h2 className="text-sm font-black text-[#111827]">Tại sao chọn InterviewAI?</h2>
+    <article className="rounded-lg border border-[#ffe0e3] bg-[#fff8f8] p-3 shadow-[0_18px_45px_rgba(185,28,28,0.06)] dark:border-slate-700 dark:bg-slate-900">
+      <h2 className="text-sm font-black text-[#111827] dark:text-white">Tại sao chọn InterviewAI?</h2>
       <div className="mt-3 space-y-2">
         {items.map((item) => {
           const Icon = item.icon;
           return (
             <div key={item.title} className="flex gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#ef233c]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#ef233c] dark:bg-slate-800">
                 <Icon size={16} />
               </span>
               <div>
-                <p className="text-xs font-black text-[#111827]">{item.title}</p>
-                <p className="mt-0.5 text-[11px] font-semibold leading-4 text-[#6b7280]">{item.description}</p>
+                <p className="text-xs font-black text-[#111827] dark:text-slate-100">{item.title}</p>
+                <p className="mt-0.5 text-[11px] font-semibold leading-4 text-[#6b7280] dark:text-slate-400">{item.description}</p>
               </div>
             </div>
           );
@@ -427,18 +427,18 @@ function PaymentOrderPanel({
   }, [hasValidExpiry, isPaid, order.expiresAt]);
 
   return (
-    <article className="rounded-lg border border-[#ffd3d7] bg-[#fff8f8] p-4 shadow-[0_18px_45px_rgba(185,28,28,0.08)]">
+    <article className="rounded-lg border border-[#ffd3d7] bg-[#fff8f8] p-4 shadow-[0_18px_45px_rgba(185,28,28,0.08)] dark:border-slate-700 dark:bg-slate-900">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase text-[#ef233c]">Thanh toán SePay</p>
-          <h2 className="mt-1 text-base font-black text-[#111827]">{isPaid ? "Đã thanh toán" : "Quét QR để thanh toán"}</h2>
+          <h2 className="mt-1 text-base font-black text-[#111827] dark:text-white">{isPaid ? "Đã thanh toán" : "Quét QR để thanh toán"}</h2>
         </div>
-        <span className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${isPaid ? "bg-emerald-100 text-emerald-700" : "bg-white text-[#ef233c]"}`}>
+        <span className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${isPaid ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-white text-[#ef233c] dark:bg-slate-800"}`}>
           {isPaid ? <CheckCircle2 size={20} /> : <QrCode size={20} />}
         </span>
       </div>
 
-      <div className="mt-4 rounded-lg border border-[#ffe0e3] bg-white p-3">
+      <div className="mt-4 rounded-lg border border-[#ffe0e3] bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={order.qrImageUrl}
@@ -448,11 +448,11 @@ function PaymentOrderPanel({
       </div>
 
       {!isPaid ? (
-        <div className={`mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs font-black ${isExpired ? "bg-amber-50 text-amber-700" : "bg-white text-[#ef233c]"}`}>
+        <div className={`mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs font-black ${isExpired ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-white text-[#ef233c] dark:bg-slate-800"}`}>
           <Timer className="mt-0.5 shrink-0" size={15} />
           <div>
             <p>{isExpired ? "Mã thanh toán đã hết thời gian khuyến nghị." : `Còn ${formatRemainingTime(remainingMs)} để thanh toán.`}</p>
-            <p className="mt-0.5 font-semibold leading-4 text-[#6b7280]">
+            <p className="mt-0.5 font-semibold leading-4 text-[#6b7280] dark:text-slate-400">
               Vui lòng hoàn tất trong {order.expiresInMinutes} phút và chuyển đúng nội dung để hệ thống tự xác nhận.
             </p>
           </div>
@@ -467,7 +467,7 @@ function PaymentOrderPanel({
         <PaymentInfoRow label="Nội dung" value={order.transferContent} onCopy={() => onCopy(order.transferContent, "nội dung")} strong />
       </div>
 
-      <div className={`mt-4 rounded-lg px-3 py-2 text-xs font-black ${isPaid ? "bg-emerald-50 text-emerald-700" : "bg-[#fff1f2] text-[#ef233c]"}`}>
+      <div className={`mt-4 rounded-lg px-3 py-2 text-xs font-black ${isPaid ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-[#fff1f2] text-[#ef233c] dark:bg-red-950/50 dark:text-red-300"}`}>
         {isPaid ? "Giao dịch đã được xác nhận tự động." : "Đang chờ chuyển khoản đúng nội dung để tự xác nhận."}
       </div>
 
@@ -497,9 +497,9 @@ function PaymentInfoRow({
   value: string;
 }) {
   return (
-    <div className="grid grid-cols-[5.5rem_1fr_2rem] items-center gap-2 rounded-lg bg-white px-3 py-2">
-      <span className="font-bold text-[#6b7280]">{label}</span>
-      <span className={`min-w-0 break-words ${strong ? "font-black text-[#ef233c]" : "font-black text-[#111827]"}`}>{value}</span>
+    <div className="grid grid-cols-[5.5rem_1fr_2rem] items-center gap-2 rounded-lg bg-white px-3 py-2 dark:bg-slate-800">
+      <span className="font-bold text-[#6b7280] dark:text-slate-400">{label}</span>
+      <span className={`min-w-0 break-words ${strong ? "font-black text-[#ef233c]" : "font-black text-[#111827] dark:text-slate-100"}`}>{value}</span>
       <button
         type="button"
         onClick={() => void onCopy()}
@@ -516,7 +516,7 @@ function PaymentBrandLogo({ badge }: { badge: typeof paymentBadges[number] }) {
   return (
     <span
       aria-label={badge.alt}
-      className="inline-flex h-12 min-w-[6.6rem] items-center justify-center rounded-lg border border-[#ffe0e3] bg-white px-4 shadow-sm"
+      className="inline-flex h-12 min-w-[6.6rem] items-center justify-center rounded-lg border border-[#ffe0e3] bg-white px-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
     >
       <img alt={badge.alt} className={badge.className} src={badge.src} />
     </span>
@@ -525,15 +525,15 @@ function PaymentBrandLogo({ badge }: { badge: typeof paymentBadges[number] }) {
 
 function PaymentBadges() {
   return (
-    <div className="mt-3 hidden rounded-lg border border-[#ffe0e3] bg-[#fff8f8] px-4 py-3 xl:block">
+    <div className="mt-3 hidden rounded-lg border border-[#ffe0e3] bg-[#fff8f8] px-4 py-3 dark:border-slate-700 dark:bg-slate-900 xl:block">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#ef233c]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#ef233c] dark:bg-slate-800">
             <LockKeyhole size={18} />
           </span>
           <div>
-            <p className="text-sm font-black text-[#111827]">Thanh toán an toàn & tiện lợi</p>
-            <p className="mt-1 text-xs font-semibold text-[#6b7280]">SePay/VietQR tự động đối soát đơn hàng.</p>
+            <p className="text-sm font-black text-[#111827] dark:text-white">Thanh toán an toàn & tiện lợi</p>
+            <p className="mt-1 text-xs font-semibold text-[#6b7280] dark:text-slate-400">SePay/VietQR tự động đối soát đơn hàng.</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
