@@ -60,9 +60,9 @@ type Props = {
 
 const defaultAgentRoutes: Record<string, AiRouteConfig> = {
   adaptive_follow_up_generator: { provider: "9router", model: "cx/gpt-5.4-mini" },
-  answer_scoring_evaluator: { provider: "9router", model: "ag/claude-opus-4-6-thinking" },
+  answer_scoring_evaluator: { provider: "9router", model: "cx/gpt-5.5-review" },
   interview_question_generator: { provider: "9router", model: "cx/gpt-5.5" },
-  study_plan_analyzer: { provider: "9router", model: "ag/claude-sonnet-4-6" }
+  study_plan_analyzer: { provider: "9router", model: "cx/gpt-5.5-review" }
 };
 
 const defaultRoute: AiRouteConfig = { provider: "9router", model: "cx/gpt-5.5" };
@@ -87,9 +87,9 @@ const quickModelProfiles: Array<{
     routes: {
       default: { provider: "9router", model: "cx/gpt-5.4" },
       adaptive_follow_up_generator: { provider: "9router", model: "cx/gpt-5.4-mini" },
-      answer_scoring_evaluator: { provider: "9router", model: "ag/claude-sonnet-4-6" },
+      answer_scoring_evaluator: { provider: "9router", model: "cx/gpt-5.4-review" },
       interview_question_generator: { provider: "9router", model: "cx/gpt-5.4" },
-      study_plan_analyzer: { provider: "9router", model: "ag/claude-sonnet-4-6" }
+      study_plan_analyzer: { provider: "9router", model: "cx/gpt-5.4-review" }
     }
   },
   {
@@ -260,6 +260,11 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const invalidRoute = Object.values(routes).find((route) => !isValidRouteModel(route));
+    if (invalidRoute) {
+      setError("Model 9Router phải bắt đầu bằng cx/.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -286,6 +291,13 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
 
   async function testRoute(routeKey: string) {
     const route = routes[routeKey] ?? defaultRoute;
+    if (!isValidRouteModel(route)) {
+      setTestResults((current) => ({
+        ...current,
+        [routeKey]: { ok: false, message: "Model 9Router phải bắt đầu bằng cx/." }
+      }));
+      return;
+    }
     setTestingKey(routeKey);
     setTestResults((current) => ({ ...current, [routeKey]: { ok: false, message: "Đang kiểm tra model..." } }));
     try {
@@ -523,7 +535,12 @@ function normalizeRoute(value: unknown, fallback: AiRouteConfig): AiRouteConfig 
   if (!isRecord(value)) return fallback;
   const provider = readProvider(value.provider) ?? fallback.provider;
   const model = typeof value.model === "string" && value.model.trim() ? value.model.trim() : fallback.model;
+  if (provider === "9router" && !model.startsWith("cx/")) return fallback;
   return { provider, model };
+}
+
+function isValidRouteModel(route: AiRouteConfig) {
+  return route.provider !== "9router" || route.model.startsWith("cx/");
 }
 
 function normalizeSetting(value: unknown): AiRouterSettingValue | null {

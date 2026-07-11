@@ -42,8 +42,8 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-slate-950 dark:bg-slate-950 dark:text-slate-100">
-      <aside className={`fixed left-0 top-0 z-40 hidden h-screen border-r border-slate-200 bg-white lg:block dark:border-slate-800 dark:bg-slate-950 ${collapsed ? "w-20" : "w-72"}`}>
-        <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800">
+      <aside className={`fixed left-0 top-0 z-40 hidden h-screen flex-col overflow-hidden border-r border-slate-200 bg-white lg:flex dark:border-slate-800 dark:bg-slate-950 ${collapsed ? "w-20" : "w-72"}`}>
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800">
           <Link href="/admin" className="flex items-center gap-3 text-sm font-black text-slate-950 dark:text-white" aria-label="Admin portal">
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-600 text-white">
               <ShieldCheck size={20} />
@@ -59,7 +59,7 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
             {collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
           </button>
         </div>
-        <nav className="space-y-1 p-3" aria-label="Điều hướng quản trị">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3" aria-label="Điều hướng quản trị">
           {adminNavItems.map((item) => {
             const active = activePathname === item.href || (item.href !== "/admin" && activePathname.startsWith(`${item.href}/`));
             const Icon = item.icon;
@@ -104,8 +104,8 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
 
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm lg:hidden dark:bg-slate-950/80">
-          <div className="min-h-screen w-full max-w-sm border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-            <div className="flex items-center justify-between">
+          <div className="flex h-dvh w-full max-w-sm flex-col overflow-hidden border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex shrink-0 items-center justify-between">
               <Link href="/admin" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 text-sm font-black text-slate-950 dark:text-white">
                 <ShieldCheck size={20} />Admin Portal
               </Link>
@@ -114,7 +114,7 @@ export function AdminShell({ activePathname, children, currentUser }: AdminShell
               </button>
             </div>
             {canSwitchRole ? <RoleSwitcher active="admin" variant="dark" className="mt-4 flex w-full" /> : null}
-            <nav className="mt-5 space-y-1" aria-label="Điều hướng quản trị mobile">
+            <nav className="mt-5 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain" aria-label="Điều hướng quản trị mobile">
               {adminNavItems.map((item) => {
                 const active = activePathname === item.href || (item.href !== "/admin" && activePathname.startsWith(`${item.href}/`));
                 const Icon = item.icon;
