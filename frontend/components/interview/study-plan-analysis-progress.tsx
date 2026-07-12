@@ -1,11 +1,11 @@
 "use client";
 
-import { Check, FileSearch, GraduationCap, Landmark, Loader2, Plane, Sparkles } from "lucide-react";
+import { Check, FileText, GraduationCap, Landmark, Loader2, Plane, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 const progressSteps = [
   {
-    icon: FileSearch,
+    icon: FileText,
     label: "Đọc hồ sơ Study Plan",
     description: "Chuẩn hóa nội dung và nhận diện các mục tiêu học tập"
   },
