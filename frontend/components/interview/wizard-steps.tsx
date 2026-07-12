@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, BookOpen, Check, Clock, FileText, Loader2, School, Sparkles, Upload, User, X, type LucideIcon } from "lucide-react";
+import { AlertCircle, BookOpen, Check, ChevronDown, Clock, FileText, Loader2, School, Sparkles, Upload, User, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
@@ -292,6 +292,9 @@ export function ConfirmWizardStep({
   profile: UserProfileDto | null;
   selectedTargetSchool: string;
 }) {
+  const [studyPlanExpanded, setStudyPlanExpanded] = useState(false);
+  const studyPlanPreview = form.studyPlan || profile?.studyPlan || "Study Plan chưa có dữ liệu.";
+
   return (
     <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
       <div className="rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)]">
@@ -317,9 +320,23 @@ export function ConfirmWizardStep({
         <div className="space-y-3 p-5">
     <PreviewRow label="Trạng thái" value={isProfileReady ? "Sẵn sàng" : "Thiếu hồ sơ"} />
           <PreviewRow label="HSK / IELTS" value={[form.hskLevel, form.ieltsScore].filter(Boolean).join(" / ") || "Chưa nhập"} />
-          <p className="rounded-lg border border-white/15 bg-white/10 p-4 text-sm font-semibold leading-6 text-white/82">
-            {form.studyPlan || profile?.studyPlan || "Study plan chưa có dữ liệu."}
-          </p>
+          <div className="overflow-hidden rounded-lg border border-white/15 bg-white/10">
+            <div className="relative">
+              <p className={`break-words whitespace-pre-wrap p-4 text-sm font-semibold leading-6 text-white/82 ${studyPlanExpanded ? "" : "max-h-28 overflow-hidden"}`}>
+                {studyPlanPreview}
+              </p>
+              {!studyPlanExpanded ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#29231f] to-transparent" /> : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => setStudyPlanExpanded((expanded) => !expanded)}
+              className="focus-ring flex min-h-10 w-full items-center justify-center gap-2 border-t border-white/10 px-4 text-xs font-black text-white/80 transition hover:bg-white/10 hover:text-white"
+              aria-expanded={studyPlanExpanded}
+            >
+              {studyPlanExpanded ? "Thu gọn Study Plan" : "Xem toàn bộ Study Plan"}
+              <ChevronDown size={16} className={`transition-transform ${studyPlanExpanded ? "rotate-180" : ""}`} />
+            </button>
+          </div>
         </div>
       </div>
     </section>

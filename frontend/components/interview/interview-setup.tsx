@@ -30,6 +30,7 @@ import {
 import { ApiError, apiPost } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
 import { fetchPaymentEntitlement, type PaymentEntitlement } from "@/lib/payments-client";
+import { StudyPlanAnalysisProgress } from "@/components/interview/study-plan-analysis-progress";
 import { fetchMyProfile, updateMyProfile, type ProfileInput, type StudyPlanParseMetadata, type UserProfileDto } from "@/lib/profile-client";
 
 const durationOptions = [30, 60, 120] as const;
@@ -60,6 +61,7 @@ export function InterviewSetup() {
   const router = useRouter();
   const [form, setForm] = useState<WizardSetupForm>(initialForm);
   const [currentStep, setCurrentStep] = useState(0);
+  const [furthestStep, setFurthestStep] = useState(0);
   const [studyPlanAnalysis, setStudyPlanAnalysis] = useState<any | null>(null);
   const [studyPlanParseMetadata, setStudyPlanParseMetadata] = useState<StudyPlanParseMetadata | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -109,7 +111,9 @@ export function InterviewSetup() {
           ...current,
           ...draft.form
         }));
-        setCurrentStep(Math.min(stepLabels.length - 1, Math.max(0, draft.currentStep ?? 0)));
+        const restoredStep = Math.min(stepLabels.length - 1, Math.max(0, draft.currentStep ?? 0));
+        setCurrentStep(restoredStep);
+        setFurthestStep(restoredStep);
       }
     } catch {
       sessionStorage.removeItem(setupDraftStorageKey);
@@ -344,7 +348,11 @@ export function InterviewSetup() {
     }
 
     setError("");
-    setCurrentStep((step) => Math.min(stepLabels.length - 1, step + 1));
+    setCurrentStep((step) => {
+      const nextStep = Math.min(stepLabels.length - 1, step + 1);
+      setFurthestStep((furthest) => Math.max(furthest, nextStep));
+      return nextStep;
+    });
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -425,7 +433,15 @@ export function InterviewSetup() {
           </div>
 
           <div className="mt-6">
-            <ProgressTracker currentStep={currentStep} stepLabels={stepLabels} />
+            <ProgressTracker
+              currentStep={currentStep}
+              furthestStep={furthestStep}
+              stepLabels={stepLabels}
+              onStepSelect={(step) => {
+                setError("");
+                setCurrentStep(step);
+              }}
+            />
           </div>
 
           {profileNotice ? (
@@ -550,6 +566,8 @@ export function InterviewSetup() {
           </p>
         </div>
       ) : null}
+
+      {isAnalyzing ? <StudyPlanAnalysisProgress /> : null}
     </main>
   );
 }
