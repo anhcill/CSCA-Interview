@@ -23,7 +23,7 @@ paymentsRouter.get("/plans", (_req, res) => {
 paymentsRouter.get("/entitlement", requireAuth, async (req, res) => {
   const user = res.locals.user as AuthenticatedUser;
   const requiredMinutes = Number(req.query.duration ?? 30);
-  const entitlement = await getInterviewPaymentEntitlement(user.id, requiredMinutes);
+  const entitlement = await getInterviewPaymentEntitlement(user.id, requiredMinutes, user.role);
   res.json({ entitlement });
 });
 

@@ -41,8 +41,9 @@ export type PaymentOrder = {
 
 export type PaymentEntitlement = {
   availablePayments: PaymentOrder[];
-  code: "PAYMENT_REQUIRED";
+  code: "PAYMENT_NOT_REQUIRED" | "PAYMENT_REQUIRED";
   hasAccess: boolean;
+  isUnlimited: boolean;
   message: string;
   paymentUrl: string;
   requiredMinutes: number;

@@ -616,11 +616,13 @@ function StudyPlanSourceBox({
 export function StudyPlanAnalysisWizardStep({
   analysis,
   isLoading,
-  error
+  error,
+  onRetry
 }: {
   analysis: any;
   isLoading: boolean;
   error: string;
+  onRetry: () => void;
 }) {
   if (isLoading) {
     return (
@@ -638,7 +640,14 @@ export function StudyPlanAnalysisWizardStep({
     return (
       <section className="rounded-lg border border-border bg-background p-8 text-center shadow-[var(--shadow-ui)] flex flex-col items-center justify-center min-h-[300px]">
         <p className="text-sm font-bold text-red-500">{error}</p>
-        <p className="text-xs text-muted-foreground mt-2">Bạn có thể tiếp tục bước tiếp theo mà không cần phân tích.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Bạn có thể thử lại hoặc tiếp tục bước tiếp theo mà không cần phân tích.</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="focus-ring mt-4 inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-black text-primary-foreground"
+        >
+          Thử phân tích lại
+        </button>
       </section>
     );
   }

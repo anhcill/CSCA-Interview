@@ -35,7 +35,7 @@ import { paginatedResponse, parsePagination } from "../../utils/pagination.js";
 import { normalizeSearchText, rankSearchCandidate } from "../../utils/search-normalize.js";
 import { getScoreProgressTimeline, getSkillProgressTimeline, compareSessionScores, getWeakAreas } from "./interview-stats.service.js";
 import { analyzeStudyPlan } from "./study-plan-analysis.service.js";
-import { consumeInterviewPayment, getInterviewPaymentEntitlement, paymentRequiredPayload } from "../payments/payments.service.js";
+import { consumeInterviewPayment, getInterviewPaymentEntitlement, isPaymentExemptRole, paymentRequiredPayload } from "../payments/payments.service.js";
 import {
   cleanStudyPlanText,
   createStudyPlanParseMetadata,
@@ -300,7 +300,8 @@ interviewsRouter.post("/", async (req, res) => {
   const requiredPaymentMinutes = plannedDurationMinutes ?? 30;
 
   try {
-    const entitlement = await getInterviewPaymentEntitlement(user.id, requiredPaymentMinutes);
+    const paymentExempt = isPaymentExemptRole(user.role);
+    const entitlement = await getInterviewPaymentEntitlement(user.id, requiredPaymentMinutes, user.role);
     if (!entitlement.hasAccess) {
       res.status(402).json(entitlement);
       return;
@@ -451,8 +452,10 @@ interviewsRouter.post("/", async (req, res) => {
         }
       }
     });
-    const consumedPayment = await consumeInterviewPayment(user.id, session.id, requiredPaymentMinutes);
-    if (!consumedPayment) {
+    const consumedPayment = paymentExempt
+      ? null
+      : await consumeInterviewPayment(user.id, session.id, requiredPaymentMinutes);
+    if (!paymentExempt && !consumedPayment) {
       await prisma.interviewSession.update({
         data: {
           endedAt: new Date(),

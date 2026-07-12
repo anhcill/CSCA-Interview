@@ -285,6 +285,48 @@ export function InterviewSetup() {
     return true;
   }
 
+  async function runStudyPlanAnalysis() {
+    setIsAnalyzing(true);
+    setAnalysisError("");
+    try {
+      let studyPlanForAnalysis = form.studyPlan.trim();
+      let parseMetadataForAnalysis = studyPlanParseMetadata;
+      if (form.studyPlanFileContent.trim()) {
+        const saved = await updateMyProfile(buildProfilePayload());
+        studyPlanForAnalysis = saved.profile.studyPlan;
+        parseMetadataForAnalysis = saved.studyPlanParseMetadata ?? saved.profile.studyPlanParseMetadata ?? null;
+        setProfile(saved.profile);
+        setStudyPlanParseMetadata(parseMetadataForAnalysis);
+        setForm((current) => ({
+          ...current,
+          studyPlan: saved.profile.studyPlan,
+          studyPlanFileContent: "",
+          studyPlanFileName: saved.profile.studyPlanFileName ?? current.studyPlanFileName
+        }));
+      }
+
+      const token = getAuthToken();
+      const res = await apiPost<any>("/api/interviews/analyze-study-plan", {
+        studyPlan: studyPlanForAnalysis,
+        schoolId: selectedSchoolId || null,
+        majorId: form.majorId || null,
+        scholarshipId: form.scholarshipId || null,
+        scholarshipType: form.scholarshipType,
+        studyPlanFileName: form.studyPlanFileName || profile?.studyPlanFileName || null,
+        studyPlanParseMetadata: parseMetadataForAnalysis,
+        targetSchool: selectedTargetSchool,
+        targetMajor: form.targetMajor
+      }, { timeoutMs: 90_000, token });
+      setStudyPlanAnalysis(res);
+      setStudyPlanParseMetadata(res.parseMetadata ?? parseMetadataForAnalysis);
+    } catch (err) {
+      console.error(err);
+      setAnalysisError(err instanceof Error ? err.message : "Không thể phân tích Study Plan bằng AI");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
   async function goNext() {
     if (currentStep >= stepLabels.length - 1) return;
 
@@ -298,45 +340,7 @@ export function InterviewSetup() {
         setError("Vui lòng upload file Study Plan trước khi phân tích.");
         return;
       }
-      setIsAnalyzing(true);
-      setAnalysisError("");
-      try {
-        let studyPlanForAnalysis = form.studyPlan.trim();
-        let parseMetadataForAnalysis = studyPlanParseMetadata;
-        if (form.studyPlanFileContent.trim()) {
-          const saved = await updateMyProfile(buildProfilePayload());
-          studyPlanForAnalysis = saved.profile.studyPlan;
-          parseMetadataForAnalysis = saved.studyPlanParseMetadata ?? saved.profile.studyPlanParseMetadata ?? null;
-          setProfile(saved.profile);
-          setStudyPlanParseMetadata(parseMetadataForAnalysis);
-          setForm((current) => ({
-            ...current,
-            studyPlan: saved.profile.studyPlan,
-            studyPlanFileContent: "",
-            studyPlanFileName: saved.profile.studyPlanFileName ?? current.studyPlanFileName
-          }));
-        }
-
-        const token = getAuthToken();
-        const res = await apiPost<any>("/api/interviews/analyze-study-plan", {
-          studyPlan: studyPlanForAnalysis,
-          schoolId: selectedSchoolId || null,
-          majorId: form.majorId || null,
-          scholarshipId: form.scholarshipId || null,
-          scholarshipType: form.scholarshipType,
-          studyPlanFileName: form.studyPlanFileName || profile?.studyPlanFileName || null,
-          studyPlanParseMetadata: parseMetadataForAnalysis,
-          targetSchool: selectedTargetSchool,
-          targetMajor: form.targetMajor
-        }, { token });
-        setStudyPlanAnalysis(res);
-        setStudyPlanParseMetadata(res.parseMetadata ?? parseMetadataForAnalysis);
-      } catch (err: any) {
-        console.error(err);
-        setAnalysisError(err.message || "Không thể phân tích Study Plan bằng AI");
-      } finally {
-        setIsAnalyzing(false);
-      }
+      await runStudyPlanAnalysis();
     }
 
     setError("");
@@ -494,6 +498,7 @@ export function InterviewSetup() {
                 analysis={studyPlanAnalysis}
                 isLoading={isAnalyzing}
                 error={analysisError}
+                onRetry={() => void runStudyPlanAnalysis()}
               />
             ) : null}
 
@@ -567,6 +572,14 @@ function PaymentFlowNotice({
   }
 
   if (entitlement?.hasAccess) {
+    if (entitlement.isUnlimited) {
+      return (
+        <p className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">
+          Tài khoản quản trị cấp cao được tạo và sử dụng phòng phỏng vấn không giới hạn, không cần thanh toán.
+        </p>
+      );
+    }
+
     const planLabel = entitlement.availablePayments[0]?.plan?.label ?? `${durationMinutes} phút`;
     return (
       <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">

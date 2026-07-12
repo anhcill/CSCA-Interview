@@ -31,6 +31,11 @@ const defaultBankConfig: BankConfig = {
   bankCode: "MSB"
 };
 const paymentOrderExpiresInMinutes = 10;
+type PaymentAccessRole = "USER" | "ADMIN" | "SUPER_ADMIN";
+
+export function isPaymentExemptRole(role: PaymentAccessRole) {
+  return role === "SUPER_ADMIN";
+}
 
 export function listPaymentPlans() {
   return paymentPlans;
@@ -132,8 +137,20 @@ function buildPaymentRequiredResponse(requiredMinutes: number) {
   };
 }
 
-export async function getInterviewPaymentEntitlement(userId: string, requiredMinutes = 30) {
+export async function getInterviewPaymentEntitlement(userId: string, requiredMinutes = 30, role: PaymentAccessRole = "USER") {
   const safeRequiredMinutes = Math.max(10, Math.min(180, Math.round(requiredMinutes || 30)));
+  if (isPaymentExemptRole(role)) {
+    return {
+      ...buildPaymentRequiredResponse(safeRequiredMinutes),
+      code: "PAYMENT_NOT_REQUIRED" as const,
+      message: "Tài khoản quản trị cấp cao được sử dụng phỏng vấn không giới hạn.",
+      paymentUrl: "",
+      availablePayments: [],
+      hasAccess: true,
+      isUnlimited: true
+    };
+  }
+
   const payments = await prisma.payments.findMany({
     orderBy: { created_at: "asc" },
     take: 20,
@@ -148,7 +165,8 @@ export async function getInterviewPaymentEntitlement(userId: string, requiredMin
   return {
     ...buildPaymentRequiredResponse(safeRequiredMinutes),
     availablePayments: availablePayments.map(serializePayment),
-    hasAccess: availablePayments.length > 0
+    hasAccess: availablePayments.length > 0,
+    isUnlimited: false
   };
 }
 
