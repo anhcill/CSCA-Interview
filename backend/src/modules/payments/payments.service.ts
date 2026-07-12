@@ -34,7 +34,7 @@ const paymentOrderExpiresInMinutes = 10;
 type PaymentAccessRole = "USER" | "ADMIN" | "SUPER_ADMIN";
 
 export function isPaymentExemptRole(role: PaymentAccessRole) {
-  return role === "SUPER_ADMIN";
+  return role === "ADMIN" || role === "SUPER_ADMIN";
 }
 
 export function listPaymentPlans() {
@@ -143,7 +143,7 @@ export async function getInterviewPaymentEntitlement(userId: string, requiredMin
     return {
       ...buildPaymentRequiredResponse(safeRequiredMinutes),
       code: "PAYMENT_NOT_REQUIRED" as const,
-      message: "Tài khoản quản trị cấp cao được sử dụng phỏng vấn không giới hạn.",
+      message: "Tài khoản quản trị được sử dụng phỏng vấn không giới hạn.",
       paymentUrl: "",
       availablePayments: [],
       hasAccess: true,
