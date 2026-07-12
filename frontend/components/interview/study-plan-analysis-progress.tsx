@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, FileText, GraduationCap, Landmark, Loader2, Plane, Sparkles } from "lucide-react";
+import { Check, FileText, GraduationCap, Loader2, School, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 const progressSteps = [
@@ -10,7 +10,7 @@ const progressSteps = [
     description: "Chuẩn hóa nội dung và nhận diện các mục tiêu học tập"
   },
   {
-    icon: Landmark,
+    icon: School,
     label: "Đối chiếu trường và ngành",
     description: "So sánh hồ sơ với định hướng đào tạo tại Trung Quốc"
   },
@@ -62,7 +62,7 @@ export function StudyPlanAnalysisProgress() {
           <div className="p-6 sm:p-8 lg:p-10">
             <div className="flex items-center gap-3">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_14px_32px_rgba(184,29,36,0.24)]">
-                <Plane size={23} />
+                <GraduationCap size={23} />
               </span>
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Hành trình du học</p>
