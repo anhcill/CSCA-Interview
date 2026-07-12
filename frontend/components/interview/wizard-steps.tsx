@@ -675,98 +675,133 @@ export function StudyPlanAnalysisWizardStep({
   const parseWarnings = parseMetadata?.warnings ?? [];
   const strengths = normalizeAnalysisItems(analysis.strengths);
   const weaknesses = normalizeAnalysisItems(analysis.weaknesses);
+  const missingPoints = normalizeAnalysisItems(analysis.missingPoints);
   const suggestions = normalizeAnalysisItems(analysis.suggestions);
   const generatedQuestions = normalizeAnalysisItems(analysis.generatedQuestions);
+  const alignmentScore = Math.max(0, Math.min(100, Math.round(Number(analysis.alignmentScore) || 0)));
+  const alignmentLabel = alignmentScore >= 75 ? "Phù hợp tốt" : alignmentScore >= 50 ? "Cần bổ sung" : "Cần điều chỉnh lớn";
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
-      <div className="rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)] flex flex-col gap-4">
-        <StepHeader eyebrow="Bước 5" icon={Sparkles} title="Phân tích Study Plan bằng AI" />
-
-        {parseWarnings.length ? (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            <div className="flex items-start gap-2">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs font-black uppercase">Cảnh báo đọc file</p>
-                <ul className="mt-1 space-y-1 text-xs font-semibold leading-5">
-                  {parseWarnings.map((warning, idx) => (
-                    <li key={idx}>{warning}</li>
-                  ))}
-                </ul>
-                {parseMetadata ? (
-                  <p className="mt-2 text-[11px] font-bold opacity-80">
-                    {parseMetadata.fileName ? `${parseMetadata.fileName} · ` : ""}{parseMetadata.extractedTextLength} ký tự đã đọc
-                  </p>
-                ) : null}
-              </div>
+    <section className="space-y-6">
+      <div className="relative overflow-hidden rounded-2xl border border-[#ead8c2] bg-[#17120f] text-white shadow-[0_24px_70px_rgba(23,18,15,0.18)] dark:border-slate-700">
+        <div className="absolute inset-y-0 right-0 w-full bg-[url('/auth/image/study_abroad_hero.png')] bg-cover bg-center opacity-20 sm:w-[58%] sm:opacity-35" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#17120f] via-[#17120f]/95 to-[#17120f]/55" />
+        <div className="relative flex flex-col gap-7 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between lg:p-10">
+          <div className="max-w-3xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#e5a93b]/35 bg-[#e5a93b]/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] text-[#f4c96f]">
+              <Sparkles size={15} /> Báo cáo hồ sơ du học
+            </span>
+            <h2 className="mt-5 text-3xl font-black leading-tight sm:text-4xl">Phân tích Study Plan bằng AI</h2>
+            <p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-white/72">
+              Báo cáo tập trung vào mức độ phù hợp với trường, ngành và học bổng mục tiêu, kèm các bước cải thiện có thể thực hiện ngay.
+            </p>
+            {parseMetadata ? (
+              <p className="mt-4 inline-flex rounded-lg bg-white/10 px-3 py-2 text-sm font-bold text-white/75">
+                {parseMetadata.fileName ? `${parseMetadata.fileName} · ` : ""}{parseMetadata.extractedTextLength.toLocaleString("vi-VN")} ký tự đã phân tích
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm sm:p-5">
+            <div
+              className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-2 shadow-xl"
+              style={{ background: `conic-gradient(#e5a93b ${alignmentScore * 3.6}deg, rgba(255,255,255,0.14) 0deg)` }}
+            >
+              <div className="flex h-full w-full items-center justify-center rounded-full bg-[#17120f] text-2xl font-black">{alignmentScore}%</div>
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-[#f4c96f]">Mức độ phù hợp</p>
+              <p className="mt-1 text-xl font-black">{alignmentLabel}</p>
+              <p className="mt-1 max-w-44 text-sm font-semibold leading-5 text-white/65">So với mục tiêu trường và ngành hiện tại</p>
             </div>
           </div>
-        ) : null}
-
-        {/* Alignment score */}
-        <div className="flex items-center gap-4 rounded-xl bg-primary/5 p-4 border border-primary/10">
-          <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-xl font-black text-primary-foreground shadow-md">
-            {analysis.alignmentScore}%
-          </div>
-          <div>
-            <h4 className="text-sm font-black text-foreground">Mức độ phù hợp với mục tiêu</h4>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Điểm số dựa trên sự tương thích giữa Study Plan của bạn với yêu cầu của trường và ngành học mục tiêu.
-            </p>
-          </div>
-        </div>
-
-        {/* Strengths & Weaknesses */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border border-green-700/20 bg-green-500/5 p-4">
-            <h5 className="text-xs font-black uppercase text-green-700">✅ Điểm mạnh</h5>
-            <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground font-semibold">
-              {strengths.map((item: string, idx: number) => (
-                <li key={idx} className="flex gap-1.5"><span className="text-green-600 shrink-0">•</span> {item}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="rounded-lg border border-red-700/20 bg-red-500/5 p-4">
-            <h5 className="text-xs font-black uppercase text-red-700">⚠️ Điểm yếu / Cần sửa</h5>
-            <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground font-semibold">
-              {weaknesses.map((item: string, idx: number) => (
-                <li key={idx} className="flex gap-1.5"><span className="text-red-600 shrink-0">•</span> {item}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Suggestions */}
-        <div className="rounded-lg border border-blue-700/20 bg-blue-500/5 p-4">
-          <h5 className="text-xs font-black uppercase text-blue-700">💡 Gợi ý cải thiện</h5>
-          <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground font-semibold">
-            {suggestions.map((item: string, idx: number) => (
-              <li key={idx} className="flex gap-1.5"><span className="text-blue-600 shrink-0">•</span> {item}</li>
-            ))}
-          </ul>
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-background p-5 shadow-[var(--shadow-ui)]">
-        <h3 className="text-sm font-black text-foreground flex items-center gap-1.5 mb-3">
-          <span>📋 Các câu hỏi phỏng vấn dự kiến (AI tạo)</span>
-        </h3>
-        <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-          Giáo sư AI dự kiến sẽ đặt các câu hỏi sau dựa trên thông tin kế hoạch học tập của bạn. Hãy chuẩn bị kỹ câu trả lời.
-        </p>
-        <div className="space-y-3">
-          {generatedQuestions.map((item: string, idx: number) => (
-            <div key={idx} className="p-3 rounded-lg bg-muted text-xs font-bold text-foreground border border-border flex items-start gap-2.5">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-black text-primary">
-                {idx + 1}
-              </span>
-              <p className="leading-relaxed">{item}</p>
-            </div>
-          ))}
+      {parseWarnings.length ? (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <AlertCircle size={20} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-black">Lưu ý khi đọc tài liệu</p>
+            <ul className="mt-2 space-y-1 text-sm font-semibold leading-6">
+              {parseWarnings.map((warning, idx) => <li key={idx}>• {warning}</li>)}
+            </ul>
+          </div>
         </div>
+      ) : null}
+
+      <div className="grid items-start gap-5 xl:grid-cols-3">
+        <AnalysisInsightCard icon={Check} items={strengths} title="Nền tảng nổi bật" tone="success" />
+        <AnalysisInsightCard icon={AlertCircle} items={weaknesses} title="Điểm cần chỉnh sửa" tone="danger" />
+        <AnalysisInsightCard icon={BookOpen} items={missingPoints} title="Nội dung còn thiếu" tone="warning" />
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-[#cbdcf4] bg-background shadow-[var(--shadow-ui)] dark:border-slate-700">
+        <div className="border-b border-[#dbe7f7] bg-[#eef5ff] px-5 py-5 dark:border-slate-700 dark:bg-slate-900 sm:px-7">
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-700 dark:text-blue-300">Kế hoạch hành động</p>
+          <h3 className="mt-1 text-2xl font-black text-foreground">Gợi ý cải thiện Study Plan</h3>
+          <p className="mt-2 text-base font-semibold leading-7 text-muted-foreground">Ưu tiên xử lý lần lượt các mục dưới đây trước khi nộp hồ sơ hoặc bước vào phỏng vấn.</p>
+        </div>
+        <ol className="grid gap-0 p-3 sm:grid-cols-2 sm:p-5">
+          {suggestions.map((item: string, idx: number) => (
+            <li key={idx} className="flex gap-4 rounded-xl p-4 transition hover:bg-muted/60">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-black text-white">{idx + 1}</span>
+              <p className="text-[15px] font-semibold leading-7 text-foreground">{item}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-[#ead8c2] bg-background shadow-[var(--shadow-ui)] dark:border-slate-700">
+        <div className="flex flex-col gap-3 border-b border-[#ead8c2] bg-[#fff8ed] px-5 py-5 dark:border-slate-700 dark:bg-slate-900 sm:px-7">
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-[#a76b12] dark:text-[#f4c96f]">Luyện tập cùng giáo sư AI</p>
+          <h3 className="text-2xl font-black text-foreground">Câu hỏi phỏng vấn dự kiến</h3>
+          <p className="max-w-4xl text-base font-semibold leading-7 text-muted-foreground">Các câu hỏi được tạo trực tiếp từ nội dung Study Plan. Hãy chuẩn bị câu trả lời có ví dụ cụ thể và liên kết rõ với mục tiêu du học.</p>
+        </div>
+        <ol className="grid gap-4 p-5 lg:grid-cols-2 sm:p-7">
+          {generatedQuestions.map((item: string, idx: number) => (
+            <li key={idx} className="flex items-start gap-4 rounded-xl border border-border bg-muted/30 p-5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-base font-black text-primary-foreground shadow-sm">{idx + 1}</span>
+              <p className="text-base font-bold leading-7 text-foreground">{item}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
+  );
+}
+
+function AnalysisInsightCard({
+  icon: Icon,
+  items,
+  title,
+  tone
+}: {
+  icon: LucideIcon;
+  items: string[];
+  title: string;
+  tone: "danger" | "success" | "warning";
+}) {
+  const styles = {
+    danger: "border-red-200 bg-red-50/65 text-red-700 dark:border-red-900 dark:bg-red-950/45 dark:text-red-300",
+    success: "border-emerald-200 bg-emerald-50/65 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/45 dark:text-emerald-300",
+    warning: "border-amber-200 bg-amber-50/65 text-amber-700 dark:border-amber-900 dark:bg-amber-950/45 dark:text-amber-300"
+  } as const;
+
+  return (
+    <article className={`rounded-2xl border p-5 shadow-sm sm:p-6 ${styles[tone]}`}>
+      <div className="flex items-center gap-3">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-current/10"><Icon size={21} /></span>
+        <h3 className="text-lg font-black">{title}</h3>
+      </div>
+      <ul className="mt-5 space-y-4">
+        {items.length ? items.map((item, idx) => (
+          <li key={idx} className="flex gap-3 text-[15px] font-semibold leading-7 text-foreground/85">
+            <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+            <span>{item}</span>
+          </li>
+        )) : <li className="text-sm font-semibold text-muted-foreground">Chưa có nhận xét cho mục này.</li>}
+      </ul>
+    </article>
   );
 }
 
