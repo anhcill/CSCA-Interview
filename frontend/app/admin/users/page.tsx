@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { apiGet, apiGetBlob, apiPost, apiPut } from "@/lib/api";
-import { getAuthToken } from "@/lib/auth-client";
+import { getAuthToken, getStoredUser } from "@/lib/auth-client";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
 type AdminUserSummary = {
@@ -116,6 +116,10 @@ export default function AdminUsersPage() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const debouncedStudyPlanSearch = useDebouncedValue(studyPlanSearch, 300);
   const token = getAuthToken();
+  const currentAdmin = getStoredUser();
+  const assignableRoleOptions = currentAdmin?.role === "SUPER_ADMIN"
+    ? roleOptions
+    : roleOptions.filter((role) => role !== "SUPER_ADMIN");
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -354,11 +358,17 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3">
                         <select
                           className="rounded-lg border px-2 py-1 text-xs font-bold"
-                          disabled={actionId === `${user.id}:role`}
+                          disabled={
+                            actionId === `${user.id}:role`
+                            || user.id === currentAdmin?.id
+                            || (user.role === "SUPER_ADMIN" && currentAdmin?.role !== "SUPER_ADMIN")
+                          }
                           value={user.role}
                           onChange={(event) => void updateUserRole(user, event.target.value as AdminUserSummary["role"])}
                         >
-                          {roleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+                          {(user.role === "SUPER_ADMIN" ? roleOptions : assignableRoleOptions).map((role) => (
+                            <option key={role} value={role}>{role}</option>
+                          ))}
                         </select>
                       </td>
                       <td className="px-4 py-3">{user._count.interviewSessions}</td>

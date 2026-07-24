@@ -694,8 +694,7 @@ adminRouter.put("/users/:id/status", async (req, res) => {
 });
 
 adminRouter.put("/users/:id/role", async (req, res) => {
-  const admin = requireSuperAdmin(res);
-  if (!admin) return;
+  const admin = getAdmin(res);
 
   const parsed = userRoleSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
@@ -709,11 +708,37 @@ adminRouter.put("/users/:id/role", async (req, res) => {
 
   try {
     const before = await prisma.user.findUnique({ where: { id: req.params.id }, select: publicUserSelect() });
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data: { role: parsed.data.role },
-      select: publicUserSelect()
-    });
+    if (!before) {
+      res.status(404).json({ message: "Không tìm thấy người dùng" });
+      return;
+    }
+
+    if (admin.role !== Role.SUPER_ADMIN && (before.role === Role.SUPER_ADMIN || parsed.data.role === Role.SUPER_ADMIN)) {
+      res.status(403).json({ message: "Chỉ SUPER_ADMIN mới được gán hoặc thay đổi role SUPER_ADMIN" });
+      return;
+    }
+
+    if (admin.role !== Role.SUPER_ADMIN) {
+      const result = await prisma.user.updateMany({
+        where: { id: req.params.id, role: { not: Role.SUPER_ADMIN } },
+        data: { role: parsed.data.role }
+      });
+      if (result.count !== 1) {
+        res.status(403).json({ message: "Không thể thay đổi role của SUPER_ADMIN" });
+        return;
+      }
+    } else {
+      await prisma.user.update({
+        where: { id: req.params.id },
+        data: { role: parsed.data.role }
+      });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: publicUserSelect() });
+    if (!user) {
+      res.status(404).json({ message: "Không tìm thấy người dùng" });
+      return;
+    }
     invalidateAuthUserCache(user.id);
 
     await writeAdminAuditLog(req, {
