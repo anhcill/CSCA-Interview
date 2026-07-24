@@ -12,7 +12,7 @@ import {
   aiModelRouterSettingKey,
   testAiModelRoute
 } from "../ai/ai-model-router.service.js";
-import { requireAuth, type AuthenticatedUser } from "../auth/auth.middleware.js";
+import { invalidateAuthUserCache, requireAuth, type AuthenticatedUser } from "../auth/auth.middleware.js";
 import { passwordHashRounds } from "../auth/auth.utils.js";
 import { importQuestionMasterSheet, MasterSheetImportError, previewQuestionMasterSheet } from "../questions/master-sheet-import.service.js";
 import { importQuestionsFromCsv } from "../questions/questions.routes.js";
@@ -665,6 +665,7 @@ adminRouter.put("/users/:id/status", async (req, res) => {
       data: { isActive: parsed.data.isActive },
       select: publicUserSelect()
     });
+    invalidateAuthUserCache(user.id);
 
     if (!parsed.data.isActive) {
       await prisma.authSession.updateMany({
@@ -713,6 +714,7 @@ adminRouter.put("/users/:id/role", async (req, res) => {
       data: { role: parsed.data.role },
       select: publicUserSelect()
     });
+    invalidateAuthUserCache(user.id);
 
     await writeAdminAuditLog(req, {
       action: "USER_ROLE_UPDATE",

@@ -125,7 +125,7 @@ export default function AdminUsersPage() {
       if (activeFilter) url += `&active=${activeFilter}`;
       if (roleFilter) url += `&role=${roleFilter}`;
 
-      const response = await apiGet<UsersResponse>(url, { token });
+      const response = await apiGet<UsersResponse>(url, { cacheMs: 0, token });
       setUsers(response.data);
       setTotal(response.total);
       setTotalPages(response.totalPages);
@@ -140,7 +140,7 @@ export default function AdminUsersPage() {
     setDetailLoading(true);
     setError("");
     try {
-      const response = await apiGet<UserDetailResponse>(`/api/admin/users/${id}`, { token });
+      const response = await apiGet<UserDetailResponse>(`/api/admin/users/${id}`, { cacheMs: 0, token });
       setSelectedUser(response.user);
       setSelectedId(id);
     } catch (err) {
@@ -208,7 +208,17 @@ export default function AdminUsersPage() {
     setActionId(`${user.id}:role`);
     setError("");
     try {
-      await apiPut(`/api/admin/users/${user.id}/role`, { role }, { token });
+      const response = await apiPut<{ user: Pick<AdminUserSummary, "id" | "role"> }>(
+        `/api/admin/users/${user.id}/role`,
+        { role },
+        { token }
+      );
+      setUsers((current) => current.map((item) => (
+        item.id === response.user.id ? { ...item, role: response.user.role } : item
+      )));
+      setSelectedUser((current) => (
+        current?.id === response.user.id ? { ...current, role: response.user.role } : current
+      ));
       await loadUsers();
       if (selectedId === user.id) {
         await loadUserDetail(user.id);

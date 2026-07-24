@@ -15,6 +15,10 @@ export type AuthenticatedUser = {
 const authUserCacheTtlMs = 5_000;
 const authUserCache = new Map<string, { expiresAt: number; user: AuthenticatedUser }>();
 
+export function invalidateAuthUserCache(userId: string) {
+  authUserCache.delete(userId);
+}
+
 async function findActiveUser(userId: string) {
   const cached = authUserCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) return cached.user;

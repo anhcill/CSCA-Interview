@@ -8,7 +8,7 @@ import { AdminShell } from "@/components/admin-shell";
 import { MarketingFrame } from "@/components/home/marketing-frame";
 import { PageAccessDeniedState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { UserNavbar } from "@/components/user-navbar";
-import { ensureAuthSession, getAuthToken, getStoredUser, type AuthUser } from "@/lib/auth-client";
+import { ensureAuthSession, fetchCurrentUser, getAuthToken, getStoredUser, type AuthUser } from "@/lib/auth-client";
 import { getStoredLocale, localeChangedEvent, type Locale } from "@/lib/i18n";
 
 const navItems = [
@@ -77,9 +77,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
 
       const storedUser = getStoredUser();
-      if (getAuthToken() && storedUser) {
+      if (getAuthToken() && storedUser && !isAdminPath) {
         setCurrentUser(storedUser);
-        setAuthStatus(isAdminPath && !adminRoles.includes(storedUser.role) ? "forbidden" : "authenticated");
+        setAuthStatus("authenticated");
         return;
       }
 
@@ -88,7 +88,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       let session: Awaited<ReturnType<typeof ensureAuthSession>>;
 
       try {
-        session = await ensureAuthSession();
+        if (getAuthToken() && storedUser && isAdminPath) {
+          const user = await fetchCurrentUser();
+          session = user ? { token: getAuthToken()!, user: user.user } : null;
+        } else {
+          session = await ensureAuthSession();
+        }
       } catch (error) {
         if (cancelled) return;
         if (isOptionalAuthPath) {

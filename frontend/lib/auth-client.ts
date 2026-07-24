@@ -112,7 +112,7 @@ export async function fetchCurrentUser() {
     return null;
   }
 
-  const data = await apiGet<{ user: AuthUser }>("/api/auth/me", { token: session.token });
+  const data = await apiGet<{ user: AuthUser }>("/api/auth/me", { cacheMs: 0, token: session.token });
   currentUser = data.user;
   notifyAuthSessionChanged();
   return data;
