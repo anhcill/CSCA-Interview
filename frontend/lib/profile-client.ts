@@ -5,14 +5,27 @@ export type StudyPlanParseMetadata = {
   extractedTextLength: number;
   fileName: string | null;
   fileType?: "pdf" | "docx" | "txt" | "image";
+  ocrModel?: string;
   ocrPageCount?: number;
-  ocrProvider?: "openai";
+  ocrProvider?: "9router" | "deepseek" | "openai" | "openrouter";
   ocrUsed?: boolean;
   originalTextLength?: number;
   pageCount?: number;
   parseStatus: "success" | "warning" | "failed";
   truncated?: boolean;
   warnings: string[];
+};
+
+export type StudyPlanImageFileDto = {
+  contentType: string;
+  fileName: string;
+  fileUrl: string;
+  sizeBytes: number;
+};
+
+export type StudyPlanImageInput = {
+  fileContent: string;
+  fileName: string;
 };
 
 export type UserProfileDto = {
@@ -39,6 +52,7 @@ export type UserProfileDto = {
   studyPlanFileName: string | null;
   studyPlanFileContent: string | null;
   studyPlanFileUrl: string | null;
+  studyPlanImageFiles: StudyPlanImageFileDto[];
   studyPlanParseMetadata?: StudyPlanParseMetadata | null;
   targetMajor: string;
   targetSchool: string;
@@ -70,6 +84,7 @@ export type ProfileInput = {
   studyPlan?: string | null;
   studyPlanFileName?: string | null;
   studyPlanFileContent?: string | null;
+  studyPlanImages?: StudyPlanImageInput[] | null;
   targetMajor: string;
   targetSchool: string;
   toeflScore?: string | null;

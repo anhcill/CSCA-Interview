@@ -34,6 +34,7 @@ type UserProfile = {
   gpa?: string | null;
   studyPlan?: string | null;
   studyPlanFileName?: string | null;
+  studyPlanImageFiles?: Array<{ fileName: string; fileUrl: string; sizeBytes: number }> | null;
   careerPlan?: string | null;
   strengths?: string | null;
   weaknesses?: string | null;
@@ -67,6 +68,7 @@ type UsersResponse = {
 type StudyPlanFileItem = {
   email: string;
   fileName: string | null;
+  files: Array<{ fileName: string; index: number }>;
   fullName: string;
   scholarshipType: string;
   storageProvider: string;
@@ -254,11 +256,13 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function downloadStudyPlanFile(userId: string, fileName?: string | null) {
-    setActionId(`${userId}:study-plan`);
+  async function downloadStudyPlanFile(userId: string, fileName?: string | null, imageIndex?: number) {
+    const actionKey = `${userId}:study-plan${imageIndex === undefined ? "" : `:${imageIndex}`}`;
+    setActionId(actionKey);
     setError("");
     try {
-      const result = await apiGetBlob(`/api/admin/users/${userId}/study-plan/download`, {
+      const query = imageIndex === undefined ? "" : `?imageIndex=${imageIndex}`;
+      const result = await apiGetBlob(`/api/admin/users/${userId}/study-plan/download${query}`, {
         timeoutMs: 60_000,
         token
       });
@@ -457,15 +461,32 @@ export default function AdminUsersPage() {
                       <span className="text-slate-500">Kế hoạch học tập</span>
                       <span className="font-medium text-slate-900">
                         {selectedUser.profile.studyPlanFileName ? (
-                          <button
-                            type="button"
-                            disabled={actionId === `${selectedUser.id}:study-plan`}
-                            onClick={() => void downloadStudyPlanFile(selectedUser.id, selectedUser.profile?.studyPlanFileName)}
-                            className="inline-flex items-center gap-1.5 text-left font-bold text-indigo-600 hover:text-indigo-800 hover:underline disabled:opacity-50"
-                          >
-                            <FileText size={14} className="shrink-0" />
-                            {selectedUser.profile.studyPlanFileName}
-                          </button>
+                          selectedUser.profile.studyPlanImageFiles?.length ? (
+                            <span className="flex flex-col items-start gap-1">
+                              {selectedUser.profile.studyPlanImageFiles.map((image, index) => (
+                                <button
+                                  key={`${image.fileName}-${index}`}
+                                  type="button"
+                                  disabled={actionId === `${selectedUser.id}:study-plan:${index}`}
+                                  onClick={() => void downloadStudyPlanFile(selectedUser.id, image.fileName, index)}
+                                  className="inline-flex items-center gap-1.5 text-left font-bold text-indigo-600 hover:text-indigo-800 hover:underline disabled:opacity-50"
+                                >
+                                  <FileText size={14} className="shrink-0" />
+                                  {index + 1}. {image.fileName}
+                                </button>
+                              ))}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={actionId === `${selectedUser.id}:study-plan`}
+                              onClick={() => void downloadStudyPlanFile(selectedUser.id, selectedUser.profile?.studyPlanFileName)}
+                              className="inline-flex items-center gap-1.5 text-left font-bold text-indigo-600 hover:text-indigo-800 hover:underline disabled:opacity-50"
+                            >
+                              <FileText size={14} className="shrink-0" />
+                              {selectedUser.profile.studyPlanFileName}
+                            </button>
+                          )
                         ) : (
                           <span className="text-slate-400">Không có file tải lên</span>
                         )}
@@ -557,7 +578,7 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1.5 font-bold text-slate-900">
                           <FileText size={14} />
-                          {file.fileName || "study_plan"}
+                          {file.files.length ? `${file.files.length} ảnh` : file.fileName || "study_plan"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-600">
@@ -569,15 +590,20 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-500">{formatDate(file.updatedAt)}</td>
                       <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          disabled={actionId === `${file.userId}:study-plan`}
-                          onClick={() => void downloadStudyPlanFile(file.userId, file.fileName)}
-                          className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
-                        >
-                          <Download size={14} />
-                          Tải
-                        </button>
+                        <span className="flex flex-wrap gap-1">
+                          {(file.files.length ? file.files : [{ fileName: file.fileName, index: undefined }]).map((image) => (
+                            <button
+                              key={`${file.userId}-${image.index ?? "file"}`}
+                              type="button"
+                              disabled={actionId === `${file.userId}:study-plan${image.index === undefined ? "" : `:${image.index}`}`}
+                              onClick={() => void downloadStudyPlanFile(file.userId, image.fileName, image.index)}
+                              className="inline-flex min-h-9 items-center gap-1 rounded-lg border px-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                            >
+                              <Download size={13} />
+                              {image.index === undefined ? "Tải" : image.index + 1}
+                            </button>
+                          ))}
+                        </span>
                       </td>
                     </tr>
                   ))}

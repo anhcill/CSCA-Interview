@@ -1,20 +1,24 @@
 import { v2 as cloudinary } from "cloudinary";
+import { ai_task_type } from "@prisma/client";
 // @ts-ignore
 import pdf, { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import OpenAI from "openai";
 import { env } from "../../config/env.js";
+import { resolveAiModelRoute, type AiProviderId } from "../ai/ai-model-router.service.js";
 
 export type SupportedDocumentType = "pdf" | "docx" | "txt" | "image";
 export type StudyPlanParseStatus = "success" | "warning" | "failed";
+export type StudyPlanOcrProvider = AiProviderId;
 
 export type StudyPlanParseMetadata = {
   extractedTextLength: number;
   fileName: string | null;
   fileType?: SupportedDocumentType;
   originalTextLength?: number;
+  ocrModel?: string;
   ocrPageCount?: number;
-  ocrProvider?: "openai";
+  ocrProvider?: StudyPlanOcrProvider;
   ocrUsed?: boolean;
   pageCount?: number;
   parseStatus: StudyPlanParseStatus;
@@ -39,9 +43,7 @@ export const minimumUsefulStudyPlanTextLength = 120;
 export const maxStudyPlanAnalysisCharacters = 30_000;
 
 const textTruncatedWarning = "Nội dung Study Plan quá dài nên hệ thống đã cắt bớt phần cuối trước khi gửi AI phân tích.";
-const openAiOcrModel = process.env.OPENAI_OCR_MODEL?.trim() || "gpt-4o-mini";
 const maxOcrPdfPages = Math.max(1, Math.min(10, Number(process.env.OPENAI_OCR_MAX_PDF_PAGES) || 4));
-let openAiOcrClient: OpenAI | null | undefined;
 
 if (env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret) {
   cloudinary.config({
@@ -140,8 +142,9 @@ export function cleanStudyPlanText(
 export function createStudyPlanParseMetadata(input: {
   fileName?: string | null;
   fileType?: SupportedDocumentType;
+  ocrModel?: string;
   ocrPageCount?: number;
-  ocrProvider?: "openai";
+  ocrProvider?: StudyPlanOcrProvider;
   ocrUsed?: boolean;
   originalTextLength?: number;
   pageCount?: number;
@@ -166,6 +169,7 @@ export function createStudyPlanParseMetadata(input: {
     extractedTextLength,
     fileName: input.fileName ?? null,
     fileType: input.fileType,
+    ocrModel: input.ocrModel,
     ocrPageCount: input.ocrPageCount,
     ocrProvider: input.ocrProvider,
     ocrUsed: input.ocrUsed || undefined,
@@ -185,6 +189,8 @@ export async function extractTextFromDocument(
   const warnings: string[] = [];
   let rawText = "";
   let ocrPageCount: number | undefined;
+  let ocrModel: string | undefined;
+  let ocrProvider: StudyPlanOcrProvider | undefined;
   let ocrUsed = false;
   let pageCount: number | undefined;
 
@@ -198,8 +204,10 @@ export async function extractTextFromDocument(
       if (ocrResult.text.trim().length > rawText.trim().length) {
         rawText = ocrResult.text;
         ocrPageCount = ocrResult.pageCount;
+        ocrModel = ocrResult.model;
+        ocrProvider = ocrResult.provider;
         ocrUsed = true;
-        warnings.push(`PDF có ít text gốc nên hệ thống đã OCR ${ocrResult.pageCount} trang đầu bằng OpenAI.`);
+        warnings.push(`PDF có ít text gốc nên hệ thống đã OCR ${ocrResult.pageCount} trang đầu bằng ${formatOcrProvider(ocrResult.provider)}.`);
       } else {
         warnings.push(ocrResult.warning ?? "PDF có rất ít text đọc được. File có thể là bản scan/ảnh hoặc bị khóa text; OCR chưa đọc được nội dung rõ ràng.");
       }
@@ -232,8 +240,10 @@ export async function extractTextFromDocument(
     rawText = ocrResult.text;
     if (ocrResult.text.trim()) {
       ocrPageCount = 1;
+      ocrModel = ocrResult.model;
+      ocrProvider = ocrResult.provider;
       ocrUsed = true;
-      warnings.push("File ảnh Study Plan đã được OCR bằng OpenAI trước khi gửi AI phân tích.");
+      warnings.push(`File ảnh Study Plan đã được OCR bằng ${formatOcrProvider(ocrResult.provider)} trước khi gửi AI phân tích.`);
     } else {
       warnings.push(ocrResult.warning ?? "Không OCR được nội dung từ ảnh Study Plan. Vui lòng upload ảnh rõ hơn hoặc file PDF/DOCX/TXT có text.");
     }
@@ -243,8 +253,9 @@ export async function extractTextFromDocument(
   const metadata = createStudyPlanParseMetadata({
     fileName,
     fileType,
+    ocrModel,
     ocrPageCount,
-    ocrProvider: ocrUsed ? "openai" : undefined,
+    ocrProvider: ocrUsed ? ocrProvider : undefined,
     ocrUsed,
     originalTextLength: cleaned.originalLength,
     pageCount,
@@ -257,6 +268,36 @@ export async function extractTextFromDocument(
     metadata,
     text: cleaned.text
   };
+}
+
+export async function extractTextFromImageDocuments(
+  files: Array<{ buffer: Buffer; fileName: string }>
+): Promise<DocumentExtractionResult> {
+  if (!files.length) {
+    throw new Error("Chưa có ảnh Study Plan để OCR.");
+  }
+
+  const ocrResult = await extractTextFromImages(
+    files.map((file) => toImageDataUrl(file.buffer, file.fileName))
+  );
+  const cleaned = cleanStudyPlanText(ocrResult.text);
+  const metadata = createStudyPlanParseMetadata({
+    fileName: files.length === 1 ? files[0]?.fileName : `${files.length} ảnh Study Plan`,
+    fileType: "image",
+    ocrModel: ocrResult.model,
+    ocrPageCount: ocrResult.text.trim() ? files.length : 0,
+    ocrProvider: ocrResult.provider,
+    ocrUsed: Boolean(ocrResult.provider && ocrResult.text.trim()),
+    originalTextLength: cleaned.originalLength,
+    pageCount: files.length,
+    text: cleaned.text,
+    truncated: cleaned.truncated,
+    warnings: ocrResult.text.trim()
+      ? [`Đã OCR ${files.length} ảnh Study Plan bằng ${formatOcrProvider(ocrResult.provider)}.`]
+      : [ocrResult.warning ?? "Không OCR được nội dung từ các ảnh Study Plan."]
+  });
+
+  return { metadata, text: cleaned.text };
 }
 
 function getSupportedDocumentType(fileName: string): SupportedDocumentType {
@@ -273,13 +314,13 @@ function getSupportedDocumentType(fileName: string): SupportedDocumentType {
   throw new Error("Định dạng tệp không được hỗ trợ. Vui lòng tải lên file PDF, DOCX, TXT hoặc ảnh PNG/JPG/WEBP.");
 }
 
-async function extractTextFromPdfScreenshots(buffer: Buffer): Promise<{ pageCount: number; text: string; warning?: string }> {
-  const client = getOpenAiOcrClient();
-  if (!client) {
+async function extractTextFromPdfScreenshots(buffer: Buffer): Promise<{ model?: string; pageCount: number; provider?: StudyPlanOcrProvider; text: string; warning?: string }> {
+  const config = await getOcrConfig();
+  if (!config) {
     return {
       pageCount: 0,
       text: "",
-      warning: "PDF có rất ít text đọc được nhưng backend chưa cấu hình OPENAI_API_KEY để OCR file scan."
+      warning: "PDF có rất ít text đọc được nhưng chưa cấu hình model AI cho tác vụ phân tích Study Plan."
     };
   }
 
@@ -300,8 +341,8 @@ async function extractTextFromPdfScreenshots(buffer: Buffer): Promise<{ pageCoun
       return { pageCount: 0, text: "", warning: "Không render được trang PDF để OCR." };
     }
 
-    const text = await extractTextWithOpenAiVision(client, imageDataUrls);
-    return { pageCount: imageDataUrls.length, text };
+    const text = await extractTextWithVision(config, imageDataUrls);
+    return { model: config.model, pageCount: imageDataUrls.length, provider: config.provider, text };
   } catch (error) {
     return {
       pageCount: 0,
@@ -313,17 +354,17 @@ async function extractTextFromPdfScreenshots(buffer: Buffer): Promise<{ pageCoun
   }
 }
 
-async function extractTextFromImages(imageDataUrls: string[]): Promise<{ text: string; warning?: string }> {
-  const client = getOpenAiOcrClient();
-  if (!client) {
+async function extractTextFromImages(imageDataUrls: string[]): Promise<{ model?: string; provider?: StudyPlanOcrProvider; text: string; warning?: string }> {
+  const config = await getOcrConfig();
+  if (!config) {
     return {
       text: "",
-      warning: "Backend chưa cấu hình OPENAI_API_KEY để OCR ảnh Study Plan."
+      warning: "Chưa cấu hình model AI cho tác vụ phân tích Study Plan."
     };
   }
 
   try {
-    return { text: await extractTextWithOpenAiVision(client, imageDataUrls) };
+    return { model: config.model, provider: config.provider, text: await extractTextWithVision(config, imageDataUrls) };
   } catch (error) {
     return {
       text: "",
@@ -332,8 +373,11 @@ async function extractTextFromImages(imageDataUrls: string[]): Promise<{ text: s
   }
 }
 
-async function extractTextWithOpenAiVision(client: OpenAI, imageDataUrls: string[]) {
-  const response = await client.chat.completions.create({
+async function extractTextWithVision(
+  config: { client: OpenAI; model: string; provider: StudyPlanOcrProvider },
+  imageDataUrls: string[]
+) {
+  const response = await config.client.chat.completions.create({
     messages: [
       {
         role: "system",
@@ -358,22 +402,33 @@ async function extractTextWithOpenAiVision(client: OpenAI, imageDataUrls: string
         ] as any
       }
     ],
-    model: openAiOcrModel,
+    model: config.model,
     temperature: 0
   });
 
   return response.choices[0]?.message?.content?.trim() ?? "";
 }
 
-function getOpenAiOcrClient() {
-  if (!env.openAiApiKey) return null;
-  if (openAiOcrClient !== undefined) return openAiOcrClient;
-
-  openAiOcrClient = new OpenAI({
-    apiKey: env.openAiApiKey,
-    ...(env.openAiBaseUrl ? { baseURL: env.openAiBaseUrl } : {})
+async function getOcrConfig() {
+  const route = await resolveAiModelRoute({
+    agentKey: "study_plan_analyzer",
+    operation: "extractStudyPlanText",
+    taskType: ai_task_type.ANALYZE_STUDY_PLAN
   });
-  return openAiOcrClient;
+  if (!route.client || !route.model || route.provider === "fallback") return null;
+
+  return {
+    client: route.client,
+    model: route.model,
+    provider: route.provider
+  };
+}
+
+function formatOcrProvider(provider?: StudyPlanOcrProvider) {
+  if (provider === "9router") return "9Router";
+  if (provider === "openrouter") return "OpenRouter";
+  if (provider === "deepseek") return "DeepSeek";
+  return "OpenAI";
 }
 
 function toImageDataUrl(buffer: Buffer, fileName: string) {

@@ -9,6 +9,8 @@ import {
   fetchMyProfile,
   updateMyProfile,
   type ProfileInput,
+  type StudyPlanImageFileDto,
+  type StudyPlanImageInput,
   type UserProfileDto
 } from "@/lib/profile-client";
 
@@ -31,8 +33,11 @@ type ProfileFormState = {
   scholarshipType: string;
   strengths: string;
   studyPlan: string;
+  studyPlanExistingImages: StudyPlanImageFileDto[];
   studyPlanFileName: string;
   studyPlanFileContent: string;
+  studyPlanImages: StudyPlanImageInput[];
+  studyPlanImagesCleared: boolean;
   targetMajor: string;
   targetSchool: string;
   toeflScore: string;
@@ -59,8 +64,11 @@ const defaultForm: ProfileFormState = {
   scholarshipType: "CSC",
   strengths: "",
   studyPlan: "",
+  studyPlanExistingImages: [],
   studyPlanFileName: "",
   studyPlanFileContent: "",
+  studyPlanImages: [],
+  studyPlanImagesCleared: false,
   targetMajor: "",
   targetSchool: "",
   toeflScore: "",
@@ -99,27 +107,47 @@ export function ProfileForm() {
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      void handleFileChange(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) {
+      void handleFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      void handleFileChange(e.target.files[0]);
+    if (e.target.files?.length) {
+      void handleFiles(Array.from(e.target.files));
     }
+    e.target.value = "";
   };
 
-  const handleFileChange = async (file: File) => {
+  const handleFiles = async (files: File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name));
+    const documentFiles = files.filter((file) => !imageFiles.includes(file));
+
+    if (documentFiles.length && imageFiles.length) {
+      setError("Vui lòng chọn một file PDF/DOCX/TXT hoặc một bộ ảnh, không trộn hai loại trong cùng lần tải.");
+      return;
+    }
+    if (documentFiles.length > 1) {
+      setError("Mỗi lần chỉ tải được một file PDF/DOCX/TXT.");
+      return;
+    }
+    if (imageFiles.length) {
+      await handleStudyPlanImages(imageFiles);
+      return;
+    }
+    if (documentFiles[0]) await handleDocumentFile(documentFiles[0]);
+  };
+
+  const handleDocumentFile = async (file: File) => {
     if (file.size > 15 * 1024 * 1024) {
       setError("Dung lượng tệp tối đa được phép là 15MB.");
       return;
     }
 
-    const allowedExtensions = ["pdf", "docx", "txt", "png", "jpg", "jpeg", "webp"];
+    const allowedExtensions = ["pdf", "docx", "txt"];
     const extension = file.name.split(".").pop()?.toLowerCase();
     if (!extension || !allowedExtensions.includes(extension)) {
-      setError("Định dạng tệp không được hỗ trợ. Vui lòng tải lên file PDF, DOCX, TXT hoặc ảnh PNG/JPG/WEBP.");
+      setError("Định dạng tệp không được hỗ trợ. Vui lòng tải lên file PDF, DOCX hoặc TXT.");
       return;
     }
 
@@ -131,24 +159,100 @@ export function ProfileForm() {
       const base64 = reader.result as string;
       setForm((current) => ({
         ...current,
+        studyPlanExistingImages: [],
         studyPlanFileName: file.name,
         studyPlanFileContent: base64,
+        studyPlanImages: [],
+        studyPlanImagesCleared: true,
         studyPlan: `Tệp đã chọn: ${file.name}`
       }));
     };
   };
 
+  const handleStudyPlanImages = async (files: File[]) => {
+    const accepted = files.filter((file) => /\.(png|jpe?g|webp)$/i.test(file.name));
+    if (accepted.length !== files.length) {
+      setError("Ảnh Study Plan chỉ hỗ trợ PNG, JPG, JPEG hoặc WEBP.");
+      return;
+    }
+    if (accepted.some((file) => file.size > 5 * 1024 * 1024)) {
+      setError("Mỗi ảnh Study Plan tối đa 5MB.");
+      return;
+    }
+
+    const replacingExisting = form.studyPlanExistingImages.length > 0 && form.studyPlanImages.length === 0;
+    const currentImages = replacingExisting ? [] : form.studyPlanImages;
+    if (currentImages.length + accepted.length > 6) {
+      setError("Chỉ được tải tối đa 6 ảnh Study Plan.");
+      return;
+    }
+    const totalBytes = currentImages.reduce((total, image) => total + estimateDataUrlBytes(image.fileContent), 0)
+      + accepted.reduce((total, image) => total + image.size, 0);
+    if (totalBytes > 20 * 1024 * 1024) {
+      setError("Tổng dung lượng các ảnh Study Plan tối đa 20MB.");
+      return;
+    }
+
+    const nextImages = await Promise.all(accepted.map(async (file) => ({
+      fileContent: await readFileAsDataUrl(file),
+      fileName: file.name
+    })));
+    setError("");
+    setForm((current) => {
+      const base = current.studyPlanExistingImages.length && !current.studyPlanImages.length
+        ? []
+        : current.studyPlanImages;
+      const images = [...base, ...nextImages];
+      return {
+        ...current,
+        studyPlan: `Đã chọn ${images.length} ảnh Study Plan`,
+        studyPlanExistingImages: [],
+        studyPlanFileContent: "",
+        studyPlanFileName: "",
+        studyPlanImages: images,
+        studyPlanImagesCleared: true
+      };
+    });
+  };
+
+  const handlePasteImages = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const images = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+    if (!images.length) return;
+    event.preventDefault();
+    void handleStudyPlanImages(images.map((file, index) => (
+      file.name ? file : new File([file], `study-plan-paste-${Date.now()}-${index + 1}.png`, { type: file.type })
+    )));
+  };
+
   const handleRemoveFile = () => {
     setForm((current) => ({
       ...current,
+      studyPlanExistingImages: [],
       studyPlanFileName: "",
       studyPlanFileContent: "",
+      studyPlanImages: [],
+      studyPlanImagesCleared: true,
       studyPlan: ""
     }));
   };
 
+  const handleRemoveImage = (index: number) => {
+    setForm((current) => {
+      const images = current.studyPlanImages.filter((_, imageIndex) => imageIndex !== index);
+      return {
+        ...current,
+        studyPlan: images.length ? `Đã chọn ${images.length} ảnh Study Plan` : "",
+        studyPlanImages: images,
+        studyPlanImagesCleared: true
+      };
+    });
+  };
+
   const completion = useMemo(() => {
-    const filled = requiredFields.filter((key) => form[key].trim()).length;
+    const filled = requiredFields.filter((key) => {
+      const value = form[key];
+      return typeof value === "string" && value.trim();
+    }).length;
     return Math.round((filled / requiredFields.length) * 100);
   }, [form]);
 
@@ -203,7 +307,12 @@ export function ProfileForm() {
       return;
     }
 
-    if (!form.studyPlanFileName || form.studyPlan.trim().length < 10) {
+    const hasStudyPlanSource = Boolean(
+      form.studyPlanFileName
+      || form.studyPlanImages.length
+      || form.studyPlanExistingImages.length
+    );
+    if (!hasStudyPlanSource || form.studyPlan.trim().length < 10) {
       setError("Vui lòng tải lên tệp Kế hoạch học tập (Study Plan) hợp lệ.");
       return;
     }
@@ -211,7 +320,8 @@ export function ProfileForm() {
     setIsSaving(true);
 
     try {
-      await updateMyProfile(formToPayload(form));
+      const saved = await updateMyProfile(formToPayload(form));
+      setForm(profileToForm(saved.profile));
       setSuccess("Profile đã được lưu. Bạn có thể tạo phòng phỏng vấn theo hồ sơ này.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu profile");
@@ -226,7 +336,8 @@ export function ProfileForm() {
     setIsSaving(true);
 
     try {
-      await updateMyProfile(formToPayload(form));
+      const saved = await updateMyProfile(formToPayload(form));
+      setForm(profileToForm(saved.profile));
       router.push("/interview/setup");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu profile");
@@ -314,8 +425,8 @@ export function ProfileForm() {
               </div>
             </FormSection>
 
-            <FormSection title="Kế hoạch học tập" description="Tải lên kế hoạch học tập của bạn (PDF, DOCX, TXT hoặc ảnh scan, tối đa 15MB).">
-              <div className="space-y-4">
+            <FormSection title="Kế hoạch học tập" description="Tải một file PDF/DOCX/TXT hoặc dán, kéo thả nhiều ảnh scan để hệ thống đọc theo thứ tự.">
+              <div className="space-y-4" onPasteCapture={handlePasteImages}>
                 <span className="block text-sm font-bold text-slate-700 dark:text-slate-300">
                   Tệp Study Plan <span className="text-red-500">*</span>
                 </span>
@@ -340,8 +451,60 @@ export function ProfileForm() {
                       <X size={15} />
                     </button>
                   </div>
+                ) : form.studyPlanImages.length || form.studyPlanExistingImages.length ? (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-slate-900 dark:text-white">
+                          {(form.studyPlanImages.length || form.studyPlanExistingImages.length)} ảnh Study Plan
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">Ảnh sẽ được OCR cùng nhau theo đúng thứ tự.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveFile}
+                        className="focus-ring rounded-lg border border-red-200 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-50"
+                      >
+                        Xóa tất cả
+                      </button>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {(form.studyPlanImages.length
+                        ? form.studyPlanImages
+                        : form.studyPlanExistingImages
+                      ).map((image, index) => (
+                        <div key={`${image.fileName}-${index}`} className="flex items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-black">{index + 1}. {image.fileName}</p>
+                            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                              {"sizeBytes" in image ? formatFileSize(image.sizeBytes) : "Ảnh mới"}
+                            </p>
+                          </div>
+                          {form.studyPlanImages.length ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(index)}
+                              className="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-50"
+                              aria-label={`Xóa ${image.fileName}`}
+                            >
+                              <X size={13} />
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
                   <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Tải hoặc dán ảnh Study Plan"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.currentTarget.querySelector("input")?.click();
+                      }
+                    }}
                     onDragEnter={handleDrag}
                     onDragOver={handleDrag}
                     onDragLeave={handleDrag}
@@ -353,10 +516,12 @@ export function ProfileForm() {
                     }`}
                   >
                     <Upload className="text-slate-400 dark:text-slate-500" size={32} />
-                    <p className="mt-3 text-sm font-black text-slate-900 dark:text-white">Kéo thả tệp vào đây, hoặc click để chọn</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">Chấp nhận PDF, Word (.docx), Text (.txt) hoặc ảnh scan, tối đa 15MB</p>
+                    <p className="mt-3 text-sm font-black text-slate-900 dark:text-white">Kéo thả, chọn file hoặc dán ảnh vào đây</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">1 file PDF/DOCX/TXT tối đa 15MB; hoặc tối đa 6 ảnh, mỗi ảnh 5MB</p>
+                    <p className="mt-2 rounded-lg bg-white px-3 py-1.5 text-[11px] font-black text-primary dark:bg-slate-950">Ctrl+V để dán một hoặc nhiều ảnh từ clipboard</p>
                     <input
                       type="file"
+                      multiple
                       accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp"
                       onChange={handleFileSelect}
                       className="absolute inset-0 cursor-pointer opacity-0"
@@ -456,8 +621,11 @@ function profileToForm(profile: UserProfileDto): ProfileFormState {
     scholarshipType: profile.scholarshipType,
     strengths: profile.strengths ?? "",
     studyPlan: profile.studyPlan,
-    studyPlanFileName: profile.studyPlanFileName ?? "",
+    studyPlanExistingImages: profile.studyPlanImageFiles ?? [],
+    studyPlanFileName: profile.studyPlanImageFiles?.length ? "" : profile.studyPlanFileName ?? "",
     studyPlanFileContent: "",
+    studyPlanImages: [],
+    studyPlanImagesCleared: false,
     targetMajor: profile.targetMajor,
     targetSchool: profile.targetSchool,
     toeflScore: profile.toeflScore ?? "",
@@ -488,6 +656,11 @@ function formToPayload(form: ProfileFormState): ProfileInput {
     studyPlan: form.studyPlan.trim(),
     studyPlanFileName: form.studyPlanFileName.trim() ? form.studyPlanFileName.trim() : null,
     studyPlanFileContent: form.studyPlanFileContent.trim() ? form.studyPlanFileContent.trim() : null,
+    studyPlanImages: form.studyPlanImages.length
+      ? form.studyPlanImages
+      : form.studyPlanImagesCleared
+        ? null
+        : undefined,
     targetMajor: form.targetMajor.trim(),
     targetSchool: form.targetSchool.trim(),
     toeflScore: optionalText(form.toeflScore),
@@ -499,6 +672,25 @@ function formToPayload(form: ProfileFormState): ProfileInput {
 function optionalText(value: string) {
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Không thể đọc ảnh ${file.name}`));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
+  });
+}
+
+function estimateDataUrlBytes(value: string) {
+  const base64 = value.includes(",") ? value.slice(value.indexOf(",") + 1) : value;
+  return Math.floor(base64.length * 0.75);
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function FormSection({

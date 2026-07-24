@@ -497,6 +497,7 @@ adminRouter.get("/study-plan-files", async (req, res) => {
           studyPlanFileContent: true,
           studyPlanFileName: true,
           studyPlanFileUrl: true,
+          studyPlanImageFiles: true,
           targetMajor: true,
           targetSchool: true,
           updatedAt: true,
@@ -519,6 +520,10 @@ adminRouter.get("/study-plan-files", async (req, res) => {
     const data = profiles.map((profile) => ({
       email: profile.user.email,
       fileName: profile.studyPlanFileName,
+      files: readStudyPlanImageFiles(profile.studyPlanImageFiles).map((file, index) => ({
+        fileName: file.fileName,
+        index
+      })),
       fullName: profile.user.fullName,
       scholarshipType: profile.scholarshipType,
       storageProvider: getStudyPlanStorageProvider(profile),
@@ -587,12 +592,28 @@ adminRouter.get("/users/:id/study-plan/download", async (req, res) => {
       where: { userId: req.params.id }
     });
 
-    if (!profile || (!profile.studyPlanFileContent && !profile.studyPlanFileUrl)) {
+    if (!profile || (!profile.studyPlanFileContent && !profile.studyPlanFileUrl && !readStudyPlanImageFiles(profile.studyPlanImageFiles).length)) {
       res.status(404).json({ message: "Người dùng này chưa tải lên tệp kế hoạch học tập." });
       return;
     }
 
     const fileName = profile.studyPlanFileName || "study_plan.pdf";
+    const imageFiles = readStudyPlanImageFiles(profile.studyPlanImageFiles);
+    if (imageFiles.length) {
+      const requestedIndex = Number(req.query.imageIndex ?? 0);
+      const image = Number.isInteger(requestedIndex) ? imageFiles[requestedIndex] : null;
+      if (!image) {
+        res.status(404).json({ message: "Không tìm thấy ảnh Study Plan được yêu cầu." });
+        return;
+      }
+      if (isR2StoredUrl(image.fileUrl)) {
+        const file = await getR2ObjectBuffer(image.fileUrl);
+        sendStudyPlanBuffer(res, file.buffer, image.fileName, file.contentType);
+      } else {
+        await sendRemoteStudyPlanFile(res, image.fileUrl, image.fileName);
+      }
+      return;
+    }
 
     if (profile.studyPlanFileUrl) {
       if (isR2StoredUrl(profile.studyPlanFileUrl)) {
@@ -618,13 +639,30 @@ adminRouter.get("/users/:id/study-plan/download", async (req, res) => {
 type StudyPlanStorageSource = {
   studyPlanFileContent?: string | null;
   studyPlanFileUrl?: string | null;
+  studyPlanImageFiles?: unknown;
 };
 
 function getStudyPlanStorageProvider(profile: StudyPlanStorageSource) {
+  const imageFiles = readStudyPlanImageFiles(profile.studyPlanImageFiles);
+  if (imageFiles.length) {
+    const providers = new Set(imageFiles.map((file) => isR2StoredUrl(file.fileUrl) ? "R2" : "Cloudinary"));
+    return `${Array.from(providers).join(" + ")} (${imageFiles.length} ảnh)`;
+  }
   if (isR2StoredUrl(profile.studyPlanFileUrl)) return "R2";
   if (profile.studyPlanFileUrl) return "Cloudinary";
   if (profile.studyPlanFileContent) return "Database";
   return "Không rõ";
+}
+
+function readStudyPlanImageFiles(value: unknown) {
+  if (!Array.isArray(value)) return [] as Array<{ fileName: string; fileUrl: string }>;
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    return typeof record.fileName === "string" && typeof record.fileUrl === "string"
+      ? [{ fileName: record.fileName, fileUrl: record.fileUrl }]
+      : [];
+  });
 }
 
 async function sendRemoteStudyPlanFile(res: Response, fileUrl: string, fileName: string) {
