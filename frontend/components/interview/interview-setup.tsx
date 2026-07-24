@@ -593,7 +593,7 @@ function PaymentFlowNotice({
     if (entitlement.isUnlimited) {
       return (
         <p className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">
-          Tài khoản quản trị được tạo và sử dụng phòng phỏng vấn không giới hạn, không cần thanh toán.
+          {entitlement.message}
         </p>
       );
     }

@@ -31,10 +31,13 @@ const defaultBankConfig: BankConfig = {
   bankCode: "MSB"
 };
 const paymentOrderExpiresInMinutes = 10;
+// Temporary launch switch: interviews are currently available without payment.
+// Set this back to false to restore the existing entitlement and consumption flow.
+const interviewPaymentsTemporarilyDisabled = true;
 type PaymentAccessRole = "USER" | "ADMIN" | "SUPER_ADMIN";
 
 export function isPaymentExemptRole(role: PaymentAccessRole) {
-  return role === "ADMIN" || role === "SUPER_ADMIN";
+  return interviewPaymentsTemporarilyDisabled || role === "ADMIN" || role === "SUPER_ADMIN";
 }
 
 export function listPaymentPlans() {
@@ -143,7 +146,9 @@ export async function getInterviewPaymentEntitlement(userId: string, requiredMin
     return {
       ...buildPaymentRequiredResponse(safeRequiredMinutes),
       code: "PAYMENT_NOT_REQUIRED" as const,
-      message: "Tài khoản quản trị được sử dụng phỏng vấn không giới hạn.",
+      message: interviewPaymentsTemporarilyDisabled
+        ? "Thanh toán đang tạm tắt. Bạn có thể sử dụng phòng phỏng vấn miễn phí."
+        : "Tài khoản quản trị được sử dụng phỏng vấn không giới hạn.",
       paymentUrl: "",
       availablePayments: [],
       hasAccess: true,
