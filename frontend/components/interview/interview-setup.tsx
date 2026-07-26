@@ -18,11 +18,9 @@ import {
   createInterviewSession
 } from "@/lib/interview-client";
 import {
-  getStoredInterviewLanguageMode,
   getStoredLocale,
   interviewModeToBackendLanguage,
   localeChangedEvent,
-  localeToBackendLanguage,
   messages,
   setStoredInterviewLanguageMode,
   type Locale
@@ -97,10 +95,9 @@ export function InterviewSetup() {
   useEffect(() => {
     const initialLocale = getStoredLocale();
     setLocale(initialLocale);
-    const storedMode = getStoredInterviewLanguageMode();
     setForm((current) => ({
       ...current,
-      language: storedMode || localeToBackendLanguage(initialLocale)
+      language: "ZH"
     }));
 
     try {

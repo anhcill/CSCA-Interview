@@ -17,9 +17,11 @@ export function VoiceRecorder({ state, transcript, onToggle, onCancel, disabled 
   const animFrameRef = useRef<number>(0);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isRecording = ["LISTENING", "SPEECH_DETECTED", "WAITING_FOR_MORE"].includes(state);
+  const isTranscribing = state === "TRANSCRIBING";
 
   useEffect(() => {
-    if (state !== "recording") {
+    if (!isRecording) {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       analyserRef.current = null;
       if (streamRef.current) {
@@ -55,7 +57,7 @@ export function VoiceRecorder({ state, transcript, onToggle, onCancel, disabled 
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       ctx?.close();
     };
-  }, [state]);
+  }, [isRecording]);
 
   function drawWaveform() {
     const canvas = canvasRef.current;
@@ -126,13 +128,13 @@ export function VoiceRecorder({ state, transcript, onToggle, onCancel, disabled 
         className="mb-3 w-full rounded-xl"
       />
 
-      {transcript && state === "idle" ? (
+      {transcript && state === "REVIEW" ? (
         <p className="mb-3 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-[#243252] border border-[#d2deee]">
           {transcript}
         </p>
       ) : null}
 
-      {state === "transcribing" ? (
+      {isTranscribing ? (
         <p className="mb-3 flex items-center gap-2 text-sm font-bold text-blue-600">
           <Loader2 size={14} className="animate-spin" />
           Đang chuyển giọng nói thành văn bản...
@@ -143,14 +145,14 @@ export function VoiceRecorder({ state, transcript, onToggle, onCancel, disabled 
         <button
           type="button"
           onClick={onToggle}
-          disabled={disabled || state === "transcribing"}
+          disabled={disabled || isTranscribing}
           className={`flex h-12 items-center gap-2 rounded-xl px-5 text-sm font-black text-white shadow-lg transition ${
-            state === "recording"
+            isRecording
               ? "bg-[#f3374d] shadow-red-500/25 hover:bg-[#d92c3d]"
               : "bg-[#0a9f7a] shadow-emerald-500/25 hover:bg-[#088a6a]"
           } disabled:opacity-45 disabled:cursor-not-allowed`}
         >
-          {state === "recording" ? (
+          {isRecording ? (
             <>
               <Square size={16} fill="currentColor" /> Dừng ghi
             </>
@@ -161,7 +163,7 @@ export function VoiceRecorder({ state, transcript, onToggle, onCancel, disabled 
           )}
         </button>
 
-        {state === "recording" ? (
+        {isRecording ? (
           <button
             type="button"
             onClick={onCancel}
@@ -172,7 +174,7 @@ export function VoiceRecorder({ state, transcript, onToggle, onCancel, disabled 
         ) : null}
 
         <span className="ml-auto text-xs font-bold text-[#8794aa]">
-          {state === "recording" ? "🔴 Đang ghi âm..." : state === "transcribing" ? "⏳ Đang xử lý..." : "Sẵn sàng"}
+          {isRecording ? "🔴 Đang ghi âm..." : isTranscribing ? "⏳ Đang xử lý..." : "Sẵn sàng"}
         </span>
       </div>
     </div>

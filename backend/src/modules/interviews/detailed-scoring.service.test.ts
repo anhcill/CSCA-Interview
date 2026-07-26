@@ -80,7 +80,16 @@ describe("Detailed Scoring Service - buildSessionAnalysis", () => {
               suggestedAnswerLogic: "Connect motivation, academic fit, and plan."
             }
           },
-          voice_recordings: []
+          voice_recordings: [{
+            feedback: JSON.stringify({
+              speechMetrics: { confidenceScore: 60, fluencyScore: 60, wpm: 105 },
+              pronunciation: { pronunciationScore: 60 }
+            }),
+            fluency_score: 60,
+            pronunciation_score: 60,
+            speed_words_per_minute: 105,
+            transcript: "I want to study in China because the program matches my research plan."
+          }]
         }
       ]
     };
@@ -96,6 +105,14 @@ describe("Detailed Scoring Service - buildSessionAnalysis", () => {
     expect(analysis.answerDetails[0].improvedAnswer).toBe("Persisted improved answer");
     expect(analysis.answerDetails[0].scoringSource).toBe("ai");
     expect(analysis.answerDetails[0].strengths).not.toContain("Fallback strength");
+    expect(analysis.answerDetails[0].scores.language).toBe(8);
+    expect(analysis.answerDetails[0].scores.confidence).toBe(8);
+    expect(analysis.answerDetails[0].speech?.pronunciationScore).toBe(60);
+    expect(analysis.answerDetails[0].answerSource).toBe("MIC");
+    expect(analysis.answerDetails[0].audioScore).toBe(60);
+    expect(analysis.answerDetails[0].transcript).toContain("program matches");
+    expect(analysis.completedTopics[0]).toMatchObject({ depthReached: 1, questionCount: 1 });
+    expect(analysis.practicePlan7Days).toHaveLength(7);
   });
 
   it("keeps heuristic answer details out of official aggregate scores", () => {
@@ -168,6 +185,8 @@ describe("Detailed Scoring Service - buildSessionAnalysis", () => {
     expect(analysis.criteriaAverages.content).toBe(0);
     expect(analysis.answerDetails[0].scoringSource).toBe("heuristic");
     expect(analysis.answerDetails[0].scores.total).toBe(8.1);
+    expect(analysis.answerDetails[0].answerSource).toBe("TEXT");
+    expect(analysis.answerDetails[0].audioScore).toBeNull();
     expect(analysis.sessionSummary).toContain("chưa có điểm AI chính thức");
   });
 });

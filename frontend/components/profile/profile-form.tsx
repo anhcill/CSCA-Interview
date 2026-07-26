@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
+import { GpaFields } from "@/components/profile/gpa-fields";
+import { apiGet } from "@/lib/api";
 import {
   fetchMyProfile,
   updateMyProfile,
@@ -43,6 +45,23 @@ type ProfileFormState = {
   toeflScore: string;
   weaknesses: string;
   workExperience: string;
+};
+
+type MajorOption = {
+  degreeLevel: "BACHELOR" | "MASTER";
+  id: string;
+  name: string;
+  nameZh?: string | null;
+};
+
+type ScholarshipOption = {
+  code?: string | null;
+  id: string;
+  name: string;
+};
+
+type LookupResponse<T> = {
+  data: T[];
 };
 
 const defaultForm: ProfileFormState = {
@@ -91,6 +110,11 @@ export function ProfileForm() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [majors, setMajors] = useState<MajorOption[]>([]);
+  const [scholarships, setScholarships] = useState<ScholarshipOption[]>([]);
+  const eligibleMajors = majors.filter((major) => major.degreeLevel === form.degreeLevel);
+  const selectedMajorId = form.majorId || eligibleMajors.find((major) => major.name === form.targetMajor)?.id || "";
+  const selectedScholarshipId = form.scholarshipId || scholarships.find((item) => item.name === form.scholarshipType)?.id || "";
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -290,6 +314,31 @@ export function ProfileForm() {
     };
   }, [router]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadApplicationOptions() {
+      try {
+        const [majorResponse, scholarshipResponse] = await Promise.all([
+          apiGet<LookupResponse<MajorOption>>("/api/majors?limit=500", { cacheMs: 5 * 60_000 }),
+          apiGet<LookupResponse<ScholarshipOption>>("/api/scholarships?limit=200", { cacheMs: 5 * 60_000 })
+        ]);
+        if (ignore) return;
+        setMajors(majorResponse.data);
+        setScholarships(scholarshipResponse.data);
+      } catch {
+        if (ignore) return;
+        setMajors([]);
+        setScholarships([]);
+      }
+    }
+
+    void loadApplicationOptions();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   function updateField<Key extends keyof ProfileFormState>(key: Key, value: ProfileFormState[Key]) {
     setForm((current) => ({
       ...current,
@@ -375,7 +424,16 @@ export function ProfileForm() {
                 <SelectField
                   label="Hệ apply"
                   value={form.degreeLevel}
-                  onChange={(value) => updateField("degreeLevel", value as ProfileFormState["degreeLevel"])}
+                  onChange={(value) => {
+                    const degreeLevel = value as ProfileFormState["degreeLevel"];
+                    setForm((current) => ({
+                      ...current,
+                      degreeLevel,
+                      gpa: current.degreeLevel === degreeLevel ? current.gpa : "",
+                      majorId: current.degreeLevel === degreeLevel ? current.majorId : "",
+                      targetMajor: current.degreeLevel === degreeLevel ? current.targetMajor : ""
+                    }));
+                  }}
                   options={[["BACHELOR", "Đại học"], ["MASTER", "Thạc sĩ"]]}
                 />
                 <NumberField label="Tuổi" value={form.age} onChange={(value) => updateField("age", value)} />
@@ -391,9 +449,45 @@ export function ProfileForm() {
                     }));
                   }}
                 />
-                <TextField label="Ngành apply" required value={form.targetMajor} onChange={(value) => updateField("targetMajor", value)} />
-                <TextField label="Loại học bổng" required value={form.scholarshipType} onChange={(value) => updateField("scholarshipType", value)} />
-                <TextField label="GPA" value={form.gpa} onChange={(value) => updateField("gpa", value)} />
+                <SelectField
+                  label="Ngành apply"
+                  value={selectedMajorId}
+                  onChange={(value) => {
+                    const major = eligibleMajors.find((item) => item.id === value);
+                    setForm((current) => ({
+                      ...current,
+                      majorId: major?.id ?? "",
+                      targetMajor: major?.name ?? ""
+                    }));
+                  }}
+                  options={[
+                    ["", form.targetMajor && !selectedMajorId ? `Ngoài danh mục: ${form.targetMajor}` : "Chọn ngành"],
+                    ...eligibleMajors.map((major) => [
+                      major.id,
+                      `${major.name}${major.nameZh ? ` · ${major.nameZh}` : ""}`
+                    ] as [string, string])
+                  ]}
+                />
+                <SelectField
+                  label="Loại học bổng"
+                  value={selectedScholarshipId}
+                  onChange={(value) => {
+                    const scholarship = scholarships.find((item) => item.id === value);
+                    setForm((current) => ({
+                      ...current,
+                      scholarshipId: scholarship?.id ?? "",
+                      scholarshipType: scholarship?.name ?? ""
+                    }));
+                  }}
+                  options={[
+                    ["", form.scholarshipType && !selectedScholarshipId ? `Ngoài danh mục: ${form.scholarshipType}` : "Chọn học bổng"],
+                    ...scholarships.map((scholarship) => [
+                      scholarship.id,
+                      `${scholarship.name}${scholarship.code ? ` · ${scholarship.code}` : ""}`
+                    ] as [string, string])
+                  ]}
+                />
+                <GpaFields degreeLevel={form.degreeLevel} value={form.gpa} onChange={(value) => updateField("gpa", value)} />
               </div>
             </FormSection>
 

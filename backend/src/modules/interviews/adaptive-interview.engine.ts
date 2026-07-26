@@ -1,20 +1,35 @@
 import { DifficultyLevel, LanguageCode, QuestionCategory, QuestionSource, type InterviewAnswer, type InterviewSession, type InterviewSessionQuestion } from "@prisma/client";
 import { generateAdaptiveFollowUpQuestion, generateFollowUpQuestion, type ConversationEntry } from "../ai/ai.service.js";
 import { buildInterviewRagContext } from "./rag-context.service.js";
+import { analyzeInterviewDepth, extractCandidateClaims } from "./interview-depth.js";
+import {
+  buildPhaseFallbackQuestion,
+  interviewPhases,
+  selectNextInterviewPhase,
+  type InterviewPhaseKey
+} from "./interview-structure.js";
+import { validateInterviewQuestion } from "./question-quality.js";
 
 type SessionWithContext = InterviewSession & {
   answers: InterviewAnswer[];
+  profile?: { studyPlan: string | null } | null;
   sessionQuestions: InterviewSessionQuestion[];
 };
 
 export type AdaptiveQuestion = {
   aiReason: string;
   category: QuestionCategory;
+  completedPhases: InterviewPhaseKey[];
   difficulty: DifficultyLevel;
   expectedAnswerLogic: string;
   isFollowUp: boolean;
   followUpDepth: number;
   language: LanguageCode;
+  phaseDepth: number;
+  phaseKey: InterviewPhaseKey;
+  phaseLabel: string;
+  phaseTargetMinutes: number;
+  questionsPerPhase: Record<InterviewPhaseKey, number>;
   questionText: string;
   source: QuestionSource;
 };
@@ -63,13 +78,22 @@ export function buildConversationHistory(session: SessionWithContext): Conversat
 export async function createAdaptiveQuestion(session: SessionWithContext): Promise<AdaptiveQuestion> {
   const conversationHistory = buildConversationHistory(session);
   const lastAnswer = [...session.answers].sort((a, b) => b.answeredAt.getTime() - a.answeredAt.getTime())[0];
-  const lastQuestion = lastAnswer
-    ? session.sessionQuestions.find((q) => q.id === lastAnswer.sessionQuestionId)
-    : session.sessionQuestions[session.sessionQuestions.length - 1];
 
   const avgScore = getAverageScore(session.answers);
   const difficulty = pickDifficulty(avgScore);
-  const category = pickCategory(lastQuestion?.category, lastAnswer?.answerText ?? "", conversationHistory);
+  const phase = selectNextInterviewPhase(session.sessionQuestions, session.answers);
+  const category = phase.category;
+  const depthAnalysis = analyzeInterviewDepth({
+    answerText: lastAnswer?.answerText ?? "",
+    requestedDepth: phase.depth
+  });
+  const elapsedMinutes = session.startedAt
+    ? Math.max(0, (Date.now() - session.startedAt.getTime()) / 60_000)
+    : 0;
+  const remainingMinutes = Math.max(0, (session.plannedDurationMinutes ?? 30) - elapsedMinutes);
+  const requiredTopicsRemaining = interviewPhases
+    .filter((item) => !phase.completedPhases.includes(item.key))
+    .map((item) => item.label);
   const askedTexts = new Set(session.sessionQuestions.map((q) => normalize(q.questionText)));
   const ragContext = await buildInterviewRagContext({
     majorId: session.majorId,
@@ -82,27 +106,81 @@ export async function createAdaptiveQuestion(session: SessionWithContext): Promi
 
   const followUpInput = {
     answerText: lastAnswer?.answerText ?? "",
+    candidateClaims: conversationHistory
+      .flatMap((entry) => extractCandidateClaims(entry.answerText))
+      .slice(-8),
     category: category as string,
     conversationHistory,
+    currentDepth: depthAnalysis.currentDepth,
+    currentTopic: phase.label,
+    depthStrategy: depthAnalysis.strategy,
     difficulty: difficulty as "EASY" | "MEDIUM" | "HARD",
     language: session.language as "VI" | "ZH" | "EN",
+    missingContent: depthAnalysis.missingContent,
     ragContext: ragContext.contextText,
+    remainingMinutes: Math.round(remainingMinutes * 10) / 10,
+    requiredTopicsRemaining,
     scholarshipType: session.scholarshipType ?? "học bổng mục tiêu",
     targetMajor: session.targetMajor ?? "ngành bạn apply",
     targetSchool: session.targetSchool ?? "trường bạn apply",
+    studyPlan: session.profile?.studyPlan ?? null,
     userId: session.userId
   };
 
-  const aiFollowUpResult = await generateAdaptiveFollowUpQuestion({
+  const askedQuestions = session.sessionQuestions.map((question) => question.questionText);
+  let aiFollowUpResult = await generateAdaptiveFollowUpQuestion({
     ...followUpInput,
-    askedQuestions: session.sessionQuestions.map((question) => question.questionText)
+    askedQuestions
   });
 
-  // Use OpenAI when configured; keep deterministic fallback for local/dev.
-  const followUpResult = aiFollowUpResult ?? generateFollowUpQuestion(followUpInput);
+  let validation = aiFollowUpResult ? validateInterviewQuestion({
+    askedQuestions,
+    language: session.language,
+    questionText: aiFollowUpResult.questionText,
+    ragContext: ragContext.contextText,
+    targetMajor: session.targetMajor
+  }) : null;
 
-  // If the generated question was already asked, try fallback candidates
+  if (aiFollowUpResult && validation && !validation.valid) {
+    aiFollowUpResult = await generateAdaptiveFollowUpQuestion({
+      ...followUpInput,
+      askedQuestions,
+      retryInstruction: `Regenerate and fix: ${validation.reasons.join(", ")}`
+    });
+    validation = aiFollowUpResult ? validateInterviewQuestion({
+      askedQuestions,
+      language: session.language,
+      questionText: aiFollowUpResult.questionText,
+      ragContext: ragContext.contextText,
+      targetMajor: session.targetMajor
+    }) : null;
+  }
+
+  const deterministicFollowUp = generateFollowUpQuestion(followUpInput);
+  const followUpResult = aiFollowUpResult && validation?.valid
+    ? aiFollowUpResult
+    : deterministicFollowUp;
   let questionText = followUpResult.questionText;
+
+  if (!aiFollowUpResult || !validation?.valid) {
+    const deterministicValidation = validateInterviewQuestion({
+      askedQuestions,
+      language: session.language,
+      questionText: deterministicFollowUp.questionText,
+      ragContext: ragContext.contextText,
+      targetMajor: session.targetMajor
+    });
+    const safeFallback = buildPhaseFallbackQuestion({
+      answerText: lastAnswer?.answerText,
+      language: session.language,
+      phase: phase.key,
+      targetMajor: session.targetMajor,
+      targetSchool: session.targetSchool
+    });
+    questionText = deterministicValidation.valid
+      ? deterministicFollowUp.questionText
+      : safeFallback;
+  }
   if (askedTexts.has(normalize(questionText))) {
     const candidates = buildFallbackCandidates({
       answerText: lastAnswer?.answerText ?? "",
@@ -115,19 +193,22 @@ export async function createAdaptiveQuestion(session: SessionWithContext): Promi
     questionText = candidates.find((c) => !askedTexts.has(normalize(c))) ?? candidates[0];
   }
 
-  // Map back to QuestionCategory enum
-  const resolvedCategory = mapToQuestionCategory(
-    aiFollowUpResult?.category ?? (followUpResult.isFollowUp ? category : detectCategory(questionText, category))
-  );
+  const resolvedCategory = category;
 
   return {
     aiReason: followUpResult.aiReason,
     category: resolvedCategory,
+    completedPhases: phase.completedPhases,
     difficulty,
     expectedAnswerLogic: buildExpectedLogic(resolvedCategory, difficulty, session.language),
     followUpDepth: followUpResult.followUpDepth,
     isFollowUp: followUpResult.isFollowUp,
     language: session.language,
+    phaseDepth: phase.depth,
+    phaseKey: phase.key,
+    phaseLabel: phase.label,
+    phaseTargetMinutes: phase.targetMinutes,
+    questionsPerPhase: phase.questionsPerPhase,
     questionText,
     source: QuestionSource.AI_GENERATED
   };

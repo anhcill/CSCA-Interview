@@ -1,10 +1,23 @@
 import { InterviewAnswer, InterviewSession, InterviewSessionQuestion, Question } from "@prisma/client";
 import { scoreInterviewAnswerDetailed, type DetailedScore } from "../ai/ai.service.js";
+import { buildEvidenceFeedback, containsAudioOnlyFeedback } from "./text-feedback-guard.js";
+import { getInterviewPhase } from "./interview-structure.js";
+import { isQuestionLanguageCompatible } from "./question-quality.js";
+import { buildSevenDayPracticePlan, type PracticePlanDay } from "./practice-plan.js";
 
 export type AnswerDetailedAnalysis = {
   sessionQuestionId: string;
   questionText: string;
   answerText: string;
+  answerSource: "MIC" | "TEXT";
+  transcript: string | null;
+  audioScore: number | null;
+  achievedIdeas: string[];
+  missingIdeas: string[];
+  suggestedFollowUpQuestion: string;
+  phaseKey: string;
+  phaseLabel: string;
+  depthReached: number;
   scoringSource: "ai" | "heuristic";
   scores: {
     content: number;
@@ -56,6 +69,18 @@ export type SessionAnalysis = {
   weaknesses: string[];
   improvementTips: string[];
   answerDetails: AnswerDetailedAnalysis[];
+  completedTopics: Array<{
+    averageScore: number;
+    depthReached: number;
+    key: string;
+    label: string;
+    questionCount: number;
+  }>;
+  depthReached: number;
+  criticalErrors: string[];
+  languageErrors: Array<{ message: string; sessionQuestionId: string }>;
+  offFocusAnswers: Array<{ questionText: string; reason: string; sessionQuestionId: string }>;
+  practicePlan7Days: PracticePlanDay[];
 };
 
 type AnswerWithQuestion = InterviewAnswer & {
@@ -67,6 +92,7 @@ type AnswerWithQuestion = InterviewAnswer & {
     fluency_score: unknown;
     pronunciation_score: unknown;
     speed_words_per_minute: unknown;
+    transcript?: string | null;
   }>;
 };
 
@@ -74,30 +100,62 @@ export function buildSessionAnalysis(
   session: InterviewSession & { answers: AnswerWithQuestion[] }
 ): SessionAnalysis {
   const answers = session.answers;
+  const phaseDepthCounts = new Map<string, number>();
 
   // --- Per-answer detailed analysis ---
   const answerDetails: AnswerDetailedAnalysis[] = answers
     .filter((a) => a.answerText && a.answerText.trim().length > 0)
     .map((answer) => {
+      const phase = getInterviewPhase(answer.sessionQuestion.category);
+      const depthReached = Math.min(3, (phaseDepthCounts.get(phase.key) ?? 0) + 1);
+      phaseDepthCounts.set(phase.key, depthReached);
       const sampleComparison = compareWithSampleAnswer(
         answer.answerText ?? "",
         answer.sessionQuestion?.question?.sampleAnswer ?? null,
         answer.sessionQuestion?.question?.keywords ?? answer.sessionQuestion?.question?.suggestedAnswerLogic ?? null
       );
       const speech = buildSpeechDetail(answer);
+      const recording = answer.voice_recordings?.[0];
+      const transcript = recording?.transcript?.trim() || null;
+      const answerSource = recording ? "MIC" as const : "TEXT" as const;
+      const audioScore = speech
+        ? average([speech.fluencyScore ?? 0, speech.pronunciationScore ?? 0, speech.confidenceScore ?? 0])
+        : null;
+      const achievedIdeas = (sampleComparison?.matchedKeywords.length
+        ? sampleComparison.matchedKeywords
+        : splitStoredLines(answer.strengths)).slice(0, 5);
+      const missingIdeas = (sampleComparison?.missingKeywords.length
+        ? sampleComparison.missingKeywords
+        : splitStoredLines(answer.weaknesses)).slice(0, 5);
+      const reportFields = {
+        achievedIdeas,
+        answerSource,
+        audioScore,
+        depthReached,
+        missingIdeas,
+        phaseKey: phase.key,
+        phaseLabel: phase.label,
+        suggestedFollowUpQuestion: buildSuggestedFollowUp(answer.sessionQuestion.language, missingIdeas[0]),
+        transcript
+      };
       const persistedTotal = toNumber(answer.scoreTotal);
 
       if (persistedTotal !== null && persistedTotal > 0) {
-        const voiceConfidence = scaleSpeechScore(speech?.confidenceScore ?? speech?.fluencyScore ?? null);
-        const voiceLanguage = scaleSpeechScore(speech?.pronunciationScore ?? null);
         const content = toNumber(answer.scoreSpecificity) ?? persistedTotal;
         const logic = toNumber(answer.scoreLogic) ?? persistedTotal;
         const textLanguage = toNumber(answer.scoreLanguage) ?? persistedTotal;
         const expertise = toNumber(answer.scoreRelevance) ?? persistedTotal;
-        const language = average([textLanguage, voiceLanguage ?? 0]) || textLanguage;
-        const confidence = average([expertise, voiceConfidence ?? 0]) || expertise;
+        const storedFeedback = answer.feedback?.trim() || "AI scored this answer, but detailed feedback was not stored.";
+        const feedback = !speech && containsAudioOnlyFeedback(storedFeedback)
+          ? buildEvidenceFeedback(answer.answerText ?? "", answer.sessionQuestion.language)
+          : storedFeedback;
+        const strengths = splitStoredLines(answer.strengths)
+          .filter((item) => speech || !containsAudioOnlyFeedback(item));
+        const weaknesses = splitStoredLines(answer.weaknesses)
+          .filter((item) => speech || !containsAudioOnlyFeedback(item));
 
         return {
+          ...reportFields,
           sessionQuestionId: answer.sessionQuestionId,
           questionText: answer.sessionQuestion?.questionText ?? "",
           answerText: answer.answerText ?? "",
@@ -105,16 +163,16 @@ export function buildSessionAnalysis(
           scores: {
             content,
             logic,
-            language,
-            confidence,
+            language: textLanguage,
+            confidence: expertise,
             expertise,
             impression: persistedTotal,
             total: persistedTotal,
           },
-          strengths: splitStoredLines(answer.strengths),
-          weaknesses: splitStoredLines(answer.weaknesses),
+          strengths,
+          weaknesses,
           tips: uniqueList((speech?.tips ?? []).concat(sampleComparison?.notes ?? [])),
-          feedback: answer.feedback?.trim() || "AI scored this answer, but detailed feedback was not stored.",
+          feedback,
           improvedAnswer: answer.improvedAnswer?.trim() ?? "",
           academicKeywords: extractAcademicKeywords(
             answer.sessionQuestion?.question?.keywords ?? answer.sessionQuestion?.question?.suggestedAnswerLogic ?? ""
@@ -126,6 +184,7 @@ export function buildSessionAnalysis(
 
       const detailed: DetailedScore = scoreInterviewAnswerDetailed(answer.answerText ?? "");
       return {
+        ...reportFields,
         sessionQuestionId: answer.sessionQuestionId,
         questionText: answer.sessionQuestion?.questionText ?? "",
         answerText: answer.answerText ?? "",
@@ -173,12 +232,34 @@ export function buildSessionAnalysis(
   const allStrengths = uniqueList(answerDetails.flatMap((d) => d.strengths));
   const allWeaknesses = uniqueList(answerDetails.flatMap((d) => d.weaknesses));
   const speechTips = uniqueList(answerDetails.flatMap((d) => d.speech?.tips ?? []));
-  const detailTips = uniqueList(answerDetails.flatMap((d) => d.tips));
-  const improvementTips = uniqueList(
-    (detailTips.length ? detailTips : allWeaknesses.map((weakness) => `Ưu tiên sửa: ${weakness}`))
-      .concat(speechTips)
-  ).slice(0, 6);
   const speechSummary = buildSpeechSummary(answerDetails);
+  const completedTopics = buildCompletedTopics(answerDetails);
+  const depthReached = answerDetails.length
+    ? Math.max(...answerDetails.map((detail) => detail.depthReached))
+    : 0;
+  const criticalErrors = uniqueList(allWeaknesses.concat(answerDetails.flatMap((detail) => detail.missingIdeas))).slice(0, 3);
+  const languageErrors = answerDetails
+    .filter((detail) => {
+      const answer = answers.find((item) => item.sessionQuestionId === detail.sessionQuestionId);
+      return answer ? !isQuestionLanguageCompatible(detail.answerText, answer.sessionQuestion.language) : false;
+    })
+    .map((detail) => ({
+      message: "Câu trả lời không nhất quán với ngôn ngữ đã chọn cho buổi phỏng vấn.",
+      sessionQuestionId: detail.sessionQuestionId
+    }));
+  const offFocusAnswers = answerDetails
+    .filter((detail) => detail.scores.content > 0 && (detail.scores.content < 5.5 || detail.scores.expertise < 5.5))
+    .map((detail) => ({
+      questionText: detail.questionText,
+      reason: "Nội dung hoặc mức độ liên hệ chuyên ngành còn thấp.",
+      sessionQuestionId: detail.sessionQuestionId
+    }));
+  const practicePlan7Days = buildSevenDayPracticePlan({
+    hasSpeech: answerDetails.some((detail) => detail.speech !== null),
+    targetMajor: session.targetMajor,
+    weaknesses: criticalErrors,
+    weakestCriterion: translateCriterion(weakest)
+  });
 
   return {
     criteriaAverages,
@@ -198,7 +279,44 @@ export function buildSessionAnalysis(
     strengths: allStrengths.slice(0, 6),
     weaknesses: allWeaknesses.slice(0, 6),
     answerDetails,
+    completedTopics,
+    criticalErrors,
+    depthReached,
+    languageErrors,
+    offFocusAnswers,
+    practicePlan7Days
   };
+}
+
+function buildCompletedTopics(details: AnswerDetailedAnalysis[]): SessionAnalysis["completedTopics"] {
+  const grouped = new Map<string, AnswerDetailedAnalysis[]>();
+  for (const detail of details) {
+    grouped.set(detail.phaseKey, [...(grouped.get(detail.phaseKey) ?? []), detail]);
+  }
+  return [...grouped.entries()].map(([key, items]) => ({
+    averageScore: average(items.map((item) => item.scores.total)),
+    depthReached: Math.max(...items.map((item) => item.depthReached)),
+    key,
+    label: items[0]?.phaseLabel ?? key,
+    questionCount: items.length
+  }));
+}
+
+function buildSuggestedFollowUp(language: string, missingIdea?: string) {
+  const focus = missingIdea?.trim();
+  if (language === "ZH") {
+    return focus
+      ? `你可以围绕“${focus}”补充一个具体例子和可验证的结果吗？`
+      : "你能进一步说明这个选择与申请目标之间的联系，并给出具体例子吗？";
+  }
+  if (language === "EN") {
+    return focus
+      ? `Could you add a concrete example and a verifiable outcome for "${focus}"?`
+      : "Could you explain this point more deeply with a concrete example and its connection to your application goal?";
+  }
+  return focus
+    ? `Bạn có thể bổ sung một ví dụ cụ thể và kết quả kiểm chứng được cho ý “${focus}” không?`
+    : "Bạn có thể đào sâu ý này bằng một ví dụ cụ thể và liên hệ với mục tiêu ứng tuyển không?";
 }
 
 function buildSummary(session: InterviewSession, score: number, weakest: string, hasOfficialScore = true) {
@@ -223,6 +341,16 @@ function buildSpeechDetail(answer: AnswerWithQuestion): AnswerDetailedAnalysis["
   const pauseCount = getNumber(metrics, "pauseCount");
   const fillerWordTotal = getNumber(metrics, "fillerWordTotal");
   const wpm = toNumber(recording.speed_words_per_minute) ?? getNumber(metrics, "wpm");
+  if (
+    fluencyScore === null
+    && pronunciationScore === null
+    && confidenceScore === null
+    && pauseCount === null
+    && fillerWordTotal === null
+    && wpm === null
+  ) {
+    return null;
+  }
   const tips = buildSpeechTips({
     confidenceScore,
     fillerWordTotal,
@@ -305,11 +433,6 @@ function getNumber(source: Record<string, unknown> | null, key: string) {
 function toNumber(value: unknown) {
   const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number(value ?? NaN);
   return Number.isFinite(numeric) ? Math.round(numeric * 10) / 10 : null;
-}
-
-function scaleSpeechScore(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return null;
-  return value > 10 ? Math.round((value / 10) * 10) / 10 : value;
 }
 
 function average(values: number[]) {

@@ -303,13 +303,13 @@ function splitInlineQuestions(line: string) {
 }
 
 function isBracketedContinuation(line: string) {
-  return /^[\(\uFF08]/u.test(line);
+  return /^[(\uFF08]/u.test(line);
 }
 
 function isHeading(line: string) {
   const normalized = normalizeLookupText(line).replace(/^[^a-z0-9]+/i, "").trim();
   if (!line) return true;
-  if (/^[\[\]().:\uFF1A\-\s]+$/u.test(line)) return true;
+  if (/^[[\]().:\uFF1A\s-]+$/u.test(line)) return true;
   return /^(phan|thay|co\s*\d*:|giam khao|nganh|hoc bong|bai thi|professional|thoi gian|ket|pv\b|phong van|he\b|csc\b|cis\b|thac\b|dai hoc\b)/i.test(normalized);
 }
 

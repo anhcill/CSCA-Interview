@@ -4,6 +4,7 @@ import { AlertCircle, BookOpen, Check, ChevronDown, Clock, FileText, Loader2, Sc
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
+import { GpaFields } from "@/components/profile/gpa-fields";
 import { apiGet } from "@/lib/api";
 import type { InterviewLanguageMode } from "@/lib/i18n";
 import type { StudyPlanParseMetadata, UserProfileDto } from "@/lib/profile-client";
@@ -73,7 +74,8 @@ export function ProfileWizardStep({
   readyItems: ReadyItem[];
 }) {
   const { majors, scholarships } = useApplicationOptions();
-  const majorValue = getSelectedMajorId(form, majors);
+  const eligibleMajors = majors.filter((major) => major.degreeLevel === (profile?.degreeLevel ?? "BACHELOR"));
+  const majorValue = getSelectedMajorId(form, eligibleMajors);
   const scholarshipValue = getSelectedScholarshipId(form, scholarships);
 
   return (
@@ -82,7 +84,11 @@ export function ProfileWizardStep({
         <StepHeader eyebrow="Bước 1" icon={User} title="Hồ sơ cá nhân" />
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <TextInput label="Tên tiếng Trung" value={form.applicantNameZh} placeholder="Ví dụ: Nguyễn Minh An" onChange={(value) => onChange("applicantNameZh", value)} />
-          <TextInput label="GPA" value={form.gpa} placeholder="Ví dụ: 3.6/4.0" onChange={(value) => onChange("gpa", value)} />
+          <GpaFields
+            degreeLevel={profile?.degreeLevel ?? "BACHELOR"}
+            value={form.gpa}
+            onChange={(value) => onChange("gpa", value)}
+          />
           <TextInput label="HSK" value={form.hskLevel} placeholder="Ví dụ: HSK 5" onChange={(value) => onChange("hskLevel", value)} />
           <TextInput label="IELTS" value={form.ieltsScore} placeholder="Ví dụ: 6.5" onChange={(value) => onChange("ieltsScore", value)} />
         </div>
@@ -121,9 +127,9 @@ export function ProfileWizardStep({
               label="Ngành apply"
               value={majorValue}
               placeholder="Chọn ngành"
-              options={majors.map((major) => [major.id, `${major.name} (${formatDegreeLabel(major.degreeLevel)})${major.nameZh ? ` · ${major.nameZh}` : ""}`] as SelectOption)}
+              options={eligibleMajors.map((major) => [major.id, `${major.name} (${formatDegreeLabel(major.degreeLevel)})${major.nameZh ? ` · ${major.nameZh}` : ""}`] as SelectOption)}
               onChange={(value) => {
-                const major = majors.find((item) => item.id === value);
+                const major = eligibleMajors.find((item) => item.id === value);
                 onChange("majorId", major?.id ?? "");
                 onChange("targetMajor", major?.name ?? "");
               }}
@@ -176,7 +182,8 @@ export function TargetWizardStep({
   scholarshipLabel: string;
 }) {
   const { majors, scholarships } = useApplicationOptions();
-  const majorValue = getSelectedMajorId(form, majors);
+  const eligibleMajors = majors.filter((major) => major.degreeLevel === (profile?.degreeLevel ?? "BACHELOR"));
+  const majorValue = getSelectedMajorId(form, eligibleMajors);
   const scholarshipValue = getSelectedScholarshipId(form, scholarships);
 
   return (
@@ -190,9 +197,9 @@ export function TargetWizardStep({
           label="Chuyên ngành"
           value={majorValue}
           placeholder="Chọn ngành"
-          options={majors.map((major) => [major.id, `${major.name} (${formatDegreeLabel(major.degreeLevel)})${major.nameZh ? ` · ${major.nameZh}` : ""}`] as SelectOption)}
+          options={eligibleMajors.map((major) => [major.id, `${major.name} (${formatDegreeLabel(major.degreeLevel)})${major.nameZh ? ` · ${major.nameZh}` : ""}`] as SelectOption)}
           onChange={(value) => {
-            const major = majors.find((item) => item.id === value);
+            const major = eligibleMajors.find((item) => item.id === value);
             onChange("majorId", major?.id ?? "");
             onChange("targetMajor", major?.name ?? "");
           }}

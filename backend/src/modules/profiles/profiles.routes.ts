@@ -15,6 +15,8 @@ import {
   uploadToCloudinary
 } from "./document-parser.js";
 import { getStudyPlanContentType, uploadStudyPlanToR2 } from "../storage/r2.service.js";
+import { InvalidApplicationTargetError, resolveApplicationTargets } from "./application-targets.service.js";
+import { normalizeAndValidateGpa } from "./profile-gpa.js";
 
 export const profilesRouter = Router();
 const cloudinaryRawUploadLimitBytes = 10 * 1024 * 1024;
@@ -54,6 +56,15 @@ const profileSchema = z.object({
   toeflScore: z.string().trim().optional().nullable(),
   weaknesses: z.string().trim().optional().nullable(),
   workExperience: z.string().trim().optional().nullable()
+}).superRefine((profile, context) => {
+  const gpa = normalizeAndValidateGpa(profile.degreeLevel, profile.gpa);
+  if (gpa.error) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: gpa.error,
+      path: ["gpa"]
+    });
+  }
 });
 
 profilesRouter.use(requireAuth);
@@ -91,6 +102,24 @@ profilesRouter.put("/me", async (req, res) => {
   const existingProfile = await prisma.userProfile.findUnique({
     where: { userId: user.id }
   });
+  let applicationTargets: Awaited<ReturnType<typeof resolveApplicationTargets>>;
+  try {
+    applicationTargets = await resolveApplicationTargets({
+      degreeLevel: parsed.data.degreeLevel,
+      majorId: parsed.data.majorId,
+      scholarshipId: parsed.data.scholarshipId,
+      scholarshipType: parsed.data.scholarshipType,
+      schoolId: parsed.data.schoolId,
+      targetMajor: parsed.data.targetMajor,
+      targetSchool: parsed.data.targetSchool
+    });
+  } catch (error) {
+    if (error instanceof InvalidApplicationTargetError) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    throw error;
+  }
 
   let studyPlanText = cleanStudyPlanText(parsed.data.studyPlan || existingProfile?.studyPlan || "").text;
   let studyPlanFileName = parsed.data.studyPlanFileName !== undefined ? parsed.data.studyPlanFileName : existingProfile?.studyPlanFileName;
@@ -226,6 +255,7 @@ profilesRouter.put("/me", async (req, res) => {
   // Đè các trường thông tin file đã được resolve thủ công ở trên
   const finalData = {
     ...data,
+    ...applicationTargets,
     studyPlan: studyPlanText,
     studyPlanFileName,
     studyPlanFileContent,
@@ -261,6 +291,7 @@ function emptyToNull(value?: string | null) {
 }
 
 function normalizeProfileInput(input: ProfileInput) {
+  const normalizedGpa = normalizeAndValidateGpa(input.degreeLevel, input.gpa);
   return {
     additionalNotes: emptyToNull(input.additionalNotes),
     age: input.age ?? null,
@@ -268,7 +299,7 @@ function normalizeProfileInput(input: ProfileInput) {
     careerPlan: emptyToNull(input.careerPlan),
     degreeLevel: input.degreeLevel,
     extracurricularActivities: emptyToNull(input.extracurricularActivities),
-    gpa: emptyToNull(input.gpa),
+    gpa: normalizedGpa.value,
     hskLevel: emptyToNull(input.hskLevel),
     hskkLevel: emptyToNull(input.hskkLevel),
     ieltsScore: emptyToNull(input.ieltsScore),

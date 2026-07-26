@@ -201,6 +201,52 @@ export function InterviewResult() {
           </section>
         ) : null}
 
+        {activeTab === "tips" ? (
+          <div className="mt-5 space-y-5">
+            <section className="rounded-lg border border-border bg-background p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="type-section">Chủ đề và độ sâu đã đạt</h2>
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-black text-primary">
+                  Cao nhất: {analysis?.depthReached ?? 0}/3
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {(analysis?.completedTopics ?? []).map((topic) => (
+                  <article key={topic.key} className="rounded-lg border border-border bg-primary/5 p-4">
+                    <h3 className="text-sm font-black">{topic.label}</h3>
+                    <p className="mt-2 text-xs font-bold text-slate-600 dark:text-slate-300">
+                      {topic.questionCount} câu · sâu {topic.depthReached}/3 · {topic.averageScore}/10
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-border bg-background p-6 shadow-sm">
+              <h2 className="type-section">Kế hoạch luyện tập 7 ngày</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {(analysis?.practicePlan7Days ?? []).map((item) => (
+                  <article key={item.day} className="rounded-lg border border-border bg-primary/5 p-4">
+                    <p className="text-xs font-black uppercase text-primary">Ngày {item.day} · {item.focus}</p>
+                    <h3 className="mt-2 text-sm font-black">{item.title}</h3>
+                    <ul className="mt-3 space-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {item.activities.map((activity) => <li key={activity}>• {activity}</li>)}
+                    </ul>
+                    <p className="mt-3 rounded bg-background px-2 py-2 text-xs font-black text-primary">Mục tiêu: {item.target}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            {(analysis?.languageErrors.length || analysis?.offFocusAnswers.length) ? (
+              <section className="grid gap-5 lg:grid-cols-2">
+                <ListCard title="Lỗi ngôn ngữ" items={(analysis?.languageErrors ?? []).map((item) => item.message)} tone="warn" />
+                <ListCard title="Câu trả lời lệch trọng tâm" items={(analysis?.offFocusAnswers ?? []).map((item) => `${item.questionText}: ${item.reason}`)} tone="warn" />
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+
         {activeTab === "details" ? (
           <section className="mt-5 rounded-lg border border-border bg-background p-6 shadow-sm">
             {analysis?.answerDetails?.length ? (

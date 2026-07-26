@@ -18,6 +18,17 @@ export type NextInterviewQuestionResponse = {
   aiThinking: boolean;
   followUpDepth?: number;
   generated: boolean;
+  phase?: {
+    depth?: number;
+    key: string;
+    label: string;
+    targetMinutes: number;
+  };
+  plannedTotalQuestions?: number;
+  structure?: {
+    completedPhases: string[];
+    questionsPerPhase: Record<string, number>;
+  };
   isFollowUp?: boolean;
   question: InterviewQuestionDto;
 };
@@ -60,6 +71,15 @@ export type AnswerDetailedAnalysisDto = {
   sessionQuestionId: string;
   questionText: string;
   answerText: string;
+  answerSource: "MIC" | "TEXT";
+  transcript: string | null;
+  audioScore: number | null;
+  achievedIdeas: string[];
+  missingIdeas: string[];
+  suggestedFollowUpQuestion: string;
+  phaseKey: string;
+  phaseLabel: string;
+  depthReached: number;
   scoringSource?: "ai" | "heuristic";
   scores: {
     content: number;
@@ -111,6 +131,24 @@ export type InterviewAnalysisDto = {
   strengths: string[];
   weaknesses: string[];
   answerDetails?: AnswerDetailedAnalysisDto[];
+  completedTopics: Array<{
+    averageScore: number;
+    depthReached: number;
+    key: string;
+    label: string;
+    questionCount: number;
+  }>;
+  depthReached: number;
+  criticalErrors: string[];
+  languageErrors: Array<{ message: string; sessionQuestionId: string }>;
+  offFocusAnswers: Array<{ questionText: string; reason: string; sessionQuestionId: string }>;
+  practicePlan7Days: Array<{
+    activities: string[];
+    day: number;
+    focus: string;
+    target: string;
+    title: string;
+  }>;
 };
 
 export type InterviewReportDto = {
@@ -241,6 +279,7 @@ export async function submitInterviewAnswer(input: {
   pronunciation?: PronunciationResult | null;
   sessionId: string;
   sessionQuestionId: string;
+  submissionId: string;
   speechDurationSec?: number | null;
   speechLanguage?: string | null;
   speechMetrics?: SpeechMetrics | null;
@@ -253,6 +292,7 @@ export async function submitInterviewAnswer(input: {
       answerText: input.answerText,
       pronunciation: input.pronunciation,
       sessionQuestionId: input.sessionQuestionId,
+      submissionId: input.submissionId,
       speechDurationSec: input.speechDurationSec,
       speechLanguage: input.speechLanguage,
       speechMetrics: input.speechMetrics,

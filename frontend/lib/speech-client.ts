@@ -162,16 +162,39 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+let activeSpeechAudio: HTMLAudioElement | null = null;
+let finishActiveSpeechAudio: (() => void) | null = null;
+
+export function stopActiveSpeechAudio() {
+  if (!activeSpeechAudio) return;
+  activeSpeechAudio.pause();
+  activeSpeechAudio.currentTime = 0;
+  finishActiveSpeechAudio?.();
+}
+
 export function playBase64Audio(base64: string, contentType = "audio/mpeg"): Promise<void> {
   return new Promise((resolve, reject) => {
+    stopActiveSpeechAudio();
     const blob = base64ToBlob(base64, contentType);
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    audio.onended = () => {
+    activeSpeechAudio = audio;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (activeSpeechAudio === audio) activeSpeechAudio = null;
+      if (finishActiveSpeechAudio === finish) finishActiveSpeechAudio = null;
       URL.revokeObjectURL(url);
       resolve();
     };
+    finishActiveSpeechAudio = finish;
+    audio.onended = finish;
     audio.onerror = (e) => {
+      if (settled) return;
+      settled = true;
+      if (activeSpeechAudio === audio) activeSpeechAudio = null;
+      if (finishActiveSpeechAudio === finish) finishActiveSpeechAudio = null;
       URL.revokeObjectURL(url);
       reject(e);
     };

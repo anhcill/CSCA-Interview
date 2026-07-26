@@ -2,8 +2,13 @@
 
 import { useCallback, useRef, useState } from "react";
 import { blobToBase64, transcribeAudio, type TranscribeResponse } from "../speech-client";
+import {
+  canTransitionVoiceRecorder,
+  shouldStopAfterSilence,
+  type VoiceRecorderState
+} from "./voice-recorder-machine";
 
-export type VoiceRecorderState = "idle" | "recording" | "transcribing";
+export type { VoiceRecorderState } from "./voice-recorder-machine";
 
 export type VoiceRecorderResult = TranscribeResponse & {
   audioBase64?: string;
@@ -25,15 +30,11 @@ type SpeechRecognitionEventLike = Event & {
   resultIndex: number;
   results: ArrayLike<{
     isFinal: boolean;
-    0?: {
-      transcript: string;
-    };
+    0?: { transcript: string };
   }>;
 };
 
-type SpeechRecognitionErrorEventLike = Event & {
-  error?: string;
-};
+type SpeechRecognitionErrorEventLike = Event & { error?: string };
 
 type SpeechRecognitionLike = {
   abort: () => void;
@@ -66,12 +67,21 @@ function toSpeechRecognitionLang(language?: "vi" | "zh" | "en") {
 }
 
 export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
-  const { language, onAutoSubmitCountdown, onError, onInterimTranscript, onNoSpeech, onTranscript, onTranscriptionResult } = options;
-  const [state, setState] = useState<VoiceRecorderState>("idle");
+  const {
+    language,
+    onAutoSubmitCountdown,
+    onError,
+    onInterimTranscript,
+    onNoSpeech,
+    onTranscript,
+    onTranscriptionResult
+  } = options;
+  const [state, setState] = useState<VoiceRecorderState>("IDLE");
   const [transcript, setTranscript] = useState("");
+  const stateRef = useRef<VoiceRecorderState>("IDLE");
+  const requestIdRef = useRef(0);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const recognitionTranscriptRef = useRef("");
-  const recognitionFatalErrorRef = useRef(false);
+  const recognitionTextRef = useRef("");
   const shouldKeepListeningRef = useRef(false);
   const restartTimerRef = useRef<number | null>(null);
   const finalizeTimerRef = useRef<number | null>(null);
@@ -82,40 +92,73 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const silenceFrameRef = useRef<number | null>(null);
   const silenceStartedAtRef = useRef<number | null>(null);
-  const recordingStartedAtRef = useRef<number>(0);
+  const hasDetectedSpeechRef = useRef(false);
+  const recordingStartedAtRef = useRef(0);
   const stopReasonRef = useRef<"cancel" | "manual" | "silence">("manual");
+  const pendingAudioRef = useRef<{ audioBase64: string; mimeType: string } | null>(null);
 
-  const clearRestartTimer = useCallback(() => {
-    if (restartTimerRef.current !== null) {
-      window.clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-    }
+  const moveToState = useCallback((next: VoiceRecorderState, force = false) => {
+    if (!force && !canTransitionVoiceRecorder(stateRef.current, next)) return;
+    stateRef.current = next;
+    setState(next);
   }, []);
 
-  const clearFinalizeTimer = useCallback(() => {
-    if (finalizeTimerRef.current !== null) {
-      window.clearTimeout(finalizeTimerRef.current);
-      finalizeTimerRef.current = null;
-    }
-    if (countdownTimerRef.current !== null) {
-      window.clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
+  const clearTimers = useCallback(() => {
+    if (restartTimerRef.current !== null) window.clearTimeout(restartTimerRef.current);
+    if (finalizeTimerRef.current !== null) window.clearTimeout(finalizeTimerRef.current);
+    if (countdownTimerRef.current !== null) window.clearInterval(countdownTimerRef.current);
+    restartTimerRef.current = null;
+    finalizeTimerRef.current = null;
+    countdownTimerRef.current = null;
     onAutoSubmitCountdown?.(null);
   }, [onAutoSubmitCountdown]);
 
   const cleanupAudioMonitor = useCallback(() => {
-    if (silenceFrameRef.current !== null) {
-      window.cancelAnimationFrame(silenceFrameRef.current);
-      silenceFrameRef.current = null;
-    }
+    if (silenceFrameRef.current !== null) window.cancelAnimationFrame(silenceFrameRef.current);
+    silenceFrameRef.current = null;
     silenceStartedAtRef.current = null;
     void audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
   }, []);
 
-  const startSilenceMonitor = useCallback((stream: MediaStream, recorder: MediaRecorder) => {
-    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const emitTranscript = useCallback((result: VoiceRecorderResult, requestId: number) => {
+    if (requestId !== requestIdRef.current) return;
+    const text = result.text.trim();
+    setTranscript(text);
+    moveToState("REVIEW", true);
+    onTranscriptionResult?.(result);
+    if (text) onTranscript?.(text, result);
+  }, [moveToState, onTranscript, onTranscriptionResult]);
+
+  const transcribePendingAudio = useCallback(async (requestId: number) => {
+    const pendingAudio = pendingAudioRef.current;
+    if (!pendingAudio) return false;
+    moveToState("TRANSCRIBING", true);
+    try {
+      const result = await transcribeAudio(
+        pendingAudio.audioBase64,
+        pendingAudio.mimeType,
+        language
+      );
+      if (requestId !== requestIdRef.current) return false;
+      emitTranscript({ ...result, ...pendingAudio, source: "server" }, requestId);
+      return Boolean(result.text.trim());
+    } catch (error) {
+      if (requestId === requestIdRef.current) {
+        moveToState("REVIEW", true);
+        onError?.(error instanceof Error ? error.message : "Lỗi nhận dạng giọng nói");
+      }
+      return false;
+    }
+  }, [emitTranscript, language, moveToState, onError]);
+
+  const startAudioMonitor = useCallback((
+    stream: MediaStream,
+    recorder: MediaRecorder,
+    requestId: number
+  ) => {
+    const AudioContextCtor = window.AudioContext
+      || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextCtor) return;
 
     const audioContext = new AudioContextCtor();
@@ -127,181 +170,165 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     const data = new Uint8Array(analyser.fftSize);
 
     const tick = () => {
-      if (recorder.state !== "recording") return;
-
+      if (recorder.state !== "recording" || requestId !== requestIdRef.current) return;
       analyser.getByteTimeDomainData(data);
-      let sum = 0;
-      for (const value of data) {
+      const rms = Math.sqrt(data.reduce((sum, value) => {
         const centered = (value - 128) / 128;
-        sum += centered * centered;
-      }
-
-      const rms = Math.sqrt(sum / data.length);
+        return sum + centered * centered;
+      }, 0) / data.length);
       const now = Date.now();
-      const hasStartedSpeaking = now - recordingStartedAtRef.current > 1200;
 
-      if (hasStartedSpeaking && rms < 0.014) {
+      if (rms >= 0.018) {
+        hasDetectedSpeechRef.current = true;
+        silenceStartedAtRef.current = null;
+        moveToState("SPEECH_DETECTED");
+      } else if (
+        hasDetectedSpeechRef.current
+        && now - recordingStartedAtRef.current >= 2500
+        && rms < 0.01
+      ) {
         silenceStartedAtRef.current ??= now;
-        if (now - silenceStartedAtRef.current > 1600) {
+        moveToState("WAITING_FOR_MORE");
+        if (shouldStopAfterSilence({
+          hasDetectedSpeech: true,
+          nowMs: now,
+          recordingStartedAtMs: recordingStartedAtRef.current,
+          silenceStartedAtMs: silenceStartedAtRef.current
+        })) {
           stopReasonRef.current = "silence";
           recorder.stop();
           return;
         }
-      } else {
-        silenceStartedAtRef.current = null;
       }
 
       silenceFrameRef.current = window.requestAnimationFrame(tick);
     };
 
     silenceFrameRef.current = window.requestAnimationFrame(tick);
-  }, []);
+  }, [moveToState]);
+
+  const startBrowserRecognition = useCallback((
+    SpeechRecognition: SpeechRecognitionConstructor,
+    requestId: number
+  ) => {
+    const finalizeTranscript = () => {
+      if (requestId !== requestIdRef.current) return;
+      const text = recognitionTextRef.current.trim();
+      if (!text) return;
+      shouldKeepListeningRef.current = false;
+      clearTimers();
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+      emitTranscript({
+        language: language ?? "vi",
+        source: "browser",
+        text
+      }, requestId);
+    };
+
+    const scheduleFinalize = () => {
+      clearTimers();
+      const startedAt = Date.now();
+      const waitMs = 4500;
+      moveToState("WAITING_FOR_MORE");
+      onAutoSubmitCountdown?.(5);
+      countdownTimerRef.current = window.setInterval(() => {
+        const remaining = Math.max(0, waitMs - (Date.now() - startedAt));
+        onAutoSubmitCountdown?.(remaining > 0 ? Math.ceil(remaining / 1000) : null);
+      }, 250);
+      finalizeTimerRef.current = window.setTimeout(finalizeTranscript, waitMs);
+    };
+
+    const begin = () => {
+      if (requestId !== requestIdRef.current) return;
+      const recognition = new SpeechRecognition();
+      recognition.lang = toSpeechRecognitionLang(language);
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event) => {
+        if (requestId !== requestIdRef.current) return;
+        let finalText = "";
+        let interimText = "";
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const result = event.results[index];
+          const text = result[0]?.transcript.trim() ?? "";
+          if (!text) continue;
+          if (result.isFinal) finalText += `${text} `;
+          else interimText += `${text} `;
+        }
+        if (finalText || interimText) {
+          moveToState("SPEECH_DETECTED");
+          const visibleText = `${recognitionTextRef.current} ${finalText || interimText}`.trim();
+          setTranscript(visibleText);
+          onInterimTranscript?.(visibleText);
+        }
+        if (interimText) clearTimers();
+        if (finalText) {
+          recognitionTextRef.current = `${recognitionTextRef.current} ${finalText}`.trim();
+          scheduleFinalize();
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (requestId !== requestIdRef.current || event.error === "no-speech" || event.error === "aborted") return;
+        shouldKeepListeningRef.current = false;
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          onError?.("Không thể truy cập microphone");
+        } else {
+          onError?.("Lỗi nhận dạng giọng nói");
+        }
+      };
+
+      recognition.onend = () => {
+        recognitionRef.current = null;
+        if (shouldKeepListeningRef.current && requestId === requestIdRef.current) {
+          restartTimerRef.current = window.setTimeout(begin, 300);
+        } else if (stateRef.current !== "REVIEW") {
+          moveToState("IDLE", true);
+        }
+      };
+
+      recognitionRef.current = recognition;
+      moveToState("LISTENING", true);
+      recognition.start();
+    };
+
+    begin();
+  }, [clearTimers, emitTranscript, language, moveToState, onAutoSubmitCountdown, onError, onInterimTranscript]);
 
   const startRecording = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    clearTimers();
+    pendingAudioRef.current = null;
+    recognitionTextRef.current = "";
+    hasDetectedSpeechRef.current = false;
     shouldKeepListeningRef.current = true;
-    clearFinalizeTimer();
+    moveToState("REQUESTING_PERMISSION", true);
 
-    const canRecordServerAudio =
-      typeof navigator !== "undefined" &&
-      Boolean(navigator.mediaDevices?.getUserMedia) &&
-      typeof MediaRecorder !== "undefined";
-    const SpeechRecognition = canRecordServerAudio ? null : getSpeechRecognitionConstructor();
+    const canUseMediaRecorder = typeof navigator !== "undefined"
+      && Boolean(navigator.mediaDevices?.getUserMedia)
+      && typeof MediaRecorder !== "undefined";
+    const SpeechRecognition = canUseMediaRecorder ? null : getSpeechRecognitionConstructor();
     if (SpeechRecognition) {
-      const finalizeTranscript = () => {
-        const text = recognitionTranscriptRef.current.trim();
-        if (!text) return;
-        shouldKeepListeningRef.current = false;
-        clearFinalizeTimer();
-        clearRestartTimer();
-        recognitionRef.current?.abort();
-        recognitionRef.current = null;
-        setState("idle");
-        setTranscript(text);
-        const result: VoiceRecorderResult = {
-          language: language ?? "vi",
-          source: "browser",
-          text
-        };
-        onTranscriptionResult?.(result);
-        onTranscript?.(text, result);
-      };
-
-      const scheduleFinalize = () => {
-        clearFinalizeTimer();
-        const startedAt = Date.now();
-        const waitMs = 3500;
-        onAutoSubmitCountdown?.(Math.ceil(waitMs / 1000));
-        countdownTimerRef.current = window.setInterval(() => {
-          const remaining = Math.max(0, waitMs - (Date.now() - startedAt));
-          onAutoSubmitCountdown?.(remaining > 0 ? Math.ceil(remaining / 1000) : null);
-        }, 250);
-        finalizeTimerRef.current = window.setTimeout(finalizeTranscript, 3500);
-      };
-
-      const beginRecognition = (resetTranscript = false) => {
-        clearRestartTimer();
-        if (resetTranscript) recognitionTranscriptRef.current = "";
-        recognitionFatalErrorRef.current = false;
-
-        const recognition = new SpeechRecognition();
-        recognition.lang = toSpeechRecognitionLang(language);
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.maxAlternatives = 1;
-
-        recognition.onresult = (event) => {
-          let finalText = "";
-          let interimText = "";
-
-          for (let index = event.resultIndex; index < event.results.length; index += 1) {
-            const result = event.results[index];
-            const text = result[0]?.transcript.trim() ?? "";
-            if (!text) continue;
-            if (result.isFinal) finalText += `${text} `;
-            else interimText += `${text} `;
-          }
-
-          const nextText = `${recognitionTranscriptRef.current} ${finalText || interimText}`.trim();
-          if (nextText) {
-            setTranscript(nextText);
-            onInterimTranscript?.(nextText);
-          }
-          if (interimText.trim()) {
-            clearFinalizeTimer();
-          }
-          if (finalText.trim()) {
-            recognitionTranscriptRef.current = `${recognitionTranscriptRef.current} ${finalText}`.trim();
-            scheduleFinalize();
-          }
-        };
-
-        recognition.onerror = (event) => {
-          if (event.error === "no-speech") {
-            if (!recognitionTranscriptRef.current.trim()) {
-              shouldKeepListeningRef.current = false;
-              clearFinalizeTimer();
-              clearRestartTimer();
-              onNoSpeech?.();
-            }
-            return;
-          }
-
-          if (event.error === "aborted") {
-            recognitionFatalErrorRef.current = !shouldKeepListeningRef.current;
-            return;
-          }
-
-          recognitionFatalErrorRef.current = true;
-          shouldKeepListeningRef.current = false;
-
-          if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-            onError?.("Không thể truy cập microphone");
-            return;
-          }
-
-          onError?.("Lỗi nhận dạng giọng nói");
-        };
-
-        recognition.onend = () => {
-          recognitionRef.current = null;
-
-          if (shouldKeepListeningRef.current && !recognitionFatalErrorRef.current) {
-            setState("recording");
-            restartTimerRef.current = window.setTimeout(() => {
-              if (shouldKeepListeningRef.current && !recognitionRef.current) {
-                beginRecognition(false);
-              }
-            }, 450);
-            return;
-          }
-
-          setState("idle");
-        };
-
-        recognitionRef.current = recognition;
-        setState("recording");
-        recognition.start();
-      };
-
-      try {
-        beginRecognition(true);
-        return;
-      } catch {
-        recognitionRef.current = null;
-        setState("idle");
-      }
+      startBrowserRecognition(SpeechRecognition, requestId);
+      return;
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (requestId !== requestIdRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
-
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm")
           ? "audio/webm"
           : "audio/mp4";
-
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
@@ -309,74 +336,60 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       stopReasonRef.current = "manual";
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+        if (requestId === requestIdRef.current && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
       };
 
       recorder.onstop = async () => {
+        if (requestId !== requestIdRef.current) return;
         const stopReason = stopReasonRef.current;
-        stopReasonRef.current = "manual";
         cleanupAudioMonitor();
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
-
         const blob = new Blob(chunksRef.current, { type: mimeType });
         chunksRef.current = [];
-
         if (stopReason === "cancel") {
-          setState("idle");
+          moveToState("IDLE", true);
           return;
         }
-
-        if (blob.size < 100) {
-          setState("idle");
-          if (stopReason === "silence") onNoSpeech?.();
+        if (!hasDetectedSpeechRef.current || blob.size < 100) {
+          moveToState("IDLE", true);
+          onNoSpeech?.();
           return;
         }
-
-        setState("transcribing");
-
-        try {
-          const base64 = await blobToBase64(blob);
-          const cleanMimeType = mimeType.split(";")[0] ?? mimeType;
-          const result = await transcribeAudio(base64, cleanMimeType, language);
-          if (!result.text.trim()) {
-            if (stopReason === "silence") onNoSpeech?.();
-            return;
-          }
-
-          const payload: VoiceRecorderResult = {
-            ...result,
-            audioBase64: base64,
-            mimeType: cleanMimeType,
-            source: "server"
-          };
-          setTranscript(result.text);
-          onTranscriptionResult?.(payload);
-          onTranscript?.(result.text, payload);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Lỗi nhận dạng giọng nói";
-          onError?.(message);
-        } finally {
-          setState("idle");
-        }
+        const audioBase64 = await blobToBase64(blob);
+        pendingAudioRef.current = {
+          audioBase64,
+          mimeType: mimeType.split(";")[0] ?? mimeType
+        };
+        await transcribePendingAudio(requestId);
       };
 
       recorder.start(250);
-      startSilenceMonitor(stream, recorder);
-      setState("recording");
+      startAudioMonitor(stream, recorder, requestId);
+      moveToState("LISTENING", true);
     } catch (error) {
       cleanupAudioMonitor();
-      const message = error instanceof Error ? error.message : "Không thể truy cập microphone";
-      onError?.(message);
-      setState("idle");
+      if (requestId === requestIdRef.current) {
+        moveToState("IDLE", true);
+        onError?.(error instanceof Error ? error.message : "Không thể truy cập microphone");
+      }
     }
-  }, [cleanupAudioMonitor, clearFinalizeTimer, clearRestartTimer, language, onAutoSubmitCountdown, onError, onInterimTranscript, onNoSpeech, onTranscript, onTranscriptionResult, startSilenceMonitor]);
+  }, [
+    cleanupAudioMonitor,
+    clearTimers,
+    moveToState,
+    onError,
+    onNoSpeech,
+    startAudioMonitor,
+    startBrowserRecognition,
+    transcribePendingAudio
+  ]);
 
   const stopRecording = useCallback(() => {
     shouldKeepListeningRef.current = false;
-    clearFinalizeTimer();
-    clearRestartTimer();
-
+    clearTimers();
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       return;
@@ -385,25 +398,14 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       stopReasonRef.current = "manual";
       mediaRecorderRef.current.stop();
     }
-  }, [clearFinalizeTimer, clearRestartTimer]);
-
-  const toggleRecording = useCallback(() => {
-    if (state === "recording") {
-      stopRecording();
-    } else if (state === "idle") {
-      startRecording();
-    }
-  }, [state, startRecording, stopRecording]);
+  }, [clearTimers]);
 
   const cancelRecording = useCallback(() => {
+    requestIdRef.current += 1;
     shouldKeepListeningRef.current = false;
-    clearFinalizeTimer();
-    clearRestartTimer();
-
-    if (recognitionRef.current) {
-      recognitionRef.current.abort();
-      recognitionRef.current = null;
-    }
+    clearTimers();
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
     if (mediaRecorderRef.current?.state === "recording") {
       stopReasonRef.current = "cancel";
       mediaRecorderRef.current.stop();
@@ -411,14 +413,32 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     chunksRef.current = [];
+    pendingAudioRef.current = null;
     cleanupAudioMonitor();
-    setState("idle");
-  }, [cleanupAudioMonitor, clearFinalizeTimer, clearRestartTimer]);
+    moveToState("IDLE", true);
+  }, [cleanupAudioMonitor, clearTimers, moveToState]);
+
+  const toggleRecording = useCallback(() => {
+    if (["LISTENING", "SPEECH_DETECTED", "WAITING_FOR_MORE"].includes(state)) {
+      stopRecording();
+    } else if (state === "IDLE" || state === "REVIEW") {
+      void startRecording();
+    }
+  }, [startRecording, state, stopRecording]);
+
+  const retryTranscription = useCallback(
+    () => transcribePendingAudio(requestIdRef.current),
+    [transcribePendingAudio]
+  );
 
   return {
     cancelRecording,
-    isRecording: state === "recording",
-    isTranscribing: state === "transcribing",
+    isRecording: ["LISTENING", "SPEECH_DETECTED", "WAITING_FOR_MORE"].includes(state),
+    isTranscribing: state === "TRANSCRIBING",
+    markIdle: () => moveToState("IDLE", true),
+    markReview: () => moveToState("REVIEW", true),
+    markSubmitting: () => moveToState("SUBMITTING", true),
+    retryTranscription,
     startRecording,
     state,
     stopRecording,

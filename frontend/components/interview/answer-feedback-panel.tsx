@@ -8,6 +8,7 @@ import { activeInterviewSessionStorageKey } from "@/lib/interview-client";
 import { apiPost } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
 import { Loader2, RefreshCw } from "lucide-react";
+import { shouldShowAudioAnalysis } from "./answer-feedback-policy";
 
 function ScoreBadge({ label, score }: { label: string; score: number }) {
   const color =
@@ -159,7 +160,10 @@ export function AnswerFeedbackPanel({
           >
             {/* Header - clickable */}
             <button
+              type="button"
               onClick={() => setExpandedIdx(expanded ? null : i)}
+              aria-expanded={expanded}
+              aria-controls={`answer-detail-${d.sessionQuestionId}`}
               className="w-full flex items-center justify-between p-3 bg-gray-800/50 hover:bg-gray-800 transition text-left"
             >
               <div className="flex-1 min-w-0">
@@ -183,11 +187,24 @@ export function AnswerFeedbackPanel({
 
             {/* Expanded content */}
             {expanded && (
-              <div className="p-4 space-y-4 bg-gray-900/50">
+              <div id={`answer-detail-${d.sessionQuestionId}`} className="p-4 space-y-4 bg-gray-900/50">
                 <div className="flex justify-end">
                   <Link href={`/interview/setup?practiceQuestionId=${d.sessionQuestionId}`} className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-black text-gray-200 hover:bg-gray-800">
                     Luyện lại câu này
                   </Link>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs font-black text-slate-300">
+                  <span className="rounded-full border border-slate-700 px-3 py-1">{d.phaseLabel}</span>
+                  <span className="rounded-full border border-slate-700 px-3 py-1">Độ sâu {d.depthReached}/3</span>
+                  <span className="rounded-full border border-slate-700 px-3 py-1">
+                    Nguồn: {d.answerSource === "MIC" ? "micro" : "bàn phím"}
+                  </span>
+                  {shouldShowAudioAnalysis(d) ? (
+                    <span className="rounded-full border border-cyan-700 px-3 py-1 text-cyan-200">
+                      Giọng nói: {d.audioScore}/100
+                    </span>
+                  ) : null}
                 </div>
 
                 {/* Score badges */}
@@ -200,7 +217,7 @@ export function AnswerFeedbackPanel({
                   <ScoreBadge label="Ấn tượng" score={d.scores.impression} />
                 </div>
 
-                {d.speech ? (
+                {shouldShowAudioAnalysis(d) && d.speech ? (
                   <div className="rounded-lg border border-cyan-800 bg-cyan-950/30 p-3">
                     <p className="text-xs font-black uppercase text-cyan-200">Phân tích giọng nói</p>
                     <div className="mt-2 grid gap-2 text-xs text-cyan-50 sm:grid-cols-3">
@@ -220,6 +237,20 @@ export function AnswerFeedbackPanel({
                   <p className="text-sm text-gray-300 bg-gray-800 p-2 rounded">
                     {d.answerText}
                   </p>
+                </div>
+
+                {d.answerSource === "MIC" && d.transcript ? (
+                  <div>
+                    <p className="mb-1 text-xs text-gray-500">Bản chép lời từ micro:</p>
+                    <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded bg-gray-800 p-2 text-sm text-gray-300">
+                      {d.transcript}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <IdeaList title="Ý đã đạt" items={d.achievedIdeas} tone="good" />
+                  <IdeaList title="Ý còn thiếu" items={d.missingIdeas} tone="warn" />
                 </div>
 
                 {/* Feedback */}
@@ -276,6 +307,13 @@ export function AnswerFeedbackPanel({
                   </div>
                 )}
 
+                {d.suggestedFollowUpQuestion ? (
+                  <div className="rounded-lg border border-amber-800 bg-amber-950/30 p-3">
+                    <p className="text-xs font-black uppercase text-amber-300">Câu hỏi đào sâu đề xuất</p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm text-amber-50">{d.suggestedFollowUpQuestion}</p>
+                  </div>
+                ) : null}
+
                 {d.sampleComparison ? (
                   <div className="rounded-lg border border-blue-800 bg-blue-950/30 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -330,6 +368,21 @@ export function AnswerFeedbackPanel({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function IdeaList({ items, title, tone }: { items: string[]; title: string; tone: "good" | "warn" }) {
+  return (
+    <div className={`rounded-lg border p-3 ${tone === "good" ? "border-emerald-800 bg-emerald-950/30" : "border-red-800 bg-red-950/30"}`}>
+      <p className={`text-xs font-black uppercase ${tone === "good" ? "text-emerald-300" : "text-red-300"}`}>{title}</p>
+      {items.length ? (
+        <ul className="mt-2 space-y-1 text-sm text-gray-300">
+          {items.map((item) => <li key={item}>• {item}</li>)}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-gray-400">Chưa có dữ liệu đối chiếu.</p>
+      )}
     </div>
   );
 }

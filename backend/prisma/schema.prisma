@@ -333,6 +333,7 @@ model InterviewAnswer {
   sessionId         String                   @map("session_id") @db.Uuid
   sessionQuestionId String                   @map("session_question_id") @db.Uuid
   userId            String                   @map("user_id") @db.Uuid
+  submissionId      String?                  @unique @map("submission_id") @db.Uuid
   answerText        String?                  @map("answer_text")
   answerAudioUrl    String?                  @map("answer_audio_url")
   speechToTextRaw   String?                  @map("speech_to_text_raw")

@@ -14,12 +14,12 @@ import { generateInterviewQuestions } from "../ai/ai.service.js";
 import { buildSessionAnalysis } from "./detailed-scoring.service.js";
 import { awardBadgesForUser } from "../gamification/gamification.service.js";
 import { normalizeSearchText, rankSearchCandidate } from "../../utils/search-normalize.js";
+import { getInterviewQuestionLimit } from "./interview-structure.js";
 
 export { checkAiCallBudget, maxAiCallsPerUserPerDay } from "../ai/ai-budget.service.js";
 
 // ── Constants ──────────────────────────────────────────────────────────
 const defaultPlannedDurationMinutes = 30;
-const estimatedMinutesPerQuestion = 6;
 const minSessionQuestions = 3;
 export const maxSessionQuestions = 30;
 export const initialSessionQuestions = 5;
@@ -181,10 +181,7 @@ export function delay(ms: number) {
 }
 
 export function getQuestionLimitForDuration(plannedDurationMinutes?: number | null) {
-  const minutes = Number(plannedDurationMinutes ?? defaultPlannedDurationMinutes);
-  if (!Number.isFinite(minutes) || minutes <= 0) return initialSessionQuestions;
-
-  return clampQuestionLimit(Math.round(minutes / estimatedMinutesPerQuestion));
+  return clampQuestionLimit(getInterviewQuestionLimit(plannedDurationMinutes ?? defaultPlannedDurationMinutes));
 }
 
 function clampQuestionLimit(value: number) {
@@ -233,10 +230,35 @@ export async function findBankQuestions(input: BankQuestionLookupInput | Languag
     orderBy: { createdAt: "desc" },
     take: 50
   });
+  const unrelatedMajorAliases = major
+    ? (await prisma.major.findMany({
+        where: { id: { not: major.id }, isActive: true },
+        select: { name: true, nameEn: true, nameZh: true }
+      }))
+        .flatMap((item) => [item.name, item.nameEn, item.nameZh])
+        .filter((alias): alias is string => Boolean(alias?.trim()))
+    : [];
 
   return questions
-    .sort((left, right) => questionTargetScore(right, { majorId: major?.id, scholarshipId: scholarship?.id, schoolId: school?.id })
-      - questionTargetScore(left, { majorId: major?.id, scholarshipId: scholarship?.id, schoolId: school?.id }))
+    .filter((question) => {
+      if (!major || question.majorId === major.id) return true;
+      const normalizedQuestion = normalizeSearchText(question.questionText);
+      return !unrelatedMajorAliases.some((alias) => {
+        const normalizedAlias = normalizeSearchText(alias);
+        return normalizedAlias.length >= 4 && normalizedQuestion.includes(normalizedAlias);
+      });
+    })
+    .sort((left, right) => questionTargetScore(right, {
+      degreeLevel: lookup.degreeLevel,
+      majorId: major?.id,
+      scholarshipId: scholarship?.id,
+      schoolId: school?.id
+    }) - questionTargetScore(left, {
+      degreeLevel: lookup.degreeLevel,
+      majorId: major?.id,
+      scholarshipId: scholarship?.id,
+      schoolId: school?.id
+    }))
     .slice(0, limit);
 }
 
@@ -247,13 +269,14 @@ function scopeQuestionField(field: "majorId" | "scholarshipId" | "schoolId", id:
 }
 
 function questionTargetScore(
-  question: { majorId: string | null; scholarshipId: string | null; schoolId: string | null },
-  target: { majorId?: string; scholarshipId?: string; schoolId?: string }
+  question: { degreeLevel: DegreeLevel | null; majorId: string | null; scholarshipId: string | null; schoolId: string | null },
+  target: { degreeLevel?: DegreeLevel | null; majorId?: string; scholarshipId?: string; schoolId?: string }
 ) {
   let score = 0;
   if (target.schoolId && question.schoolId === target.schoolId) score += 5;
   if (target.majorId && question.majorId === target.majorId) score += 3;
   if (target.scholarshipId && question.scholarshipId === target.scholarshipId) score += 2;
+  if (target.degreeLevel && question.degreeLevel === target.degreeLevel) score += 1;
   return score;
 }
 
@@ -320,7 +343,7 @@ async function findMajorTarget(id?: string | null, name?: string | null) {
   if (targetId) {
     const major = await prisma.major.findFirst({
       where: { id: targetId, isActive: true },
-      select: { id: true }
+      select: { id: true, name: true, nameEn: true, nameZh: true }
     });
     if (major) return major;
   }
@@ -337,7 +360,7 @@ async function findMajorTarget(id?: string | null, name?: string | null) {
         { nameZh: { equals: target, mode: "insensitive" } }
       ]
     },
-    select: { id: true }
+    select: { id: true, name: true, nameEn: true, nameZh: true }
   });
 }
 
@@ -401,7 +424,7 @@ export function buildPreparedQuestions({
   language: LanguageCode;
   targetQuestionCount?: number;
 }): PreparedQuestion[] {
-  const questionLimit = clampQuestionLimit(targetQuestionCount ?? initialSessionQuestions);
+  const questionLimit = Math.max(1, Math.min(maxSessionQuestions, Math.floor(targetQuestionCount ?? initialSessionQuestions)));
   const bankPrepared = bankQuestions.map((question) => ({
     category: question.category,
     difficulty: question.difficulty,
@@ -427,12 +450,55 @@ export function buildPreparedQuestions({
     language,
     source: QuestionSource.ADMIN_BANK
   }));
+  const introduction = buildFiveMinuteIntroduction(language);
+  const candidates = [...bankPrepared, ...aiPrepared, ...fallbackPrepared]
+    .filter((question) => !isSelfIntroductionQuestion(question));
 
-  return [...bankPrepared, ...aiPrepared, ...fallbackPrepared]
+  return [introduction, ...candidates]
     .filter((question, index, questions) => {
-      return questions.findIndex((item) => item.questionText === question.questionText) === index;
+      const normalized = normalizeSearchText(question.questionText);
+      return questions.findIndex((item) => normalizeSearchText(item.questionText) === normalized) === index;
     })
     .slice(0, questionLimit);
+}
+
+function isSelfIntroductionQuestion(question: PreparedQuestion) {
+  if (question.category !== QuestionCategory.PERSONAL) return false;
+  const normalized = normalizeSearchText(question.questionText);
+  return ["gioi thieu", "introduce", "introduction", "介绍", "自我介绍"].some((keyword) => normalized.includes(keyword));
+}
+
+function buildFiveMinuteIntroduction(language: LanguageCode): PreparedQuestion {
+  if (language === LanguageCode.EN) {
+    return {
+      category: QuestionCategory.PERSONAL,
+      difficulty: DifficultyLevel.EASY,
+      expectedAnswerLogic: "Use about five minutes to cover academic background, relevant experience, strengths, and the goal of this application.",
+      language,
+      questionText: "Please use about five minutes to introduce yourself, including your academic background, relevant experience, strengths, and application goals.",
+      source: QuestionSource.AI_GENERATED
+    };
+  }
+
+  if (language === LanguageCode.VI) {
+    return {
+      category: QuestionCategory.PERSONAL,
+      difficulty: DifficultyLevel.EASY,
+      expectedAnswerLogic: "Dùng khoảng 5 phút để nêu nền tảng học tập, kinh nghiệm liên quan, điểm mạnh và mục tiêu ứng tuyển.",
+      language,
+      questionText: "Bạn hãy dành khoảng 5 phút giới thiệu bản thân, gồm nền tảng học tập, kinh nghiệm liên quan, điểm mạnh và mục tiêu ứng tuyển.",
+      source: QuestionSource.AI_GENERATED
+    };
+  }
+
+  return {
+    category: QuestionCategory.PERSONAL,
+    difficulty: DifficultyLevel.EASY,
+    expectedAnswerLogic: "Dùng khoảng 5 phút để nêu nền tảng học tập, kinh nghiệm liên quan, điểm mạnh và mục tiêu ứng tuyển.",
+    language,
+    questionText: "请用大约五分钟介绍一下自己，包括你的学术背景、相关经历、个人优势和申请目标。",
+    source: QuestionSource.AI_GENERATED
+  };
 }
 
 export function toQuestionCategory(category: string): QuestionCategory {

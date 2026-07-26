@@ -1,6 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
 import { ai_task_type } from "@prisma/client";
-// @ts-ignore
 import pdf, { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import OpenAI from "openai";
@@ -105,7 +104,7 @@ export function cleanStudyPlanText(
   const originalLength = rawText.length;
   const normalized = rawText
     .replace(/^\uFEFF/, "")
-    .replace(/\u0000/g, "")
+    .split("\u0000").join("")
     .replace(/\r\n?/g, "\n")
     .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, " ")
     .replace(/[^\S\n]+/g, " ");

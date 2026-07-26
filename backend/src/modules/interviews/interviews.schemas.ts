@@ -7,6 +7,10 @@ export const createInterviewSchema = z.object({
   fullName: z.string().trim().min(2).max(150).optional(),
   language: z.nativeEnum(LanguageCode).default(LanguageCode.ZH),
   mode: z.nativeEnum(InterviewMode).default(InterviewMode.PRACTICE),
+  plannedDurationMinutes: z.coerce.number().int().min(10).max(180).optional(),
+  schoolId: z.string().uuid().optional().nullable(),
+  majorId: z.string().uuid().optional().nullable(),
+  scholarshipId: z.string().uuid().optional().nullable(),
   scholarshipType: z.string().trim().optional(),
   studyPlan: z.string().trim().optional(),
   targetMajor: z.string().trim().optional(),
@@ -15,6 +19,7 @@ export const createInterviewSchema = z.object({
 
 export const submitAnswerSchema = z.object({
   answerText: z.string().trim().min(1, "Vui lòng nhập câu trả lời"),
+  submissionId: z.string().uuid("Mã gửi câu trả lời không hợp lệ"),
   sessionQuestionId: z.string().uuid("Câu hỏi không hợp lệ")
 });
 

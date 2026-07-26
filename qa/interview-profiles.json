@@ -1,0 +1,81 @@
+[
+  {
+    "id": "qa-ecommerce-bachelor-zh",
+    "name": "QA Thương mại điện tử – Đại học – Tiếng Trung",
+    "degreeLevel": "BACHELOR",
+    "language": "ZH",
+    "targetMajor": "Thương mại điện tử",
+    "targetSchool": "Zhejiang University",
+    "gpa": {
+      "grade10": 8.4,
+      "grade11": 8.7,
+      "grade12": 9.0
+    },
+    "studyPlan": "Tập trung phân tích dữ liệu khách hàng và vận hành sàn thương mại điện tử."
+  },
+  {
+    "id": "qa-ecommerce-master-en",
+    "name": "QA Thương mại điện tử – Thạc sĩ – Tiếng Anh",
+    "degreeLevel": "MASTER",
+    "language": "EN",
+    "targetMajor": "E-commerce",
+    "targetSchool": "University of International Business and Economics",
+    "gpa": {
+      "undergraduate": 3.45
+    },
+    "studyPlan": "Research cross-border e-commerce adoption among small businesses."
+  },
+  {
+    "id": "qa-international-relations-bachelor-zh",
+    "name": "QA Quan hệ quốc tế – Đại học – Tiếng Trung",
+    "degreeLevel": "BACHELOR",
+    "language": "ZH",
+    "targetMajor": "Quan hệ quốc tế",
+    "targetSchool": "Peking University",
+    "gpa": {
+      "grade10": 8.1,
+      "grade11": 8.5,
+      "grade12": 8.8
+    },
+    "studyPlan": "Học chính sách quốc tế và hợp tác khu vực Đông Nam Á."
+  },
+  {
+    "id": "qa-information-technology-master-zh",
+    "name": "QA Công nghệ thông tin – Thạc sĩ – Tiếng Trung",
+    "degreeLevel": "MASTER",
+    "language": "ZH",
+    "targetMajor": "Công nghệ thông tin",
+    "targetSchool": "Tsinghua University",
+    "gpa": {
+      "undergraduate": 3.62
+    },
+    "studyPlan": "Nghiên cứu hệ thống phân tán và ứng dụng dữ liệu lớn."
+  },
+  {
+    "id": "qa-economics-bachelor-vi",
+    "name": "QA Kinh tế – Đại học – Tiếng Việt",
+    "degreeLevel": "BACHELOR",
+    "language": "VI",
+    "targetMajor": "Kinh tế",
+    "targetSchool": "Fudan University",
+    "gpa": {
+      "grade10": 8.6,
+      "grade11": 8.9,
+      "grade12": 9.1
+    },
+    "studyPlan": "Nghiên cứu kinh tế số và tác động tới doanh nghiệp vừa và nhỏ."
+  },
+  {
+    "id": "qa-career-switch-zh",
+    "name": "QA Hồ sơ chuyển ngành – Tiếng Trung",
+    "degreeLevel": "MASTER",
+    "language": "ZH",
+    "targetMajor": "Thương mại điện tử",
+    "targetSchool": "Shanghai Jiao Tong University",
+    "gpa": {
+      "undergraduate": 3.28
+    },
+    "previousMajor": "Quan hệ quốc tế",
+    "studyPlan": "Chuyển sang thương mại điện tử dựa trên kinh nghiệm nghiên cứu thị trường quốc tế."
+  }
+]

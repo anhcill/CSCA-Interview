@@ -38,6 +38,7 @@ import {
   getStoredLocale,
   interpolate,
   interviewModeToBackendLanguage,
+  languageModeLabel,
   localeChangedEvent,
   messages,
   setStoredInterviewLanguageMode,
@@ -46,12 +47,14 @@ import {
   type Locale
 } from "@/lib/i18n";
 import { type VoiceRecorderResult, useVoiceRecorder } from "@/lib/hooks/use-voice-recorder";
+import { getVoiceRecorderStateLabel } from "@/lib/hooks/voice-recorder-machine";
 import { useFaceAnalysis } from "@/lib/hooks/use-face-analysis";
-import { assessPronunciation, playBase64Audio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
+import { assessPronunciation, playBase64Audio, stopActiveSpeechAudio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
 import { CameraCheckPanel, type CameraSystemChecks } from "./camera-check-panel";
 import { ChatBubble } from "./chat-bubble";
 import type { ChatMessage } from "./interview-data";
-import { playAudioUrl } from "./question-audio-player";
+import { getInterviewPhasePresentation } from "./interview-phase";
+import { playAudioUrl, stopQuestionAudio } from "./question-audio-player";
 import {
   buildAiMessage,
   fallbackQuestions,
@@ -99,7 +102,8 @@ type SpeechSubmitPayload = {
   result?: VoiceRecorderResult;
 };
 
-const maxNoSpeechAutoRetries = 2;
+const maxNoSpeechAutoRetries = 0;
+const autoSendVoiceAnswerStorageKey = "ai_phongvan_auto_send_voice_answer";
 
 export function InterviewRoom() {
   const router = useRouter();
@@ -110,6 +114,7 @@ export function InterviewRoom() {
   const [sessionLanguage, setSessionLanguage] = useState<BackendLanguage>("ZH");
   const [interviewLanguageMode, setInterviewLanguageMode] = useState<InterviewLanguageMode>("ZH");
   const [plannedDurationMinutes, setPlannedDurationMinutes] = useState<number | null>(null);
+  const [plannedQuestionCount, setPlannedQuestionCount] = useState(fallbackQuestions.length);
   const [questions, setQuestions] = useState<RoomQuestion[]>(fallbackQuestions);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [messagesList, setMessagesList] = useState<ChatMessage[]>([
@@ -140,6 +145,8 @@ export function InterviewRoom() {
   const [selectedSpeechRate, setSelectedSpeechRate] = useState<SpeechRate>(1);
   const [selectedQuestionReader, setSelectedQuestionReader] = useState<QuestionReaderMode>("ai");
   const [showChat, setShowChat] = useState(true);
+  const [pendingVoiceResult, setPendingVoiceResult] = useState<VoiceRecorderResult | null>(null);
+  const [autoSendVoiceAnswer, setAutoSendVoiceAnswer] = useState(false);
 
   const handleFaceAnalysisError = useCallback((message: string) => {
     setError(message);
@@ -171,6 +178,11 @@ export function InterviewRoom() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const noSpeechRetryTimerRef = useRef<number | null>(null);
   const noSpeechRetryCountRef = useRef(0);
+  const autoSendTimeoutRef = useRef<number | null>(null);
+  const autoSendIntervalRef = useRef<number | null>(null);
+  const continueTranscriptBaseRef = useRef("");
+  const submissionIdRef = useRef<string | null>(null);
+  const submissionInFlightRef = useRef(false);
   const startRecordingRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const recorderStateRef = useRef({ isRecording: false, isTranscribing: false });
   const interviewModeRef = useRef(interviewMode);
@@ -182,6 +194,14 @@ export function InterviewRoom() {
     setNoSpeechSignal((value) => value + 1);
   }, []);
 
+  const clearAutoSendTimer = useCallback(() => {
+    if (autoSendTimeoutRef.current !== null) window.clearTimeout(autoSendTimeoutRef.current);
+    if (autoSendIntervalRef.current !== null) window.clearInterval(autoSendIntervalRef.current);
+    autoSendTimeoutRef.current = null;
+    autoSendIntervalRef.current = null;
+    setAutoSubmitCountdown(null);
+  }, []);
+
   useEffect(() => {
     setMounted(true);
     const stored = localStorage.getItem(speechVoiceStorageKey);
@@ -190,6 +210,7 @@ export function InterviewRoom() {
     if (isSpeechRate(storedRate)) setSelectedSpeechRate(storedRate);
     const storedReader = localStorage.getItem(questionReaderStorageKey);
     if (isQuestionReaderMode(storedReader)) setSelectedQuestionReader(storedReader);
+    setAutoSendVoiceAnswer(localStorage.getItem(autoSendVoiceAnswerStorageKey) === "1");
   }, []);
 
   useEffect(() => {
@@ -199,7 +220,6 @@ export function InterviewRoom() {
 
   const voiceRecorder = useVoiceRecorder({
     language: backendLanguageToSpeechLocale(sessionLanguage),
-    onAutoSubmitCountdown: setAutoSubmitCountdown,
     onError: (message) => {
       const shouldFallbackToText = /microphone|mic|permission|not-allowed|truy c\u1eadp|truy cap|kh\u00f4ng th\u1ec3|khong the|kh\u00f4ng h\u1ed7 tr\u1ee3|khong ho tro/i.test(message);
       setError(shouldFallbackToText ? `${message}. ${t.textModeFallback}` : message);
@@ -215,16 +235,44 @@ export function InterviewRoom() {
     onTranscript: (text, result) => {
       const transcript = text.trim();
       if (!transcript) return;
-      setAutoSubmitCountdown(null);
+      clearAutoSendTimer();
       setLiveTranscript("");
-      setInput(transcript);
+      const combinedTranscript = [continueTranscriptBaseRef.current, transcript]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      continueTranscriptBaseRef.current = "";
+      setInput(combinedTranscript);
       setSpeechNotice("");
+      setPendingVoiceResult(result ?? null);
       if (result?.speechMetrics) setLastSpeechMetrics(result.speechMetrics);
-      if (interviewMode !== "TEXT") {
-        void submitAnswer(transcript, result);
-      }
     }
   });
+
+  useEffect(() => {
+    if (
+      !autoSendVoiceAnswer
+      || !pendingVoiceResult
+      || voiceRecorder.state !== "REVIEW"
+      || !input.trim()
+    ) {
+      clearAutoSendTimer();
+      return;
+    }
+
+    const startedAt = Date.now();
+    setAutoSubmitCountdown(5);
+    autoSendIntervalRef.current = window.setInterval(() => {
+      const remaining = Math.max(0, 5000 - (Date.now() - startedAt));
+      setAutoSubmitCountdown(remaining > 0 ? Math.ceil(remaining / 1000) : null);
+    }, 250);
+    autoSendTimeoutRef.current = window.setTimeout(() => {
+      clearAutoSendTimer();
+      void submitAnswer(input, pendingVoiceResult);
+    }, 5000);
+
+    return clearAutoSendTimer;
+  }, [autoSendVoiceAnswer, input, pendingVoiceResult, voiceRecorder.state, clearAutoSendTimer]);
 
   const clearNoSpeechRetryTimer = useCallback(() => {
     if (noSpeechRetryTimerRef.current !== null) {
@@ -260,11 +308,14 @@ export function InterviewRoom() {
   const activeQuestionDisplay = useMemo(() => {
     return getQuestionDisplayText(activeQuestion, interviewLanguageMode);
   }, [activeQuestion, interviewLanguageMode]);
-  const totalQuestions = questions.length;
+  const totalQuestions = Math.max(plannedQuestionCount, questions.length);
   const plannedDurationSeconds = plannedDurationMinutes ? plannedDurationMinutes * 60 : null;
   const remainingSeconds = plannedDurationSeconds === null ? null : Math.max(0, plannedDurationSeconds - elapsedSeconds);
   const progress = useMemo(() => ((currentQuestion + 1) / totalQuestions) * 100, [currentQuestion, totalQuestions]);
   const progressLabel = interpolate(t.questionProgress, { current: currentQuestion + 1, total: totalQuestions });
+  const activePhase = getInterviewPhasePresentation(activeQuestion.category);
+  const isIntroductionPhase = activeQuestion.orderIndex === 1 && activeQuestion.category === "PERSONAL";
+  const introductionRemainingSeconds = Math.max(0, 5 * 60 - elapsedSeconds);
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [error, isThinking, liveTranscript, messagesList]);
@@ -272,14 +323,18 @@ export function InterviewRoom() {
   useEffect(() => {
     noSpeechRetryCountRef.current = 0;
     clearNoSpeechRetryTimer();
-  }, [activeQuestion.id, clearNoSpeechRetryTimer]);
+    clearAutoSendTimer();
+    setPendingVoiceResult(null);
+    continueTranscriptBaseRef.current = "";
+    submissionIdRef.current = null;
+    voiceRecorder.cancelRecording();
+  }, [activeQuestion.id]);
 
   useEffect(() => {
     if (noSpeechSignal === 0) return;
 
     setAutoSubmitCountdown(null);
     setLiveTranscript("");
-    setInput("");
 
     if (interviewModeRef.current === "TEXT" || isPausedRef.current || isCompletingRef.current) {
       setSpeechNotice("Chưa nghe rõ câu trả lời. Bạn có thể nhập câu trả lời bằng bàn phím.");
@@ -311,16 +366,19 @@ export function InterviewRoom() {
   }, [clearNoSpeechRetryTimer, noSpeechSignal]);
 
   useEffect(() => {
-    return clearNoSpeechRetryTimer;
-  }, [clearNoSpeechRetryTimer]);
+    return () => {
+      clearNoSpeechRetryTimer();
+      clearAutoSendTimer();
+    };
+  }, [clearAutoSendTimer, clearNoSpeechRetryTimer]);
 
   const startListeningAfterSpeech = useCallback((shouldStart?: boolean) => {
-    if (!isCompletingRef.current && shouldStart && interviewMode !== "TEXT" && !isPaused && !voiceRecorder.isRecording && !voiceRecorder.isTranscribing) {
+    if (!isCompletingRef.current && shouldStart && interviewMode !== "TEXT" && !isPausedRef.current && !voiceRecorder.isRecording && !voiceRecorder.isTranscribing) {
       window.setTimeout(() => {
-        if (!isCompletingRef.current) void voiceRecorder.startRecording();
+        if (!isCompletingRef.current && !isPausedRef.current) void voiceRecorder.startRecording();
       }, 250);
     }
-  }, [interviewMode, isPaused, voiceRecorder]);
+  }, [interviewMode, voiceRecorder]);
 
   const speakText = useCallback(async (text: string, options: { startListeningAfter?: boolean } = {}) => {
     if (!text || isSpeaking) return;
@@ -374,6 +432,10 @@ export function InterviewRoom() {
   ]);
 
   const speakQuestion = useCallback(async (question: RoomQuestion, options: { startListeningAfter?: boolean } = {}) => {
+    clearAutoSendTimer();
+    voiceRecorder.cancelRecording();
+    stopActiveSpeechAudio();
+    stopQuestionAudio();
     const text = getQuestionDisplayText(question, interviewLanguageMode);
 
     if (selectedQuestionReader !== "human" || !sessionId || question.id.startsWith("fallback-")) {
@@ -413,10 +475,12 @@ export function InterviewRoom() {
   }, [
     interviewLanguageMode,
     isSpeaking,
+    clearAutoSendTimer,
     selectedQuestionReader,
     sessionId,
     speakText,
-    startListeningAfterSpeech
+    startListeningAfterSpeech,
+    voiceRecorder.cancelRecording
   ]);
 
   useEffect(() => {
@@ -504,8 +568,12 @@ export function InterviewRoom() {
         const querySessionId = searchParams.get("sessionId");
         const wantsBilingual = searchParams.get("mode") === "bilingual" || searchParams.get("bilingual") === "1";
         const storedMode = getStoredInterviewLanguageMode();
-        const initialMode: InterviewLanguageMode = wantsBilingual ? "BILINGUAL" : storedMode;
         const targetSessionId = querySessionId || storedSessionId;
+        const initialMode: InterviewLanguageMode = wantsBilingual
+          ? "BILINGUAL"
+          : targetSessionId
+            ? storedMode
+            : "ZH";
         const fallbackLanguage = interviewModeToBackendLanguage(initialMode);
         let createdFromStaleSession = false;
         const data = targetSessionId
@@ -548,6 +616,7 @@ export function InterviewRoom() {
         setSessionLanguage(resolvedLanguage);
         setInterviewLanguageMode(resolvedMode);
         setPlannedDurationMinutes(data.session.plannedDurationMinutes);
+        setPlannedQuestionCount(Math.max(data.session.totalQuestions, loadedQuestions.length));
         setQuestions(loadedQuestions);
         setCurrentQuestion(nextIndex);
         setIsPaused(data.session.status === "PAUSED");
@@ -585,19 +654,24 @@ export function InterviewRoom() {
 
   async function submitAnswer(answerText: string, voiceResult?: VoiceRecorderResult) {
     const answer = answerText.trim();
-    if (!answer || !sessionId || isSubmitting || isPaused || isCompletingRef.current) {
+    if (!answer || !sessionId || submissionInFlightRef.current || isPaused || isCompletingRef.current) {
       return;
     }
+    submissionInFlightRef.current = true;
 
     const question = questions[currentQuestion];
+    const submissionId = submissionIdRef.current ?? crypto.randomUUID();
+    submissionIdRef.current = submissionId;
+    clearAutoSendTimer();
     clearNoSpeechRetryTimer();
     noSpeechRetryCountRef.current = 0;
 
     setIsSubmitting(true);
+    voiceRecorder.markSubmitting();
     setError("");
     setInput("");
     setLiveTranscript("");
-    setAutoSubmitCountdown(null);
+    clearAutoSendTimer();
     if (!voiceResult) {
       setLastSpeechMetrics(null);
       setLastPronunciation(null);
@@ -620,11 +694,12 @@ export function InterviewRoom() {
         pronunciation: speechPayload.pronunciation,
         sessionId,
         sessionQuestionId: question.id,
+        submissionId,
         speechDurationSec: speechPayload.result?.duration ?? speechPayload.result?.speechMetrics?.durationSec ?? null,
         speechLanguage: speechPayload.result?.language ?? null,
         speechMetrics: speechPayload.result?.speechMetrics ?? null,
         speechMimeType: speechPayload.result?.mimeType ?? null,
-        speechTranscript: speechPayload.result?.text ?? answer
+        speechTranscript: speechPayload.result?.text ?? null
       });
 
       if (isCompletingRef.current) return;
@@ -636,6 +711,10 @@ export function InterviewRoom() {
       });
 
       setInput("");
+      setPendingVoiceResult(null);
+      continueTranscriptBaseRef.current = "";
+      submissionIdRef.current = null;
+      voiceRecorder.markIdle();
 
       if (result.session.status === "COMPLETED") {
         sessionStorage.setItem(activeInterviewSessionStorageKey, sessionId);
@@ -647,7 +726,9 @@ export function InterviewRoom() {
     } catch (err) {
       if (isCompletingRef.current) return;
       setError(err instanceof Error ? err.message : t.saveFailed);
+      voiceRecorder.markReview();
     } finally {
+      submissionInFlightRef.current = false;
       if (!isCompletingRef.current) {
         setIsSubmitting(false);
         setIsThinking(false);
@@ -703,6 +784,9 @@ export function InterviewRoom() {
       };
       const existingIndex = questions.findIndex((item) => item.id === nextRoomQuestion.id);
       const nextQuestionIndex = existingIndex >= 0 ? existingIndex : questions.length;
+      if (nextResult.plannedTotalQuestions) {
+        setPlannedQuestionCount((current) => Math.max(current, nextResult.plannedTotalQuestions ?? 0));
+      }
 
       setQuestions((current) => {
         const exists = current.some((item) => item.id === nextRoomQuestion.id);
@@ -731,14 +815,45 @@ export function InterviewRoom() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submitAnswer(input);
+    await submitAnswer(input, pendingVoiceResult ?? undefined);
   }
 
-  function handleLanguageChange(nextMode: InterviewLanguageMode) {
-    setInterviewLanguageMode(nextMode);
-    setStoredInterviewLanguageMode(nextMode);
-    const backendLanguage = interviewModeToBackendLanguage(nextMode);
-    setSessionLanguage(backendLanguage);
+  function handleToggleMicrophone() {
+    clearAutoSendTimer();
+    stopActiveSpeechAudio();
+    stopQuestionAudio();
+    if (!voiceRecorder.isRecording && typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    voiceRecorder.toggleRecording();
+  }
+
+  function handleContinueSpeaking() {
+    clearAutoSendTimer();
+    continueTranscriptBaseRef.current = input.trim();
+    setPendingVoiceResult(null);
+    setLiveTranscript("");
+    void voiceRecorder.startRecording();
+  }
+
+  function handleRetakeAnswer() {
+    clearAutoSendTimer();
+    continueTranscriptBaseRef.current = "";
+    setInput("");
+    setLiveTranscript("");
+    setPendingVoiceResult(null);
+    setError("");
+    voiceRecorder.cancelRecording();
+    window.setTimeout(() => void voiceRecorder.startRecording(), 100);
+  }
+
+  async function handleRetryTranscription() {
+    clearAutoSendTimer();
+    setError("");
+    const retried = await voiceRecorder.retryTranscription();
+    if (!retried) {
+      setSpeechNotice("Không thể nhận dạng lại bản ghi. Bạn có thể thu lại hoặc nhập câu trả lời bằng bàn phím.");
+    }
   }
 
   async function handleTogglePause() {
@@ -749,10 +864,13 @@ export function InterviewRoom() {
     setError("");
 
     if (nextPaused) {
+      isPausedRef.current = true;
       clearNoSpeechRetryTimer();
-      setAutoSubmitCountdown(null);
+      clearAutoSendTimer();
       setLiveTranscript("");
       voiceRecorder.cancelRecording();
+      stopActiveSpeechAudio();
+      stopQuestionAudio();
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
@@ -763,7 +881,9 @@ export function InterviewRoom() {
         ? await pauseInterviewSession(sessionId)
         : await resumeInterviewSession(sessionId);
       setIsPaused(data.session.status === "PAUSED");
+      isPausedRef.current = data.session.status === "PAUSED";
     } catch (err) {
+      isPausedRef.current = isPaused;
       setError(err instanceof Error ? err.message : "Không cập nhật được trạng thái tạm dừng.");
     } finally {
       setIsUpdatingPause(false);
@@ -782,12 +902,14 @@ export function InterviewRoom() {
     isCompletingRef.current = true;
     setIsCompleting(true);
     clearNoSpeechRetryTimer();
+    clearAutoSendTimer();
     setError("");
-    setAutoSubmitCountdown(null);
     setLiveTranscript("");
     setInput("");
     setIsThinking(false);
     voiceRecorder.cancelRecording();
+    stopActiveSpeechAudio();
+    stopQuestionAudio();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -804,7 +926,7 @@ export function InterviewRoom() {
     } finally {
       setIsCompleting(false);
     }
-  }, [clearNoSpeechRetryTimer, completeTargetSessionId, router, t.completeFailed, voiceRecorder.cancelRecording]);
+  }, [clearAutoSendTimer, clearNoSpeechRetryTimer, completeTargetSessionId, router, t.completeFailed, voiceRecorder.cancelRecording]);
 
   useEffect(() => {
     hasAutoCompletedForTimeRef.current = false;
@@ -836,7 +958,7 @@ export function InterviewRoom() {
     setError("");
     setInput("");
     setLiveTranscript("");
-    setAutoSubmitCountdown(null);
+    clearAutoSendTimer();
     setLastFeedback(null);
     setLastSpeechMetrics(null);
     setLastPronunciation(null);
@@ -882,10 +1004,10 @@ export function InterviewRoom() {
   }
 
   function handleRetryQuestion() {
+    clearAutoSendTimer();
     voiceRecorder.cancelRecording();
     setInput("");
     setLiveTranscript("");
-    setAutoSubmitCountdown(null);
     setError("");
     setLastFeedback(null);
     setLastSpeechMetrics(null);
@@ -938,6 +1060,15 @@ export function InterviewRoom() {
           </span>
           <span className="tabular-nums">{formatElapsed(elapsedSeconds)}</span>
           <span className="text-[#8C837E] font-medium">/ {plannedDurationMinutes === null ? '30:00' : `${plannedDurationMinutes.toString().padStart(2, "0")}:00`}</span>
+          {isIntroductionPhase ? (
+            <span className="ml-2 rounded-full bg-[#FFF1D6] px-2 py-1 text-[11px] text-[#8A5A00]">
+              Giới thiệu 5 phút · còn {formatElapsed(introductionRemainingSeconds)}
+            </span>
+          ) : (
+            <span className="ml-2 rounded-full bg-[#F4EFFF] px-2 py-1 text-[11px] text-[#6546A8]">
+              {activePhase.label} · {activePhase.targetMinutes} phút
+            </span>
+          )}
           
           <button 
             type="button" 
@@ -951,7 +1082,7 @@ export function InterviewRoom() {
         </div>
 
         {/* Action Controls & Language */}
-        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
           <button 
             type="button" 
             onClick={() => setShowChat((value) => !value)} 
@@ -963,16 +1094,12 @@ export function InterviewRoom() {
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-[#8C837E] hidden sm:inline">Ngôn ngữ</span>
-            <select
-              value={interviewLanguageMode}
-              onChange={(event) => handleLanguageChange(event.target.value as InterviewLanguageMode)}
-              className="bg-white border border-[#E8E3DF] shadow-sm rounded-xl px-3 py-2 text-xs font-extrabold text-[#2B231F] outline-none cursor-pointer hover:bg-[#FDF8F5] transition"
+            <span
+              className="bg-white border border-[#E8E3DF] shadow-sm rounded-xl px-3 py-2 text-xs font-extrabold text-[#2B231F]"
+              title="Ngôn ngữ được khóa theo lựa chọn khi tạo buổi phỏng vấn"
             >
-              <option value="VI">Tiếng Việt</option>
-              <option value="ZH">Tiếng Trung</option>
-              <option value="EN">Tiếng Anh</option>
-              <option value="BILINGUAL">Song ngữ</option>
-            </select>
+              {languageModeLabel(interviewLanguageMode, locale)}
+            </span>
           </div>
         </div>
       </header>
@@ -996,8 +1123,10 @@ export function InterviewRoom() {
           <div className="flex flex-wrap items-center justify-center gap-3.5 py-1">
             <button
               type="button"
-              onClick={voiceRecorder.toggleRecording}
+              onClick={handleToggleMicrophone}
               disabled={interviewMode === "TEXT" || voiceRecorder.isTranscribing}
+              aria-label={voiceRecorder.isRecording ? "Tắt micro" : "Bật micro"}
+              aria-pressed={voiceRecorder.isRecording}
               className={`px-6 py-2.5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition duration-200 shadow-sm border ${
                 voiceRecorder.isRecording
                   ? 'bg-[#FDF2F2] border-[#FBD5D5] text-[#D92C3D]'
@@ -1062,6 +1191,89 @@ export function InterviewRoom() {
               <span>{t.skip}</span>
             </button>
           </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-[#8C837E]" aria-live="polite">
+            <span className="rounded-full border border-[#E8E3DF] bg-white px-3 py-1.5">
+              {getVoiceRecorderStateLabel(voiceRecorder.state)}
+            </span>
+            {voiceRecorder.state === "WAITING_FOR_MORE" ? (
+              <span>Bạn có thể tiếp tục nói; mic chỉ dừng sau khoảng 5 giây im lặng.</span>
+            ) : null}
+          </div>
+
+          {voiceRecorder.state === "REVIEW" ? (
+            <section className="rounded-2xl border border-[#E5D8FF] bg-[#FAF7FF] p-4 shadow-sm" aria-label="Xác nhận câu trả lời bằng giọng nói">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-extrabold text-[#3F2A72]">Kiểm tra câu trả lời trước khi gửi</p>
+                  <p className="mt-1 text-xs font-semibold text-[#77689A]">
+                    Bạn có thể sửa nội dung trong ô chat, nói tiếp hoặc thu lại.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-bold text-[#6546A8]">
+                  <input
+                    type="checkbox"
+                    checked={autoSendVoiceAnswer}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setAutoSendVoiceAnswer(enabled);
+                      localStorage.setItem(autoSendVoiceAnswerStorageKey, enabled ? "1" : "0");
+                      if (!enabled) clearAutoSendTimer();
+                    }}
+                    className="h-4 w-4 accent-[#6546A8]"
+                  />
+                  Tự gửi sau 5 giây
+                </label>
+              </div>
+
+              <div className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-[#E5D8FF] bg-white p-3 text-sm font-semibold leading-6 text-[#2B231F]">
+                {input.trim() || "Chưa nhận dạng được nội dung. Hãy thử nhận dạng lại, thu lại hoặc nhập bằng bàn phím."}
+              </div>
+
+              {autoSubmitCountdown ? (
+                <p className="mt-2 text-xs font-bold text-[#8A5A00]">
+                  Tự gửi sau {autoSubmitCountdown} giây. Bỏ chọn để hủy.
+                </p>
+              ) : null}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void submitAnswer(input, pendingVoiceResult ?? undefined)}
+                  disabled={!input.trim() || isSubmitting}
+                  className="rounded-xl bg-[#D92C3D] px-4 py-2 text-xs font-extrabold text-white disabled:opacity-40"
+                >
+                  Gửi câu trả lời
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContinueSpeaking}
+                  disabled={isSubmitting}
+                  className="rounded-xl border border-[#D8C8FA] bg-white px-4 py-2 text-xs font-extrabold text-[#6546A8]"
+                >
+                  Tiếp tục nói
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRetakeAnswer}
+                  disabled={isSubmitting}
+                  className="rounded-xl border border-[#E8E3DF] bg-white px-4 py-2 text-xs font-extrabold text-[#2B231F]"
+                >
+                  Thu lại
+                </button>
+                {!pendingVoiceResult ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleRetryTranscription()}
+                    disabled={isSubmitting || voiceRecorder.isTranscribing}
+                    className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-extrabold text-amber-700"
+                  >
+                    Nhận dạng lại
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-3 rounded-2xl border border-[#F0EBE7] bg-white/80 p-3 shadow-sm md:grid-cols-[1fr_auto_auto_auto] md:items-center">
             <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#F6F1EE] p-1 text-[11px] font-extrabold">
@@ -1147,6 +1359,9 @@ export function InterviewRoom() {
                 <div className="h-full rounded-full bg-[#D92C3D]" style={{ width: `${progress}%` }} />
               </div>
               <p className="mt-2 text-[11px] font-bold text-[#8C837E]">{progressLabel}</p>
+              <p className="mt-1 text-[11px] font-extrabold text-[#6546A8]">
+                Giai đoạn: {activePhase.label}
+              </p>
             </div>
 
             <div className="rounded-2xl border border-[#F0EBE7] bg-white p-4 shadow-sm" aria-live="polite">
@@ -1306,7 +1521,15 @@ export function InterviewRoom() {
               <path d="M1 9h3" />
               <path d="M1 15h3" />
             </svg>
-            <span>AI: Đang hoạt động</span>
+            <span>
+              AI: {isThinking
+                ? "Đang tạo câu hỏi đào sâu"
+                : isSubmitting
+                  ? "Đang chấm câu trả lời"
+                  : isCompleting
+                    ? "Đang hoàn tất báo cáo"
+                    : "Sẵn sàng"}
+            </span>
           </span>
         </div>
         <div className="flex items-center gap-1.5 cursor-pointer hover:text-[#2B231F] transition duration-200">

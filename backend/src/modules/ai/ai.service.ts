@@ -1,8 +1,9 @@
-import { ai_task_type } from "@prisma/client";
+import { ai_task_type, LanguageCode } from "@prisma/client";
 import type OpenAI from "openai";
 import { resolveAiModelRoutes } from "./ai-model-router.service.js";
 import { extractOpenAiTokenUsage, logAiUsage } from "./ai-usage.service.js";
 import { promptTemplateNames, renderPromptTemplate, resolvePromptTemplate } from "./prompt-templates.js";
+import { sanitizeTextOnlyFeedback } from "../interviews/text-feedback-guard.js";
 
 export type InterviewQuestionInput = {
   degreeLevel: string;
@@ -41,11 +42,20 @@ export type ConversationEntry = {
 
 export type FollowUpInput = {
   answerText: string;
+  candidateClaims?: string[];
   category: string;
   conversationHistory: ConversationEntry[];
+  currentDepth?: number;
+  currentTopic?: string;
+  depthStrategy?: string;
   difficulty: "EASY" | "MEDIUM" | "HARD";
   language: "VI" | "ZH" | "EN";
+  missingContent?: string[];
   ragContext?: string | null;
+  remainingMinutes?: number;
+  requiredTopicsRemaining?: string[];
+  retryInstruction?: string | null;
+  studyPlan?: string | null;
   targetMajor: string;
   targetSchool: string;
   scholarshipType: string;
@@ -260,6 +270,27 @@ function languageInstruction(language: "VI" | "ZH" | "EN") {
   return "Question and answer language: Vietnamese. Feedback language: Vietnamese.";
 }
 
+const initialQuestionRuntimeRules = [
+  "Runtime rules:",
+  "- Stay strictly within targetMajor; ignore all unrelated majors mentioned in school context.",
+  "- The first question must give the candidate about five minutes for self-introduction."
+].join("\n");
+
+const adaptiveQuestionRuntimeRules = [
+  "Runtime rules:",
+  "- Stay strictly within targetMajor; ignore all unrelated majors mentioned in school context.",
+  "- Ask about a specific claim, example, gap, trade-off, method, result, or assumption from the latest answer so the interview goes deeper.",
+  "- Depth 1 clarifies or requests an example; depth 2 checks role, method, evidence, and result; depth 3 challenges limitations, risks, and backup plans.",
+  "- Never invent a professor, laboratory, ranking, program fact, or number."
+].join("\n");
+
+const textOnlyScoringRuntimeRules = [
+  "Runtime evidence rule:",
+  "- This request contains no audio evidence. Judge confidence from wording only.",
+  "- Never describe voice, tone, intonation, pronunciation, reading style, speaking pace, or vocal decisiveness.",
+  "- Describe relevant qualities as wording or expression."
+].join("\n");
+
 // ---------------------------------------------------------------------------
 // Category-specific prompt templates
 // ---------------------------------------------------------------------------
@@ -469,7 +500,7 @@ export async function generateInterviewQuestions(
       messages: [
         {
           role: "system",
-          content: renderPromptTemplate(promptTemplate.systemPrompt, requestPayload)
+          content: `${renderPromptTemplate(promptTemplate.systemPrompt, requestPayload)}\n\n${initialQuestionRuntimeRules}`
         },
         {
           role: "user",
@@ -584,6 +615,7 @@ export function generateFollowUpQuestion(input: FollowUpInput): {
   const followUp = buildContextualFollowUp({
     answerText,
     category,
+    currentDepth: input.currentDepth ?? followUpDepth + 1,
     difficulty,
     keyPoint,
     language,
@@ -634,13 +666,22 @@ export async function generateAdaptiveFollowUpQuestion(input: FollowUpInput & {
   const requestPayload = {
     answerText: input.answerText.slice(0, 1800),
     askedQuestions: input.askedQuestions.slice(-12),
+    candidateClaims: input.candidateClaims?.slice(0, 6) ?? [],
     category: input.category,
     conversationHistory: input.conversationHistory.slice(-8),
+    currentDepth: input.currentDepth ?? followUpDepth + 1,
+    currentTopic: input.currentTopic ?? input.category,
+    depthStrategy: input.depthStrategy ?? "CLARIFY_AND_EXAMPLE",
     difficulty: input.difficulty,
     followUpDepth,
     languageInstruction: languageInstruction(input.language),
+    missingContent: input.missingContent?.slice(0, 8) ?? [],
     ragContext: input.ragContext?.slice(0, 6000) ?? null,
+    remainingMinutes: input.remainingMinutes ?? null,
+    requiredTopicsRemaining: input.requiredTopicsRemaining?.slice(0, 8) ?? [],
+    retryInstruction: input.retryInstruction ?? null,
     scholarshipType: input.scholarshipType,
+    studyPlan: input.studyPlan?.slice(0, 3000) ?? null,
     targetMajor: input.targetMajor,
     targetSchool: input.targetSchool
   };
@@ -650,7 +691,7 @@ export async function generateAdaptiveFollowUpQuestion(input: FollowUpInput & {
     messages: [
       {
         role: "system",
-        content: renderPromptTemplate(promptTemplate.systemPrompt, requestPayload)
+        content: `${renderPromptTemplate(promptTemplate.systemPrompt, requestPayload)}\n\n${adaptiveQuestionRuntimeRules}`
       },
       {
         role: "user",
@@ -739,7 +780,11 @@ function generateCategoryQuestion(input: {
   isFollowUp: boolean;
   followUpDepth: number;
 }) {
-  const templates = input.language === "ZH" ? zhTemplates : viTemplates;
+  const templates: Record<string, CategoryTemplate> = input.language === "ZH"
+    ? zhTemplates
+    : input.language === "EN"
+      ? {}
+      : viTemplates;
   const categoryTemplates = templates[input.category] ?? templates["STUDY_PLAN"] ?? { easy: [], medium: [], hard: [] };
   const diffKey = input.difficulty === "HARD" ? "hard" : input.difficulty === "EASY" ? "easy" : "medium";
   const pool = categoryTemplates[diffKey] ?? categoryTemplates.medium ?? [];
@@ -748,7 +793,9 @@ function generateCategoryQuestion(input: {
     ? pool[Math.floor(Math.random() * pool.length)]
     : input.language === "ZH"
       ? `关于${input.category}，你还有什么想补充的？`
-      : `Về chủ đề ${input.category}, bạn muốn bổ sung gì?`;
+      : input.language === "EN"
+        ? `Regarding ${input.category}, what specific evidence or plan would you like to add?`
+        : `Về chủ đề ${input.category}, bạn muốn bổ sung gì?`;
 
   return {
     aiReason: input.reason,
@@ -761,19 +808,42 @@ function generateCategoryQuestion(input: {
 function buildContextualFollowUp(input: {
   answerText: string;
   category: string;
+  currentDepth: number;
   difficulty: string;
   keyPoint: string;
   language: string;
   targetMajor: string;
   targetSchool: string;
 }) {
-  const { answerText, category, difficulty, keyPoint, language, targetMajor, targetSchool } = input;
+  const { answerText, category, currentDepth, difficulty, keyPoint, language, targetMajor, targetSchool } = input;
   const lower = answerText.toLowerCase();
 
   // Detect what's missing in the answer
   const hasExample = /ví dụ|dự án|nghiên cứu|kinh nghiệm|thành tích|example|project|research|经验|项目|研究|成果/.test(lower);
   const hasPlan = /kế hoạch|mục tiêu|giai đoạn|sau khi|plan|goal|future|计划|目标|毕业|阶段/.test(lower);
   const isShort = answerText.length < 80;
+
+  if (currentDepth >= 3) {
+    return {
+      questionText: language === "ZH"
+        ? `如果“${keyPoint}”未能按计划实现，最大的风险是什么？你的替代方案是什么？`
+        : language === "EN"
+          ? `If “${keyPoint}” does not work as planned, what is the main risk and what backup approach would you use?`
+          : `Nếu “${keyPoint}” không diễn ra như kế hoạch, rủi ro lớn nhất là gì và phương án dự phòng của bạn là gì?`,
+      aiReason: "Đào sâu tầng 3: kiểm tra hạn chế, rủi ro và phương án dự phòng."
+    };
+  }
+
+  if (currentDepth === 2) {
+    return {
+      questionText: language === "ZH"
+        ? `关于“${keyPoint}”，你的具体角色、实施方法和可衡量的结果分别是什么？`
+        : language === "EN"
+          ? `Regarding “${keyPoint}”, what exactly was your role, method, and measurable result?`
+          : `Với “${keyPoint}”, vai trò cụ thể, phương pháp thực hiện và kết quả đo lường của bạn là gì?`,
+      aiReason: "Đào sâu tầng 2: yêu cầu vai trò, phương pháp và kết quả có thể kiểm chứng."
+    };
+  }
 
   if (language === "ZH") {
     if (isShort) {
@@ -1008,7 +1078,7 @@ export async function scoreInterviewAnswerWithAi(input: AiScoreInput): Promise<D
     messages: [
       {
         role: "system",
-        content: renderPromptTemplate(promptTemplate.systemPrompt, requestPayload)
+        content: `${renderPromptTemplate(promptTemplate.systemPrompt, requestPayload)}\n\n${textOnlyScoringRuntimeRules}`
       },
       {
         role: "user",
@@ -1038,7 +1108,7 @@ export async function scoreInterviewAnswerWithAi(input: AiScoreInput): Promise<D
     round1(content * 0.25 + logic * 0.2 + languageScore * 0.2 + confidence * 0.1 + expertise * 0.15 + impression * 0.1)
   );
 
-  return {
+  const normalizedResult: DetailedScore = {
     academicKeywords: normalizeStringArray(payload.academicKeywords, fallback.academicKeywords).slice(0, 8),
     confidence,
     content,
@@ -1054,6 +1124,13 @@ export async function scoreInterviewAnswerWithAi(input: AiScoreInput): Promise<D
     total,
     weaknesses: normalizeStringArray(payload.weaknesses, fallback.weaknesses).slice(0, 4)
   };
+
+  return sanitizeTextOnlyFeedback({
+    answerText: input.answerText,
+    fallback,
+    language: LanguageCode[language],
+    payload: normalizedResult
+  });
 }
 
 function normalizeScore(value: unknown, fallback: number) {

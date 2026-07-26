@@ -11,6 +11,7 @@ export type RoomQuestion = {
   id: string;
   isFollowUp?: boolean;
   language?: "VI" | "ZH" | "EN";
+  orderIndex?: number;
   questionText: string;
   source?: string;
   translation?: string | null;
@@ -36,6 +37,7 @@ export function mapQuestion(question: InterviewQuestionDto): RoomQuestion {
     expectedAnswerLogic: question.expectedAnswerLogic,
     id: question.id,
     language: question.language,
+    orderIndex: question.orderIndex,
     questionText: question.questionText,
     source: question.source
   };
