@@ -30,6 +30,18 @@ import {
   type UsageStatus
 } from "@/components/admin/ai-usage-utils";
 
+const nineRouterModelSuggestions = [
+  "ag/gemini-3-flash-agent",
+  "ag/gemini-3.5-flash-low",
+  "ag/gemini-3.5-flash-extra-low",
+  "ag/gemini-pro-agent",
+  "ag/gemini-3.1-pro-low",
+  "ag/claude-sonnet-4-6",
+  "ag/claude-opus-4-6-thinking",
+  "ag/gpt-oss-120b-medium",
+  "ag/gemini-3-flash"
+];
+
 export function AiUsageDashboard() {
   const [summary, setSummary] = useState<AiUsageSummary>(emptySummary);
   const [logsState, setLogsState] = useState<LogsState>({ logs: [], page: 1, total: 0, totalPages: 1 });
@@ -104,6 +116,7 @@ export function AiUsageDashboard() {
   ]), [logsState.logs, providerBreakdown]);
 
   const modelOptions = useMemo(() => uniqueValues([
+    ...nineRouterModelSuggestions,
     ...modelBreakdown.map((item) => item.key),
     ...logsState.logs.map((log) => log.model)
   ]), [logsState.logs, modelBreakdown]);
@@ -205,7 +218,7 @@ export function AiUsageDashboard() {
             Model
             <div className="mt-1 flex min-h-10 items-center gap-2 rounded-lg border px-3">
               <Search size={15} className="text-slate-400" />
-              <input className="w-full border-0 text-sm outline-none" list="ai-usage-model-options" placeholder="gpt-4o, cx/gpt..." value={model} onChange={(event) => { setModel(event.target.value); setPage(1); }} />
+              <input className="w-full border-0 text-sm outline-none" list="ai-usage-model-options" placeholder="gpt-4o, cx/gpt..., ag/gemini..." value={model} onChange={(event) => { setModel(event.target.value); setPage(1); }} />
               <datalist id="ai-usage-model-options">
                 {modelOptions.map((item) => <option key={item} value={item} />)}
               </datalist>

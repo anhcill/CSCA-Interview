@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
 import { GpaFields } from "@/components/profile/gpa-fields";
@@ -11,6 +11,7 @@ import { apiGet } from "@/lib/api";
 import {
   fetchMyProfile,
   updateMyProfile,
+  updateMyProfileOtherLanguages,
   type ProfileInput,
   type StudyPlanImageFileDto,
   type StudyPlanImageInput,
@@ -110,9 +111,13 @@ export function ProfileForm() {
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [otherLanguagesSaveStatus, setOtherLanguagesSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [dragActive, setDragActive] = useState(false);
   const [majors, setMajors] = useState<MajorOption[]>([]);
   const [scholarships, setScholarships] = useState<ScholarshipOption[]>([]);
+  const lastSavedOtherLanguagesRef = useRef("");
+  const currentOtherLanguagesRef = useRef("");
+  const otherLanguagesSaveRequestRef = useRef(0);
   const eligibleMajors = majors.filter((major) => major.degreeLevel === form.degreeLevel);
   const selectedMajorId = form.majorId || eligibleMajors.find((major) => major.name === form.targetMajor)?.id || "";
   const selectedScholarshipId = form.scholarshipId || scholarships.find((item) => item.name === form.scholarshipType)?.id || "";
@@ -292,7 +297,10 @@ export function ProfileForm() {
         const data = await fetchMyProfile();
 
         if (!ignore && data.profile) {
-          setForm(profileToForm(data.profile));
+          const loadedForm = profileToForm(data.profile);
+          setForm(loadedForm);
+          lastSavedOtherLanguagesRef.current = normalizeOptionalText(loadedForm.otherLanguages);
+          currentOtherLanguagesRef.current = loadedForm.otherLanguages;
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Không thể tải profile";
@@ -341,10 +349,43 @@ export function ProfileForm() {
   }, []);
 
   function updateField<Key extends keyof ProfileFormState>(key: Key, value: ProfileFormState[Key]) {
+    if (key === "otherLanguages") {
+      currentOtherLanguagesRef.current = String(value);
+      setOtherLanguagesSaveStatus("idle");
+    }
+
     setForm((current) => ({
       ...current,
       [key]: value
     }));
+  }
+
+  async function handleOtherLanguagesBlur() {
+    const normalizedValue = normalizeOptionalText(currentOtherLanguagesRef.current);
+    if (normalizedValue === lastSavedOtherLanguagesRef.current) return;
+
+    const requestId = ++otherLanguagesSaveRequestRef.current;
+    setOtherLanguagesSaveStatus("saving");
+
+    try {
+      const saved = await updateMyProfileOtherLanguages(normalizedValue || null);
+      if (requestId !== otherLanguagesSaveRequestRef.current) return;
+
+      const savedValue = saved.otherLanguages ?? "";
+      lastSavedOtherLanguagesRef.current = normalizeOptionalText(savedValue);
+      setForm((current) => (
+        normalizeOptionalText(current.otherLanguages) === normalizedValue
+          ? { ...current, otherLanguages: savedValue }
+          : current
+      ));
+      setOtherLanguagesSaveStatus(
+        normalizeOptionalText(currentOtherLanguagesRef.current) === normalizedValue ? "saved" : "idle"
+      );
+    } catch {
+      if (requestId === otherLanguagesSaveRequestRef.current) {
+        setOtherLanguagesSaveStatus("error");
+      }
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -371,7 +412,11 @@ export function ProfileForm() {
 
     try {
       const saved = await updateMyProfile(formToPayload(form));
-      setForm(profileToForm(saved.profile));
+      const savedForm = profileToForm(saved.profile);
+      setForm(savedForm);
+      lastSavedOtherLanguagesRef.current = normalizeOptionalText(savedForm.otherLanguages);
+      currentOtherLanguagesRef.current = savedForm.otherLanguages;
+      setOtherLanguagesSaveStatus("saved");
       setSuccess("Profile đã được lưu. Bạn có thể tạo phòng phỏng vấn theo hồ sơ này.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu profile");
@@ -387,7 +432,10 @@ export function ProfileForm() {
 
     try {
       const saved = await updateMyProfile(formToPayload(form));
-      setForm(profileToForm(saved.profile));
+      const savedForm = profileToForm(saved.profile);
+      setForm(savedForm);
+      lastSavedOtherLanguagesRef.current = normalizeOptionalText(savedForm.otherLanguages);
+      currentOtherLanguagesRef.current = savedForm.otherLanguages;
       router.push("/interview/setup");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu profile");
@@ -506,7 +554,26 @@ export function ProfileForm() {
                   minRows="min-h-[96px]"
                   value={form.otherLanguages}
                   onChange={(value) => updateField("otherLanguages", value)}
+                  onBlur={handleOtherLanguagesBlur}
                 />
+                <p
+                  className={`mt-2 text-xs font-bold ${
+                    otherLanguagesSaveStatus === "error"
+                      ? "text-red-600"
+                      : otherLanguagesSaveStatus === "saved"
+                        ? "text-emerald-600"
+                        : "text-[#7a879d] dark:text-slate-500"
+                  }`}
+                  aria-live="polite"
+                >
+                  {otherLanguagesSaveStatus === "saving"
+                    ? "Đang tự động lưu..."
+                    : otherLanguagesSaveStatus === "saved"
+                      ? "Đã tự động lưu."
+                      : otherLanguagesSaveStatus === "error"
+                        ? "Chưa lưu được. Vui lòng thử lại hoặc bấm “Lưu profile”."
+                        : "Nội dung sẽ tự động lưu khi bạn rời khỏi ô này."}
+                </p>
               </div>
             </FormSection>
 
@@ -750,8 +817,16 @@ function formToPayload(form: ProfileFormState): ProfileInput {
     scholarshipType: form.scholarshipType.trim(),
     strengths: optionalText(form.strengths),
     studyPlan: form.studyPlan.trim(),
-    studyPlanFileName: form.studyPlanFileName.trim() ? form.studyPlanFileName.trim() : null,
-    studyPlanFileContent: form.studyPlanFileContent.trim() ? form.studyPlanFileContent.trim() : null,
+    studyPlanFileName: form.studyPlanFileName.trim()
+      ? form.studyPlanFileName.trim()
+      : form.studyPlanImagesCleared
+        ? null
+        : undefined,
+    studyPlanFileContent: form.studyPlanFileContent.trim()
+      ? form.studyPlanFileContent.trim()
+      : form.studyPlanImagesCleared
+        ? null
+        : undefined,
     studyPlanImages: form.studyPlanImages.length
       ? form.studyPlanImages
       : form.studyPlanImagesCleared
@@ -768,6 +843,10 @@ function formToPayload(form: ProfileFormState): ProfileInput {
 function optionalText(value: string) {
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function normalizeOptionalText(value: string) {
+  return value.trim();
 }
 
 function readFileAsDataUrl(file: File) {
@@ -861,6 +940,7 @@ function NumberField({
 function TextArea({
   label,
   minRows = "min-h-[120px]",
+  onBlur,
   onChange,
   placeholder = "Nhập nội dung...",
   required = false,
@@ -868,6 +948,7 @@ function TextArea({
 }: {
   label: string;
   minRows?: string;
+  onBlur?: () => void;
   onChange: (value: string) => void;
   placeholder?: string;
   required?: boolean;
@@ -890,6 +971,7 @@ function TextArea({
         id={inputId}
         aria-describedby={helpId}
         value={value}
+        onBlur={onBlur}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         spellCheck

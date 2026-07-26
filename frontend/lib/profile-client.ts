@@ -1,4 +1,4 @@
-import { apiGet, apiPut } from "./api";
+import { apiGet, apiPatch, apiPut } from "./api";
 import { getAuthToken } from "./auth-client";
 
 export type StudyPlanParseMetadata = {
@@ -102,6 +102,11 @@ type UpdateProfileResponse = {
   studyPlanParseMetadata?: StudyPlanParseMetadata | null;
 };
 
+type UpdateOtherLanguagesResponse = {
+  message: string;
+  otherLanguages: string | null;
+};
+
 function getRequiredToken() {
   const token = getAuthToken();
 
@@ -120,6 +125,15 @@ export async function fetchMyProfile() {
 
 export async function updateMyProfile(input: ProfileInput) {
   return apiPut<UpdateProfileResponse>("/api/profiles/me", input, {
+    token: getRequiredToken()
+  });
+}
+
+export async function updateMyProfileOtherLanguages(otherLanguages: string | null) {
+  return apiPatch<UpdateOtherLanguagesResponse>("/api/profiles/me/other-languages", {
+    otherLanguages
+  }, {
+    keepalive: true,
     token: getRequiredToken()
   });
 }

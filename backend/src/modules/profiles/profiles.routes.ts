@@ -16,6 +16,7 @@ import {
 } from "./document-parser.js";
 import { getStudyPlanContentType, uploadStudyPlanToR2 } from "../storage/r2.service.js";
 import { InvalidApplicationTargetError, resolveApplicationTargets } from "./application-targets.service.js";
+import { normalizeOtherLanguagesInput } from "./profile-autosave.js";
 import { normalizeAndValidateGpa } from "./profile-gpa.js";
 
 export const profilesRouter = Router();
@@ -28,6 +29,10 @@ const studyPlanImageSchema = z.object({
   fileContent: z.string().trim().min(1),
   fileName: z.string().trim().min(1).max(255)
 });
+
+const otherLanguagesUpdateSchema = z.object({
+  otherLanguages: z.string().trim().max(10_000).nullable()
+}).strict();
 
 const profileSchema = z.object({
   additionalNotes: z.string().trim().optional().nullable(),
@@ -76,6 +81,38 @@ profilesRouter.get("/me", async (_req, res) => {
   });
 
   res.json({ profile: profile ? toProfileDto(profile) : null });
+});
+
+profilesRouter.patch("/me/other-languages", async (req, res) => {
+  const user = res.locals.user as AuthenticatedUser;
+  const parsed = otherLanguagesUpdateSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    res.status(400).json({
+      code: "PROFILE_OTHER_LANGUAGES_INVALID",
+      message: "Nội dung ngoại ngữ/chứng chỉ khác không hợp lệ."
+    });
+    return;
+  }
+
+  const otherLanguages = normalizeOtherLanguagesInput(parsed.data.otherLanguages);
+  const result = await prisma.userProfile.updateMany({
+    where: { userId: user.id },
+    data: { otherLanguages }
+  });
+
+  if (!result.count) {
+    res.status(404).json({
+      code: "PROFILE_NOT_FOUND",
+      message: "Chưa có hồ sơ để cập nhật."
+    });
+    return;
+  }
+
+  res.json({
+    message: "Đã tự động lưu ngoại ngữ/chứng chỉ khác.",
+    otherLanguages
+  });
 });
 
 profilesRouter.put("/me", async (req, res) => {

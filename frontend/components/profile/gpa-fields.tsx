@@ -35,9 +35,9 @@ export function GpaFields({ degreeLevel, onChange, value }: GpaFieldsProps) {
   }
 
   return (
-    <div className="md:col-span-2">
+    <div className="min-w-0 md:col-span-2">
       <p className="mb-2 text-sm font-black text-foreground">GPA THPT (thang 10)</p>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <GpaNumberField label="Lớp 10" max={10} onChange={(next) => updateGrade("grade10", next)} value={grades.grade10} />
         <GpaNumberField label="Lớp 11" max={10} onChange={(next) => updateGrade("grade11", next)} value={grades.grade11} />
         <GpaNumberField label="Lớp 12" max={10} onChange={(next) => updateGrade("grade12", next)} value={grades.grade12} />
@@ -60,10 +60,10 @@ function GpaNumberField({
   value: string;
 }) {
   return (
-    <label className="grid gap-2 text-sm font-black text-foreground">
+    <label className="grid min-w-0 gap-2 text-sm font-black text-foreground">
       <span>{label}</span>
       <input
-        className="focus-ring min-h-11 rounded-lg border border-border bg-background px-3 text-sm font-bold text-foreground"
+        className="focus-ring min-h-11 min-w-0 w-full rounded-lg border border-border bg-background px-3 text-sm font-bold text-foreground"
         inputMode="decimal"
         maxLength={5}
         onChange={(event) => {

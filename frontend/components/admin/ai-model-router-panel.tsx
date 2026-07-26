@@ -262,7 +262,7 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
     event.preventDefault();
     const invalidRoute = Object.values(routes).find((route) => !isValidRouteModel(route));
     if (invalidRoute) {
-      setError("Model 9Router phải bắt đầu bằng cx/.");
+      setError("Model 9Router phải bắt đầu bằng cx/ hoặc ag/.");
       return;
     }
     setSaving(true);
@@ -294,7 +294,7 @@ export function AiModelRouterPanel({ onSaved, token }: Props) {
     if (!isValidRouteModel(route)) {
       setTestResults((current) => ({
         ...current,
-        [routeKey]: { ok: false, message: "Model 9Router phải bắt đầu bằng cx/." }
+        [routeKey]: { ok: false, message: "Model 9Router phải bắt đầu bằng cx/ hoặc ag/." }
       }));
       return;
     }
@@ -535,12 +535,16 @@ function normalizeRoute(value: unknown, fallback: AiRouteConfig): AiRouteConfig 
   if (!isRecord(value)) return fallback;
   const provider = readProvider(value.provider) ?? fallback.provider;
   const model = typeof value.model === "string" && value.model.trim() ? value.model.trim() : fallback.model;
-  if (provider === "9router" && !model.startsWith("cx/")) return fallback;
+  if (provider === "9router" && !isNineRouterModel(model)) return fallback;
   return { provider, model };
 }
 
 function isValidRouteModel(route: AiRouteConfig) {
-  return route.provider !== "9router" || route.model.startsWith("cx/");
+  return route.provider !== "9router" || isNineRouterModel(route.model);
+}
+
+function isNineRouterModel(model: string) {
+  return /^(?:cx|ag)\//.test(model);
 }
 
 function normalizeSetting(value: unknown): AiRouterSettingValue | null {

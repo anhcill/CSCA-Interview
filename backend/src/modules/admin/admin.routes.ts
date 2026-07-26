@@ -198,10 +198,10 @@ const aiModelRouteTestSchema = z.object({
   model: z.string().trim().min(1, "Model không được để trống"),
   provider: aiProviderSchema
 }).superRefine((value, context) => {
-  if (value.provider === "9router" && !value.model.startsWith("cx/")) {
+  if (value.provider === "9router" && !/^(?:cx|ag)\//.test(value.model)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Model 9Router phải bắt đầu bằng cx/",
+      message: "Model 9Router phải bắt đầu bằng cx/ hoặc ag/",
       path: ["model"]
     });
   }

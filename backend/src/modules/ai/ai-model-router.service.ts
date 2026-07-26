@@ -61,6 +61,15 @@ export const aiModelProviderOptions = [
 ] as const satisfies Array<{ id: AiProviderId; label: string }>;
 
 export const aiModelPresetOptions = [
+  { model: "ag/gemini-3-flash-agent", provider: "9router", label: "Gemini 3.5 Flash (High)", tier: "Agent mạnh, ưu tiên chất lượng" },
+  { model: "ag/gemini-3.5-flash-low", provider: "9router", label: "Gemini 3.5 Flash (Medium)", tier: "Cân bằng tốc độ và chất lượng" },
+  { model: "ag/gemini-3.5-flash-extra-low", provider: "9router", label: "Gemini 3.5 Flash (Low)", tier: "Nhanh, phù hợp hỏi tiếp" },
+  { model: "ag/gemini-pro-agent", provider: "9router", label: "Gemini 3.1 Pro (High)", tier: "Agent mạnh cho phân tích sâu" },
+  { model: "ag/gemini-3.1-pro-low", provider: "9router", label: "Gemini 3.1 Pro (Low)", tier: "Pro tiết kiệm hơn" },
+  { model: "ag/claude-sonnet-4-6", provider: "9router", label: "Claude Sonnet 4.6 (Thinking)", tier: "Suy luận tốt, phù hợp chấm và phân tích" },
+  { model: "ag/claude-opus-4-6-thinking", provider: "9router", label: "Claude Opus 4.6 (Thinking)", tier: "Suy luận chuyên sâu" },
+  { model: "ag/gpt-oss-120b-medium", provider: "9router", label: "GPT-OSS 120B (Medium)", tier: "Model mở cỡ lớn, mức cân bằng" },
+  { model: "ag/gemini-3-flash", provider: "9router", label: "Gemini 3 Flash", tier: "Nhanh cho tác vụ thường xuyên" },
   { model: "cx/gpt-5.5", provider: "9router", label: "CX GPT-5.5", tier: "Mạnh, ưu tiên test miễn phí" },
   { model: "cx/gpt-5.5-review", provider: "9router", label: "CX GPT-5.5 Review", tier: "Mạnh cho review/chấm kỹ" },
   { model: "cx/gpt-5.4", provider: "9router", label: "CX GPT-5.4", tier: "Cân bằng" },

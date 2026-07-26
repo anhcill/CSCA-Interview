@@ -4,6 +4,7 @@ const defaultGetCacheMs = 30_000;
 
 type ApiOptions = {
   cacheMs?: number;
+  keepalive?: boolean;
   timeoutMs?: number;
   token?: string | null;
 };
@@ -368,6 +369,31 @@ export async function apiPut<T>(
   const response = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
     credentials: "include",
     method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  }, options.timeoutMs);
+
+  if (!response.ok) {
+    throw new ApiError(await parseApiError(response), response.status);
+  }
+
+  const data = await parseJsonResponse<T>(response);
+  clearApiCache();
+  return data;
+}
+
+export async function apiPatch<T>(
+  path: string,
+  body?: unknown,
+  options: ApiOptions = {}
+): Promise<T> {
+  const response = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
+    credentials: "include",
+    keepalive: options.keepalive,
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
