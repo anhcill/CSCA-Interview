@@ -23,10 +23,10 @@ describe("voice recorder machine", () => {
     })).toBe(false);
   });
 
-  it("moves to review after at least 4.5 seconds of silence", () => {
+  it("moves to review after 2.5 seconds of silence", () => {
     expect(shouldStopAfterSilence({
       hasDetectedSpeech: true,
-      nowMs: 8_000,
+      nowMs: 6_000,
       recordingStartedAtMs: 0,
       silenceStartedAtMs: 3_500
     })).toBe(true);

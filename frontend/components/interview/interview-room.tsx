@@ -48,7 +48,10 @@ import {
   type Locale
 } from "@/lib/i18n";
 import { type VoiceRecorderResult, useVoiceRecorder } from "@/lib/hooks/use-voice-recorder";
-import { getVoiceRecorderStateLabel } from "@/lib/hooks/voice-recorder-machine";
+import {
+  getVoiceRecorderStateLabel,
+  VOICE_REVIEW_AUTO_SEND_MS
+} from "@/lib/hooks/voice-recorder-machine";
 import { useFaceAnalysis } from "@/lib/hooks/use-face-analysis";
 import { assessPronunciation, playBase64Audio, stopActiveSpeechAudio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
 import { CameraCheckPanel, type CameraSystemChecks } from "./camera-check-panel";
@@ -134,6 +137,7 @@ export function InterviewRoom() {
   const [displayedQuestion, setDisplayedQuestion] = useState("");
   const [error, setError] = useState("");
   const [liveTranscript, setLiveTranscript] = useState("");
+  const [silenceCountdown, setSilenceCountdown] = useState<number | null>(null);
   const [autoSubmitCountdown, setAutoSubmitCountdown] = useState<number | null>(null);
   const [lastFeedback, setLastFeedback] = useState<LastFeedback | null>(null);
   const [lastSpeechMetrics, setLastSpeechMetrics] = useState<SpeechMetrics | null>(null);
@@ -221,6 +225,7 @@ export function InterviewRoom() {
 
   const voiceRecorder = useVoiceRecorder({
     language: backendLanguageToSpeechLocale(sessionLanguage),
+    onSilenceCountdown: setSilenceCountdown,
     onError: (message) => {
       const shouldFallbackToText = /microphone|mic|permission|not-allowed|truy c\u1eadp|truy cap|kh\u00f4ng th\u1ec3|khong the|kh\u00f4ng h\u1ed7 tr\u1ee3|khong ho tro/i.test(message);
       setError(shouldFallbackToText ? `${message}. ${t.textModeFallback}` : message);
@@ -262,15 +267,15 @@ export function InterviewRoom() {
     }
 
     const startedAt = Date.now();
-    setAutoSubmitCountdown(5);
+    setAutoSubmitCountdown(Math.ceil(VOICE_REVIEW_AUTO_SEND_MS / 1000));
     autoSendIntervalRef.current = window.setInterval(() => {
-      const remaining = Math.max(0, 5000 - (Date.now() - startedAt));
+      const remaining = Math.max(0, VOICE_REVIEW_AUTO_SEND_MS - (Date.now() - startedAt));
       setAutoSubmitCountdown(remaining > 0 ? Math.ceil(remaining / 1000) : null);
     }, 250);
     autoSendTimeoutRef.current = window.setTimeout(() => {
       clearAutoSendTimer();
       void submitAnswer(input, pendingVoiceResult);
-    }, 5000);
+    }, VOICE_REVIEW_AUTO_SEND_MS);
 
     return clearAutoSendTimer;
   }, [autoSendVoiceAnswer, input, pendingVoiceResult, voiceRecorder.state, clearAutoSendTimer]);
@@ -1196,7 +1201,10 @@ export function InterviewRoom() {
               {getVoiceRecorderStateLabel(voiceRecorder.state)}
             </span>
             {voiceRecorder.state === "WAITING_FOR_MORE" ? (
-              <span>Bạn có thể tiếp tục nói; mic chỉ dừng sau khoảng 5 giây im lặng.</span>
+              <span className="rounded-full bg-[#FFF4D6] px-3 py-1.5 text-[#8A5A00]">
+                Đã nhận giọng nói. Bạn có thể nói tiếp
+                {silenceCountdown ? `; hệ thống sẽ chốt sau ${silenceCountdown} giây im lặng.` : "."}
+              </span>
             ) : null}
           </div>
 
@@ -1221,7 +1229,7 @@ export function InterviewRoom() {
                     }}
                     className="h-4 w-4 accent-[#6546A8]"
                   />
-                  Tự gửi sau 5 giây
+                  Tự gửi sau {Math.ceil(VOICE_REVIEW_AUTO_SEND_MS / 1000)} giây
                 </label>
               </div>
 
@@ -1230,8 +1238,12 @@ export function InterviewRoom() {
               </div>
 
               {autoSubmitCountdown ? (
-                <p className="mt-2 text-xs font-bold text-[#8A5A00]">
-                  Tự gửi sau {autoSubmitCountdown} giây. Bỏ chọn để hủy.
+                <p className="mt-2 rounded-xl bg-[#FFF4D6] px-3 py-2 text-xs font-bold text-[#8A5A00]" role="status" aria-live="polite">
+                  Đã chốt câu trả lời. Hệ thống sẽ tự gửi sau {autoSubmitCountdown} giây. Bạn có thể sửa nội dung hoặc bỏ chọn để hủy.
+                </p>
+              ) : autoSendVoiceAnswer ? (
+                <p className="mt-2 text-xs font-bold text-[#77689A]" role="status">
+                  Đã chốt câu trả lời và đang chuẩn bị gửi.
                 </p>
               ) : null}
 

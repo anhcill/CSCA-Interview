@@ -5,6 +5,8 @@ import { blobToBase64, transcribeAudio, type TranscribeResponse } from "../speec
 import {
   canTransitionVoiceRecorder,
   shouldStopAfterSilence,
+  VOICE_MIN_RECORDING_MS,
+  VOICE_SILENCE_FINALIZE_MS,
   type VoiceRecorderState
 } from "./voice-recorder-machine";
 import { selectVoiceRecorderTransport } from "./voice-recorder-capabilities";
@@ -19,7 +21,7 @@ export type VoiceRecorderResult = TranscribeResponse & {
 
 type UseVoiceRecorderOptions = {
   language?: "vi" | "zh" | "en";
-  onAutoSubmitCountdown?: (seconds: number | null) => void;
+  onSilenceCountdown?: (seconds: number | null) => void;
   onError?: (error: string) => void;
   onInterimTranscript?: (text: string) => void;
   onNoSpeech?: () => void;
@@ -70,7 +72,7 @@ function toSpeechRecognitionLang(language?: "vi" | "zh" | "en") {
 export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   const {
     language,
-    onAutoSubmitCountdown,
+    onSilenceCountdown,
     onError,
     onInterimTranscript,
     onNoSpeech,
@@ -111,8 +113,8 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     restartTimerRef.current = null;
     finalizeTimerRef.current = null;
     countdownTimerRef.current = null;
-    onAutoSubmitCountdown?.(null);
-  }, [onAutoSubmitCountdown]);
+    onSilenceCountdown?.(null);
+  }, [onSilenceCountdown]);
 
   const cleanupAudioMonitor = useCallback(() => {
     if (silenceFrameRef.current !== null) window.cancelAnimationFrame(silenceFrameRef.current);
@@ -182,14 +184,18 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
       if (rms >= 0.018) {
         hasDetectedSpeechRef.current = true;
         silenceStartedAtRef.current = null;
+        onSilenceCountdown?.(null);
         moveToState("SPEECH_DETECTED");
       } else if (
         hasDetectedSpeechRef.current
-        && now - recordingStartedAtRef.current >= 2500
+        && now - recordingStartedAtRef.current >= VOICE_MIN_RECORDING_MS
         && rms < 0.01
       ) {
         silenceStartedAtRef.current ??= now;
         moveToState("WAITING_FOR_MORE");
+        const silenceElapsedMs = now - silenceStartedAtRef.current;
+        const remainingMs = Math.max(0, VOICE_SILENCE_FINALIZE_MS - silenceElapsedMs);
+        onSilenceCountdown?.(remainingMs > 0 ? Math.ceil(remainingMs / 1000) : null);
         if (shouldStopAfterSilence({
           hasDetectedSpeech: true,
           nowMs: now,
@@ -197,6 +203,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
           silenceStartedAtMs: silenceStartedAtRef.current
         })) {
           stopReasonRef.current = "silence";
+          onSilenceCountdown?.(null);
           recorder.stop();
           return;
         }
@@ -206,7 +213,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     };
 
     silenceFrameRef.current = window.requestAnimationFrame(tick);
-  }, [moveToState]);
+  }, [moveToState, onSilenceCountdown]);
 
   const startBrowserRecognition = useCallback((
     SpeechRecognition: SpeechRecognitionConstructor,
@@ -230,12 +237,12 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     const scheduleFinalize = () => {
       clearTimers();
       const startedAt = Date.now();
-      const waitMs = 4500;
+      const waitMs = VOICE_SILENCE_FINALIZE_MS;
       moveToState("WAITING_FOR_MORE");
-      onAutoSubmitCountdown?.(5);
+      onSilenceCountdown?.(Math.ceil(waitMs / 1000));
       countdownTimerRef.current = window.setInterval(() => {
         const remaining = Math.max(0, waitMs - (Date.now() - startedAt));
-        onAutoSubmitCountdown?.(remaining > 0 ? Math.ceil(remaining / 1000) : null);
+        onSilenceCountdown?.(remaining > 0 ? Math.ceil(remaining / 1000) : null);
       }, 250);
       finalizeTimerRef.current = window.setTimeout(finalizeTranscript, waitMs);
     };
@@ -297,7 +304,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     };
 
     begin();
-  }, [clearTimers, emitTranscript, language, moveToState, onAutoSubmitCountdown, onError, onInterimTranscript]);
+  }, [clearTimers, emitTranscript, language, moveToState, onError, onInterimTranscript, onSilenceCountdown]);
 
   const startRecording = useCallback(async () => {
     const requestId = requestIdRef.current + 1;

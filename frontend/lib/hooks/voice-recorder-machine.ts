@@ -8,6 +8,10 @@ export type VoiceRecorderState =
   | "REVIEW"
   | "SUBMITTING";
 
+export const VOICE_MIN_RECORDING_MS = 1000;
+export const VOICE_SILENCE_FINALIZE_MS = 2500;
+export const VOICE_REVIEW_AUTO_SEND_MS = 3000;
+
 const allowedTransitions: Record<VoiceRecorderState, VoiceRecorderState[]> = {
   IDLE: ["REQUESTING_PERMISSION"],
   REQUESTING_PERMISSION: ["IDLE", "LISTENING"],
@@ -47,6 +51,6 @@ export function shouldStopAfterSilence(input: {
   silenceStartedAtMs: number | null;
 }) {
   if (!input.hasDetectedSpeech || input.silenceStartedAtMs === null) return false;
-  if (input.nowMs - input.recordingStartedAtMs < 2500) return false;
-  return input.nowMs - input.silenceStartedAtMs >= 4500;
+  if (input.nowMs - input.recordingStartedAtMs < VOICE_MIN_RECORDING_MS) return false;
+  return input.nowMs - input.silenceStartedAtMs >= VOICE_SILENCE_FINALIZE_MS;
 }
