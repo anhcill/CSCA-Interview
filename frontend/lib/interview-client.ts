@@ -370,6 +370,11 @@ export async function completeInterviewSession(sessionId: string) {
   return apiPost<CreateInterviewResponse>(
     `/api/interviews/${sessionId}/complete`,
     undefined,
-    { token: getRequiredToken() }
+    {
+      // Backend chấm các câu chưa có điểm trước khi hoàn tất; 15 giây mặc định
+      // có thể kết thúc request phía trình duyệt dù AI vẫn đang xử lý.
+      timeoutMs: 120_000,
+      token: getRequiredToken()
+    }
   );
 }

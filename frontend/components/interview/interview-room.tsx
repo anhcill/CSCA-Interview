@@ -56,6 +56,10 @@ import { useFaceAnalysis } from "@/lib/hooks/use-face-analysis";
 import { assessPronunciation, playBase64Audio, stopActiveSpeechAudio, synthesizeSpeech, type PronunciationResult, type SpeechMetrics } from "@/lib/speech-client";
 import { CameraCheckPanel, type CameraSystemChecks } from "./camera-check-panel";
 import { ChatBubble } from "./chat-bubble";
+import {
+  InterviewCompletionLoading,
+  type InterviewCompletionStage
+} from "./interview-completion-loading";
 import type { ChatMessage } from "./interview-data";
 import { getInterviewPhasePresentation } from "./interview-phase";
 import { playAudioUrl, stopQuestionAudio } from "./question-audio-player";
@@ -128,6 +132,7 @@ export function InterviewRoom() {
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [completionStage, setCompletionStage] = useState<InterviewCompletionStage>("scoring");
   const [isUpdatingPause, setIsUpdatingPause] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -166,6 +171,7 @@ export function InterviewRoom() {
   const visualMetricsStatus = getVisualMetricsStatus(faceAnalysis.status, faceAnalysis.snapshot.timestamp);
   const isCameraOn = Boolean(faceAnalysis.stream);
   const isCameraBusy = faceAnalysis.status === "loading" || faceAnalysis.status === "ready";
+  const stopFaceAnalysis = faceAnalysis.stop;
   const cameraButtonLabel = isCameraBusy ? "Đang bật camera" : isCameraOn ? "Tắt camera" : "Bật camera";
 
   const toggleCamera = useCallback(() => {
@@ -254,6 +260,7 @@ export function InterviewRoom() {
       if (result?.speechMetrics) setLastSpeechMetrics(result.speechMetrics);
     }
   });
+  const cancelVoiceRecording = voiceRecorder.cancelRecording;
 
   useEffect(() => {
     if (
@@ -300,6 +307,11 @@ export function InterviewRoom() {
   const activeQuestion = questions[currentQuestion] ?? fallbackQuestions[0];
   const activeSubtitle = isBilingual ? getQuestionSupportText(activeQuestion) : null;
   const completeTargetSessionId = sessionId ?? searchParams.get("sessionId");
+  useEffect(() => {
+    if (!completeTargetSessionId) return;
+    router.prefetch(`/interview/result?sessionId=${completeTargetSessionId}`);
+  }, [completeTargetSessionId, router]);
+
   const cameraChecks = useMemo<CameraSystemChecks>(() => {
     const checks = faceAnalysis.snapshot.checks;
 
@@ -906,6 +918,7 @@ export function InterviewRoom() {
     }
 
     isCompletingRef.current = true;
+    setCompletionStage("scoring");
     setIsCompleting(true);
     clearNoSpeechRetryTimer();
     clearAutoSendTimer();
@@ -913,7 +926,8 @@ export function InterviewRoom() {
     setLiveTranscript("");
     setInput("");
     setIsThinking(false);
-    voiceRecorder.cancelRecording();
+    cancelVoiceRecording();
+    stopFaceAnalysis();
     stopActiveSpeechAudio();
     stopQuestionAudio();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -923,16 +937,16 @@ export function InterviewRoom() {
     try {
       await completeInterviewSession(completeTargetSessionId);
       sessionStorage.setItem(activeInterviewSessionStorageKey, completeTargetSessionId);
-      router.push(`/interview/result?sessionId=${completeTargetSessionId}`);
+      setCompletionStage("opening_result");
+      router.replace(`/interview/result?sessionId=${completeTargetSessionId}`);
     } catch (err) {
       isCompletingRef.current = false;
+      setIsCompleting(false);
       setIsSubmitting(false);
       setIsThinking(false);
       setError(err instanceof Error ? err.message : t.completeFailed);
-    } finally {
-      setIsCompleting(false);
     }
-  }, [clearAutoSendTimer, clearNoSpeechRetryTimer, completeTargetSessionId, router, t.completeFailed, voiceRecorder.cancelRecording]);
+  }, [cancelVoiceRecording, clearAutoSendTimer, clearNoSpeechRetryTimer, completeTargetSessionId, router, stopFaceAnalysis, t.completeFailed]);
 
   useEffect(() => {
     hasAutoCompletedForTimeRef.current = false;
@@ -1030,6 +1044,10 @@ export function InterviewRoom() {
 
   if (!mounted) {
     return <PageLoadingState description="Đang kết nối và chuẩn bị phòng phỏng vấn của bạn." />;
+  }
+
+  if (isCompleting) {
+    return <InterviewCompletionLoading stage={completionStage} />;
   }
 
   return (
