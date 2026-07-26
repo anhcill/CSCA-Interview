@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import Script from "next/script";
@@ -10,6 +10,13 @@ import "./design-tokens.css";
 import "./globals.css";
 
 export const metadata: Metadata = createPageMetadata();
+
+export const viewport: Viewport = {
+  themeColor: "#b91c1c",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5
+};
 
 export default async function RootLayout({
   children

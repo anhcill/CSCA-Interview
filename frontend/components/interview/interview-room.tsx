@@ -19,6 +19,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { ApiError } from "@/lib/api";
+import { PageLoadingState } from "@/components/ui/page-state";
 import {
   activeInterviewSessionStorageKey,
   completeInterviewSession,
@@ -1023,7 +1024,7 @@ export function InterviewRoom() {
   }
 
   if (!mounted) {
-    return <div className="flex min-h-screen items-center justify-center text-slate-400">{t.loadingShort}</div>;
+    return <PageLoadingState description="Đang kết nối và chuẩn bị phòng phỏng vấn của bạn." />;
   }
 
   return (

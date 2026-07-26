@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertCircle, Lock, Loader2 } from "lucide-react";
+import { AlertCircle, Lock } from "lucide-react";
 import type { ReactNode } from "react";
+import { SystemLoading } from "./system-loading";
 
 type PageStateProps = {
   action?: ReactNode;
@@ -10,15 +11,7 @@ type PageStateProps = {
 };
 
 export function PageLoadingState({ description = "Đang tải dữ liệu." }: { description?: string }) {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 text-foreground">
-      <section className="w-full max-w-md rounded-lg border border-border bg-card p-6 text-center shadow-sm" aria-live="polite">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" aria-hidden="true" />
-        <h1 className="type-section mt-4">Đang xử lý</h1>
-        <p className="type-body mt-2 text-slate-500 dark:text-slate-300">{description}</p>
-      </section>
-    </main>
-  );
+  return <SystemLoading fullScreen title="Đang chuẩn bị trải nghiệm" description={description} />;
 }
 
 export function PageErrorState({ action, description, title }: PageStateProps) {

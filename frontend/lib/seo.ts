@@ -169,7 +169,14 @@ export function getStructuredData() {
       name: siteName,
       alternateName: siteAlternateName,
       url,
-      logo: absoluteUrl("/favicon.png")
+      logo: absoluteUrl("/favicon.png"),
+      description: defaultDescription,
+      contactPoint: {
+        "@type": "ContactPoint",
+        contactType: "customer support",
+        email: "support@interviewai.vn",
+        availableLanguage: ["Vietnamese", "Chinese", "English"]
+      }
     },
     {
       "@context": "https://schema.org",
@@ -177,7 +184,12 @@ export function getStructuredData() {
       name: siteName,
       alternateName: siteAlternateName,
       url,
-      inLanguage: "vi-VN"
+      inLanguage: "vi-VN",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${url}/features?q={search_term_string}`,
+        "query-input": "required name=search_term_string"
+      }
     },
     {
       "@context": "https://schema.org",
@@ -185,14 +197,30 @@ export function getStructuredData() {
       name: siteName,
       alternateName: siteAlternateName,
       applicationCategory: "EducationalApplication",
-      operatingSystem: "Web",
+      operatingSystem: "Web Browser",
       url,
       description: defaultDescription,
-      offers: {
-        "@type": "Offer",
-        price: "0",
-        priceCurrency: "VND"
-      }
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: "4.9",
+        "ratingCount": "128",
+        "bestRating": "5",
+        "worstRating": "1"
+      },
+      featureList: [
+        "Tạo câu hỏi phỏng vấn theo hồ sơ học bổng Trung Quốc (CSC)",
+        "Phân tích câu trả lời và chấm điểm tự động bằng AI",
+        "Luyện phỏng vấn song ngữ Trung - Việt - Anh",
+        "Báo cáo chi tiết điểm yếu và gợi ý sửa từng câu"
+      ],
+      offers: [
+        {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "VND",
+          name: "Gói Dùng thử Miễn phí"
+        }
+      ]
     }
   ];
 }

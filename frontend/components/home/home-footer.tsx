@@ -12,8 +12,9 @@ export function HomeFooter() {
           </p>
         </div>
 
-        <div className="grid gap-8 text-sm font-bold sm:grid-cols-3">
+        <div className="grid gap-8 text-sm font-bold sm:grid-cols-4">
           <FooterGroup title="Sản phẩm" links={[["Tính năng", "/features"], ["Quy trình", "/guide"], ["Gói sử dụng", "/pricing"]]} />
+          <FooterGroup title="Pháp lý" links={[["Bảo mật", "/privacy"], ["Điều khoản", "/terms"]]} />
           <FooterGroup title="Tài khoản" links={[["Đăng nhập", "/login"], ["Đăng ký", "/register"]]} />
           <div className="space-y-3">
             <p className="font-black text-[#111827]">Liên hệ</p>

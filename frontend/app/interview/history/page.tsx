@@ -7,6 +7,7 @@ import { BookOpen, ChevronRight, Clock, GraduationCap, Plus, School, Trash2, typ
 import { AnimatePresence, motion } from "motion/react";
 import { apiDelete, apiGet } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
+import { InlineSystemLoading } from "@/components/ui/system-loading";
 
 type SessionSummary = {
   answeredQuestions: number;
@@ -186,7 +187,10 @@ export default function InterviewHistoryPage() {
         {error ? <p className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</p> : null}
 
         {loading ? (
-          <div className="grid flex-1 place-items-center text-sm font-bold text-muted-foreground">Đang tải lịch sử...</div>
+          <InlineSystemLoading
+            title="Đang tải lịch sử phỏng vấn"
+            description="MOLY đang tổng hợp các buổi luyện tập và tiến độ gần đây."
+          />
         ) : sessions.length === 0 ? (
           <div className="grid flex-1 place-items-center text-center">
             <div>

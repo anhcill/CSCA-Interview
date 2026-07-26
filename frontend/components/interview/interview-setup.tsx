@@ -30,6 +30,7 @@ import { getAuthToken } from "@/lib/auth-client";
 import { fetchPaymentEntitlement, type PaymentEntitlement } from "@/lib/payments-client";
 import { StudyPlanAnalysisProgress } from "@/components/interview/study-plan-analysis-progress";
 import { fetchMyProfile, updateMyProfile, type ProfileInput, type StudyPlanParseMetadata, type UserProfileDto } from "@/lib/profile-client";
+import { SystemLoading } from "@/components/ui/system-loading";
 
 const durationOptions = [30, 60, 120] as const;
 const stepLabels = ["Profile", "Mục tiêu", "Chế độ", "Study Plan", "Phân tích AI", "Bắt đầu"];
@@ -550,17 +551,12 @@ export function InterviewSetup() {
       </form>
 
       {isSubmitting ? (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#17120f]/70 p-4 text-center backdrop-blur-sm">
-          <div className="relative flex h-20 w-20 items-center justify-center">
-            <div className="absolute inset-0 animate-spin rounded-full border-4 border-white/20 border-t-accent" />
-            <div className="flex h-10 w-10 animate-pulse items-center justify-center rounded-full bg-primary/30">
-              <div className="h-5 w-5 rounded-full bg-primary" />
-            </div>
-          </div>
-          <h2 className="mt-6 text-xl font-black text-white">Đang tạo phòng phỏng vấn</h2>
-          <p className="mt-2 max-w-[280px] animate-pulse text-sm font-bold text-white/72">
-            AI đang phân tích profile và cá nhân hóa bộ câu hỏi cho bạn...
-          </p>
+        <div className="fixed inset-0 z-50">
+          <SystemLoading
+            fullScreen
+            title="Đang tạo phòng phỏng vấn"
+            description="AI đang phân tích hồ sơ và cá nhân hóa bộ câu hỏi cho bạn."
+          />
         </div>
       ) : null}
 

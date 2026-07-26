@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
 import { GpaFields } from "@/components/profile/gpa-fields";
+import { InlineSystemLoading } from "@/components/ui/system-loading";
 import { apiGet } from "@/lib/api";
 import {
   fetchMyProfile,
@@ -413,12 +414,13 @@ export function ProfileForm() {
           </header>
 
           {isLoading ? (
-            <div className="mt-6 rounded-2xl border border-[#d8e3f2] dark:border-slate-800 bg-[#f7faff] dark:bg-slate-950 p-5 text-sm font-bold text-[#51607b] dark:text-slate-400">
-              Đang tải profile...
-            </div>
+            <InlineSystemLoading
+              title="Đang tải hồ sơ"
+              description="MOLY đang đồng bộ thông tin trường, ngành và Study Plan của bạn."
+            />
           ) : null}
 
-          <div className="mt-7 grid gap-7">
+          <fieldset disabled={isLoading || isSaving} className="mt-7 grid gap-7 disabled:pointer-events-none disabled:opacity-60">
       <FormSection title="Thông tin nộp hồ sơ" description="Các trường bắt buộc để hệ thống chọn câu hỏi phù hợp.">
               <div className="grid gap-5 md:grid-cols-2">
                 <SelectField
@@ -510,12 +512,12 @@ export function ProfileForm() {
 
             <FormSection title="Kinh nghiệm & điểm nổi bật" description="Các chi tiết này làm câu trả lời thuyết phục hơn khi luyện.">
               <div className="grid gap-5 md:grid-cols-2">
-                <TextArea label="Giải thưởng / thành tích" value={form.awards} onChange={(value) => updateField("awards", value)} />
-                <TextArea label="Nghiên cứu / dự án" value={form.researchExperience} onChange={(value) => updateField("researchExperience", value)} />
-                <TextArea label="Hoạt động ngoại khóa" value={form.extracurricularActivities} onChange={(value) => updateField("extracurricularActivities", value)} />
-                <TextArea label="Kinh nghiệm làm việc / thực tập" value={form.workExperience} onChange={(value) => updateField("workExperience", value)} />
-                <TextArea label="Điểm mạnh" value={form.strengths} onChange={(value) => updateField("strengths", value)} />
-                <TextArea label="Điểm cần cải thiện" value={form.weaknesses} onChange={(value) => updateField("weaknesses", value)} />
+                <TextArea label="Giải thưởng / thành tích" placeholder="Ví dụ: Học bổng, giải cuộc thi, thành tích học tập nổi bật..." value={form.awards} onChange={(value) => updateField("awards", value)} />
+                <TextArea label="Nghiên cứu / dự án" placeholder="Mô tả dự án, vai trò, cách thực hiện và kết quả..." value={form.researchExperience} onChange={(value) => updateField("researchExperience", value)} />
+                <TextArea label="Hoạt động ngoại khóa" placeholder="Câu lạc bộ, tình nguyện, hoạt động cộng đồng và vai trò..." value={form.extracurricularActivities} onChange={(value) => updateField("extracurricularActivities", value)} />
+                <TextArea label="Kinh nghiệm làm việc / thực tập" placeholder="Đơn vị, vị trí, công việc chính và kết quả đạt được..." value={form.workExperience} onChange={(value) => updateField("workExperience", value)} />
+                <TextArea label="Điểm mạnh" placeholder="Nêu 2–3 điểm mạnh kèm một minh chứng ngắn..." value={form.strengths} onChange={(value) => updateField("strengths", value)} />
+                <TextArea label="Điểm cần cải thiện" placeholder="Nêu điểm đang cải thiện và hành động cụ thể của bạn..." value={form.weaknesses} onChange={(value) => updateField("weaknesses", value)} />
               </div>
             </FormSection>
 
@@ -628,7 +630,7 @@ export function ProfileForm() {
                 <TextArea label="Ghi chú thêm" value={form.additionalNotes} onChange={(value) => updateField("additionalNotes", value)} />
               </div>
             </FormSection>
-          </div>
+          </fieldset>
 
           {error ? (
             <p className="mt-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</p>
@@ -860,25 +862,42 @@ function TextArea({
   label,
   minRows = "min-h-[120px]",
   onChange,
+  placeholder = "Nhập nội dung...",
   required = false,
   value
 }: {
   label: string;
   minRows?: string;
   onChange: (value: string) => void;
+  placeholder?: string;
   required?: boolean;
   value: string;
 }) {
+  const inputId = useId();
+  const helpId = `${inputId}-help`;
+
   return (
-    <label className="block">
-      <span className="text-sm font-black text-[#102456] dark:text-slate-300">
-        {label}{required ? " *" : ""}
+    <label htmlFor={inputId} className="group block rounded-2xl border border-transparent bg-[#f8fbff] p-3 transition focus-within:border-[#b9cdf0] focus-within:bg-white dark:bg-slate-950/45 dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
+      <span className="flex items-center justify-between gap-3">
+        <span className="text-sm font-black text-[#102456] dark:text-slate-300">
+          {label}{required ? " *" : ""}
+        </span>
+        <span className="shrink-0 text-[11px] font-bold tabular-nums text-[#8290a7] dark:text-slate-500">
+          {value.length.toLocaleString("vi-VN")} ký tự
+        </span>
       </span>
       <textarea
+        id={inputId}
+        aria-describedby={helpId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`mt-2 w-full rounded-xl border border-[#d8e3f2] dark:border-slate-800 bg-white dark:bg-slate-950 px-4 py-3 text-sm font-semibold dark:text-slate-100 leading-7 outline-none transition focus:border-[#0a347d] dark:focus:border-amber-500 ${minRows}`}
+        placeholder={placeholder}
+        spellCheck
+        className={`mt-2 max-h-[320px] w-full resize-y rounded-xl border border-[#cbdaf0] bg-white px-4 py-3 text-[15px] font-semibold leading-6 text-[#17254d] shadow-[inset_0_1px_2px_rgba(15,35,75,0.04)] transition placeholder:font-medium placeholder:text-[#9aa7bb] hover:border-[#9fb7df] focus:border-[#315efb] focus:ring-4 focus:ring-[#315efb]/10 focus-visible:!outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-600 dark:hover:border-slate-600 dark:focus:border-[#8b7cff] dark:focus:ring-[#8b7cff]/15 ${minRows}`}
       />
+      <span id={helpId} className="mt-1.5 block text-[11px] font-semibold text-[#7a879d] dark:text-slate-500">
+        Mỗi ý nên xuống dòng để AI đọc và đặt câu hỏi chính xác hơn.
+      </span>
     </label>
   );
 }

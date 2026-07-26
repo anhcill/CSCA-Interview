@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { saveAuthSession, type AuthUser } from "@/lib/auth-client";
-import { Loader2 } from "lucide-react";
+import { InlineSystemLoading, SystemLoading } from "@/components/ui/system-loading";
 
 function GoogleCallbackContent() {
   const router = useRouter();
@@ -67,15 +67,10 @@ function GoogleCallbackContent() {
           </button>
         </div>
       ) : (
-        <div className="space-y-5">
-          <div className="relative mx-auto flex h-14 w-14 items-center justify-center">
-            <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800">Đang đăng nhập hệ thống</h2>
-          <p className="text-sm font-medium text-slate-500">
-            Đang xác minh thông tin tài khoản Google của bạn. Vui lòng đợi trong giây lát...
-          </p>
-        </div>
+        <InlineSystemLoading
+          title="Đang đăng nhập hệ thống"
+          description="MOLY đang xác minh thông tin tài khoản Google của bạn."
+        />
       )}
     </div>
   );
@@ -85,15 +80,11 @@ export default function GoogleCallbackPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background-soft)] p-4 text-center">
       <Suspense fallback={
-        <div className="mx-auto max-w-md rounded-2xl border border-slate-200/60 bg-white p-8 shadow-xl shadow-slate-100/50">
-          <div className="space-y-5">
-            <div className="relative mx-auto flex h-14 w-14 items-center justify-center">
-              <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-800">Đang tải</h2>
-            <p className="text-sm font-medium text-slate-500">Vui lòng đợi trong giây lát...</p>
-          </div>
-        </div>
+        <SystemLoading
+          fullScreen
+          title="Đang xác thực tài khoản"
+          description="MOLY đang hoàn tất kết nối đăng nhập."
+        />
       }>
         <GoogleCallbackContent />
       </Suspense>

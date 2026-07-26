@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { InlineSystemLoading } from "@/components/ui/system-loading";
 
 const BellIcon = ({ size = 24, className = "" }: { size?: number; className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -129,10 +130,10 @@ export default function NotificationsPage() {
 
         {/* Content list */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <Loader2 className="animate-spin text-primary mb-4" size={32} />
-            <span className="text-sm font-bold">Đang tải danh sách thông báo...</span>
-          </div>
+          <InlineSystemLoading
+            title="Đang tải thông báo"
+            description="MOLY đang cập nhật những thông tin mới nhất dành cho bạn."
+          />
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background p-12 text-center shadow-sm">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground mb-4">

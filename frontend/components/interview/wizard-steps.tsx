@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertCircle, BookOpen, Check, ChevronDown, Clock, FileText, Loader2, School, Sparkles, Upload, User, X, type LucideIcon } from "lucide-react";
+import { AlertCircle, BookOpen, Check, ChevronDown, Clock, FileText, School, Sparkles, Upload, User, X, type LucideIcon } from "lucide-react";
+import { InlineSystemLoading } from "@/components/ui/system-loading";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SchoolCombobox } from "@/components/schools/school-combobox";
@@ -650,13 +651,10 @@ export function StudyPlanAnalysisWizardStep({
 }) {
   if (isLoading) {
     return (
-      <section className="rounded-lg border border-border bg-background p-8 text-center shadow-[var(--shadow-ui)] flex flex-col items-center justify-center min-h-[300px]">
-        <Loader2 className="animate-spin text-primary mb-4" size={36} />
-        <h3 className="text-lg font-black text-foreground">AI đang phân tích Study Plan</h3>
-        <p className="text-sm text-muted-foreground mt-1 max-w-md">
-          Giáo sư AI đang đối chiếu kế hoạch của bạn với các yêu cầu của trường và ngành học tiêu chuẩn Trung Quốc...
-        </p>
-      </section>
+      <InlineSystemLoading
+        title="AI đang phân tích Study Plan"
+        description="MOLY đang đối chiếu kế hoạch của bạn với yêu cầu của trường và ngành học."
+      />
     );
   }
 
