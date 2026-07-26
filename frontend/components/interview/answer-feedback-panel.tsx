@@ -13,10 +13,10 @@ import { shouldShowAudioAnalysis } from "./answer-feedback-policy";
 function ScoreBadge({ label, score }: { label: string; score: number }) {
   const color =
     score >= 8
-      ? "bg-green-900/50 text-green-300 border-green-700"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
       : score >= 6
-        ? "bg-yellow-900/50 text-yellow-300 border-yellow-700"
-        : "bg-red-900/50 text-red-300 border-red-700";
+        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+        : "border-red-200 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/50 dark:text-red-300";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 text-xs rounded border ${color}`}>
       {label}: {score}
@@ -156,7 +156,7 @@ export function AnswerFeedbackPanel({
         return (
           <div
             key={d.sessionQuestionId}
-            className="border border-gray-700 rounded-lg overflow-hidden"
+            className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
           >
             {/* Header - clickable */}
             <button
@@ -164,11 +164,11 @@ export function AnswerFeedbackPanel({
               onClick={() => setExpandedIdx(expanded ? null : i)}
               aria-expanded={expanded}
               aria-controls={`answer-detail-${d.sessionQuestionId}`}
-              className="w-full flex items-center justify-between p-3 bg-gray-800/50 hover:bg-gray-800 transition text-left"
+              className="flex w-full items-center justify-between bg-slate-50 p-3 text-left transition hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800"
             >
               <div className="flex-1 min-w-0">
-                <span className="text-sm text-gray-400 mr-2">Câu {i + 1}:</span>
-                <span className="text-sm text-gray-200 truncate">
+                <span className="mr-2 text-sm text-slate-500 dark:text-slate-400">Câu {i + 1}:</span>
+                <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-200">
                   {d.questionText.length > 80
                     ? d.questionText.slice(0, 80) + "…"
                     : d.questionText}
@@ -176,10 +176,10 @@ export function AnswerFeedbackPanel({
               </div>
               <div className="flex items-center gap-2 ml-2 shrink-0">
                 <ScoreBadge label="Tổng" score={d.scores.total} />
-                <span className={`rounded border px-2 py-0.5 text-[10px] font-black ${d.scoringSource === "heuristic" ? "border-amber-700 bg-amber-900/40 text-amber-200" : "border-emerald-700 bg-emerald-900/40 text-emerald-200"}`}>
+                <span className={`rounded border px-2 py-0.5 text-[10px] font-black ${d.scoringSource === "heuristic" ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"}`}>
                   {d.scoringSource === "heuristic" ? "Phụ trợ" : "AI"}
                 </span>
-                <span className="text-gray-400 text-xs">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {expanded ? "▲" : "▼"}
                 </span>
               </div>
@@ -187,21 +187,21 @@ export function AnswerFeedbackPanel({
 
             {/* Expanded content */}
             {expanded && (
-              <div id={`answer-detail-${d.sessionQuestionId}`} className="p-4 space-y-4 bg-gray-900/50">
+              <div id={`answer-detail-${d.sessionQuestionId}`} className="space-y-4 bg-white p-4 dark:bg-slate-900/50">
                 <div className="flex justify-end">
-                  <Link href={`/interview/setup?practiceQuestionId=${d.sessionQuestionId}`} className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-black text-gray-200 hover:bg-gray-800">
+                  <Link href={`/interview/setup?practiceQuestionId=${d.sessionQuestionId}`} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
                     Luyện lại câu này
                   </Link>
                 </div>
 
-                <div className="flex flex-wrap gap-2 text-xs font-black text-slate-300">
-                  <span className="rounded-full border border-slate-700 px-3 py-1">{d.phaseLabel}</span>
-                  <span className="rounded-full border border-slate-700 px-3 py-1">Độ sâu {d.depthReached}/3</span>
-                  <span className="rounded-full border border-slate-700 px-3 py-1">
+                <div className="flex flex-wrap gap-2 text-xs font-black text-slate-600 dark:text-slate-300">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 dark:border-slate-700 dark:bg-transparent">{d.phaseLabel}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 dark:border-slate-700 dark:bg-transparent">Độ sâu {d.depthReached}/3</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 dark:border-slate-700 dark:bg-transparent">
                     Nguồn: {d.answerSource === "MIC" ? "micro" : "bàn phím"}
                   </span>
                   {shouldShowAudioAnalysis(d) ? (
-                    <span className="rounded-full border border-cyan-700 px-3 py-1 text-cyan-200">
+                    <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-cyan-700 dark:border-cyan-700 dark:bg-transparent dark:text-cyan-200">
                       Giọng nói: {d.audioScore}/100
                     </span>
                   ) : null}
@@ -218,9 +218,9 @@ export function AnswerFeedbackPanel({
                 </div>
 
                 {shouldShowAudioAnalysis(d) && d.speech ? (
-                  <div className="rounded-lg border border-cyan-800 bg-cyan-950/30 p-3">
-                    <p className="text-xs font-black uppercase text-cyan-200">Phân tích giọng nói</p>
-                    <div className="mt-2 grid gap-2 text-xs text-cyan-50 sm:grid-cols-3">
+                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-800 dark:bg-cyan-950/30">
+                    <p className="text-xs font-black uppercase text-cyan-700 dark:text-cyan-200">Phân tích giọng nói</p>
+                    <div className="mt-2 grid gap-2 text-xs text-cyan-900 dark:text-cyan-50 sm:grid-cols-3">
                       {d.speech.fluencyScore !== null ? <span>Trôi chảy: {d.speech.fluencyScore}/100</span> : null}
                       {d.speech.pronunciationScore !== null ? <span>Phát âm: {d.speech.pronunciationScore}/100</span> : null}
                       {d.speech.confidenceScore !== null ? <span>Tự tin: {d.speech.confidenceScore}/100</span> : null}
@@ -233,16 +233,16 @@ export function AnswerFeedbackPanel({
 
                 {/* Answer text */}
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Câu trả lời của bạn:</p>
-                  <p className="text-sm text-gray-300 bg-gray-800 p-2 rounded">
+                  <p className="mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Câu trả lời của bạn:</p>
+                  <p className="rounded bg-slate-50 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                     {d.answerText}
                   </p>
                 </div>
 
                 {d.answerSource === "MIC" && d.transcript ? (
                   <div>
-                    <p className="mb-1 text-xs text-gray-500">Bản chép lời từ micro:</p>
-                    <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded bg-gray-800 p-2 text-sm text-gray-300">
+                    <p className="mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Bản chép lời từ micro:</p>
+                    <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded bg-slate-50 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                       {d.transcript}
                     </p>
                   </div>
@@ -256,8 +256,8 @@ export function AnswerFeedbackPanel({
                 {/* Feedback */}
                 {d.feedback && (
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">💬 Nhận xét:</p>
-                    <p className="text-sm text-gray-300">{d.feedback}</p>
+                    <p className="mb-1 text-xs font-black text-slate-500 dark:text-slate-400">💬 Nhận xét:</p>
+                    <p className="text-sm leading-6 text-slate-700 dark:text-slate-300">{d.feedback}</p>
                   </div>
                 )}
 
@@ -265,8 +265,8 @@ export function AnswerFeedbackPanel({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {d.strengths.length > 0 && (
                     <div>
-                      <p className="text-xs text-green-400 mb-1">✅ Điểm mạnh:</p>
-                      <ul className="text-sm text-gray-300 space-y-1">
+                      <p className="mb-1 text-xs font-black text-emerald-700 dark:text-green-400">✅ Điểm mạnh:</p>
+                      <ul className="space-y-1 text-sm leading-6 text-slate-700 dark:text-slate-300">
                         {d.strengths.map((s, j) => (
                           <li key={j}>• {s}</li>
                         ))}
@@ -275,8 +275,8 @@ export function AnswerFeedbackPanel({
                   )}
                   {d.weaknesses.length > 0 && (
                     <div>
-                      <p className="text-xs text-red-400 mb-1">⚠️ Cần cải thiện:</p>
-                      <ul className="text-sm text-gray-300 space-y-1">
+                      <p className="mb-1 text-xs font-black text-red-700 dark:text-red-400">⚠️ Cần cải thiện:</p>
+                      <ul className="space-y-1 text-sm leading-6 text-slate-700 dark:text-slate-300">
                         {d.weaknesses.map((w, j) => (
                           <li key={j}>• {w}</li>
                         ))}
@@ -288,8 +288,8 @@ export function AnswerFeedbackPanel({
                 {/* Tips */}
                 {d.tips.length > 0 && (
                   <div>
-                    <p className="text-xs text-blue-400 mb-1">💡 Gợi ý:</p>
-                    <ul className="text-sm text-gray-300 space-y-1">
+                    <p className="mb-1 text-xs font-black text-blue-700 dark:text-blue-400">💡 Gợi ý:</p>
+                    <ul className="space-y-1 text-sm leading-6 text-slate-700 dark:text-slate-300">
                       {d.tips.map((t, j) => (
                         <li key={j}>• {t}</li>
                       ))}
@@ -300,48 +300,48 @@ export function AnswerFeedbackPanel({
                 {/* Improved answer */}
                 {d.improvedAnswer && (
                   <div>
-                    <p className="text-xs text-purple-400 mb-1">🎯 Câu trả lời mẫu:</p>
-                    <p className="text-sm text-gray-300 bg-purple-900/20 border border-purple-800 p-2 rounded">
+                    <p className="mb-1 text-xs font-black text-purple-700 dark:text-purple-400">🎯 Câu trả lời mẫu:</p>
+                    <p className="rounded border border-purple-200 bg-purple-50 p-3 text-sm leading-6 text-slate-700 dark:border-purple-800 dark:bg-purple-900/20 dark:text-slate-300">
                       {d.improvedAnswer}
                     </p>
                   </div>
                 )}
 
                 {d.suggestedFollowUpQuestion ? (
-                  <div className="rounded-lg border border-amber-800 bg-amber-950/30 p-3">
-                    <p className="text-xs font-black uppercase text-amber-300">Câu hỏi đào sâu đề xuất</p>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm text-amber-50">{d.suggestedFollowUpQuestion}</p>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                    <p className="text-xs font-black uppercase text-amber-700 dark:text-amber-300">Câu hỏi đào sâu đề xuất</p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-amber-950 dark:text-amber-50">{d.suggestedFollowUpQuestion}</p>
                   </div>
                 ) : null}
 
                 {d.sampleComparison ? (
-                  <div className="rounded-lg border border-blue-800 bg-blue-950/30 p-3">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/30">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-black uppercase text-blue-300">So sánh với câu trả lời mẫu từ DB</p>
-                      <span className="rounded-full bg-blue-900 px-2 py-1 text-xs font-black text-blue-100">
+                      <p className="text-xs font-black uppercase text-blue-700 dark:text-blue-300">So sánh với câu trả lời mẫu từ DB</p>
+                      <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-black text-blue-700 dark:bg-blue-900 dark:text-blue-100">
                         {d.sampleComparison.coveragePercent}% coverage
                       </span>
                     </div>
-                    <p className="mt-2 text-sm text-gray-300">{d.sampleComparison.sampleAnswer}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{d.sampleComparison.sampleAnswer}</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <div>
-                        <p className="text-xs font-black text-emerald-300">Từ khóa đã có</p>
+                        <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">Từ khóa đã có</p>
                         <div className="mt-2 flex flex-wrap gap-1">
                           {d.sampleComparison.matchedKeywords.length ? d.sampleComparison.matchedKeywords.map((keyword) => (
-                            <span key={keyword} className="rounded border border-emerald-800 bg-emerald-950 px-2 py-0.5 text-xs text-emerald-200">{keyword}</span>
-                          )) : <span className="text-xs text-gray-400">Chưa khớp từ khóa nào.</span>}
+                            <span key={keyword} className="rounded border border-emerald-200 bg-white px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">{keyword}</span>
+                          )) : <span className="text-xs text-slate-500 dark:text-slate-400">Chưa khớp từ khóa nào.</span>}
                         </div>
                       </div>
                       <div>
-                        <p className="text-xs font-black text-red-300">Từ khóa còn thiếu</p>
+                        <p className="text-xs font-black text-red-700 dark:text-red-300">Từ khóa còn thiếu</p>
                         <div className="mt-2 flex flex-wrap gap-1">
                           {d.sampleComparison.missingKeywords.length ? d.sampleComparison.missingKeywords.map((keyword) => (
-                            <span key={keyword} className="rounded border border-red-800 bg-red-950 px-2 py-0.5 text-xs text-red-200">{keyword}</span>
-                          )) : <span className="text-xs text-gray-400">Không còn từ khóa thiếu nào.</span>}
+                            <span key={keyword} className="rounded border border-red-200 bg-white px-2 py-0.5 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">{keyword}</span>
+                          )) : <span className="text-xs text-slate-500 dark:text-slate-400">Không còn từ khóa thiếu nào.</span>}
                         </div>
                       </div>
                     </div>
-                    <ul className="mt-3 space-y-1 text-xs font-semibold text-blue-100">
+                    <ul className="mt-3 space-y-1 text-xs font-semibold text-blue-800 dark:text-blue-100">
                       {d.sampleComparison.notes.map((note) => <li key={note}>- {note}</li>)}
                     </ul>
                   </div>
@@ -350,12 +350,12 @@ export function AnswerFeedbackPanel({
                 {/* Academic keywords */}
                 {d.academicKeywords.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">🏷️ Từ khóa học thuật:</p>
+                    <p className="mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400">🏷️ Từ khóa học thuật:</p>
                     <div className="flex flex-wrap gap-1">
                       {d.academicKeywords.map((kw, j) => (
                         <span
                           key={j}
-                          className="text-xs bg-blue-900/30 text-blue-300 border border-blue-800 px-2 py-0.5 rounded"
+                          className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
                         >
                           {kw}
                         </span>
@@ -374,14 +374,14 @@ export function AnswerFeedbackPanel({
 
 function IdeaList({ items, title, tone }: { items: string[]; title: string; tone: "good" | "warn" }) {
   return (
-    <div className={`rounded-lg border p-3 ${tone === "good" ? "border-emerald-800 bg-emerald-950/30" : "border-red-800 bg-red-950/30"}`}>
-      <p className={`text-xs font-black uppercase ${tone === "good" ? "text-emerald-300" : "text-red-300"}`}>{title}</p>
+    <div className={`rounded-lg border p-3 ${tone === "good" ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30" : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"}`}>
+      <p className={`text-xs font-black uppercase ${tone === "good" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{title}</p>
       {items.length ? (
-        <ul className="mt-2 space-y-1 text-sm text-gray-300">
+        <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-700 dark:text-slate-300">
           {items.map((item) => <li key={item}>• {item}</li>)}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-gray-400">Chưa có dữ liệu đối chiếu.</p>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Chưa có dữ liệu đối chiếu.</p>
       )}
     </div>
   );
