@@ -75,6 +75,7 @@ declare module 'lucide-react' {
   export const Brain: LucideIcon;
   export const Sparkles: LucideIcon;
   export const RefreshCw: LucideIcon;
+  export const Save: LucideIcon;
   export const Info: LucideIcon;
   export const Lightbulb: LucideIcon;
   export const HelpCircle: LucideIcon;

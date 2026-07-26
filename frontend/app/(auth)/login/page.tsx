@@ -6,7 +6,7 @@ import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { AuthLayout } from "@/components/auth-layout";
 import { PasswordField } from "@/components/password-field";
-import { loginAccount, saveAuthSession } from "@/lib/auth-client";
+import { loginAccount, markLoginWelcomePending, saveAuthSession } from "@/lib/auth-client";
 
 const inputWrap =
   "flex h-12 items-center gap-3 rounded-xl px-4 transition-all duration-200 focus-within:ring-2 focus-within:ring-red-500/40";
@@ -57,6 +57,7 @@ function LoginForm() {
     try {
       const data = await loginAccount({ email, password });
       saveAuthSession(data);
+      if (data.user.role === "USER") markLoginWelcomePending();
       const nextPath = new URLSearchParams(window.location.search).get("next");
       const safeNextPath = nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : null;
       const isAdmin = data.user.role === "ADMIN" || data.user.role === "SUPER_ADMIN";

@@ -409,7 +409,7 @@ export function InterviewSetup() {
   }
 
   return (
-    <main id="main-content" className="page-band min-h-screen p-3 text-foreground sm:p-5" tabIndex={-1}>
+    <main className="page-band min-h-screen p-3 text-foreground sm:p-5">
       <form onSubmit={handleSubmit} className="mx-auto max-w-7xl">
         <section className="rounded-lg border border-border bg-background/88 p-5 shadow-[var(--shadow-ui)] backdrop-blur sm:p-7">
           <div className="flex flex-col justify-between gap-4 border-b border-border pb-6 lg:flex-row lg:items-center">

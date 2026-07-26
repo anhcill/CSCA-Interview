@@ -33,6 +33,7 @@ model User {
   question_audios                                       question_audios[]
   study_plan_analyses                                   study_plan_analyses[]
   system_settings                                       system_settings[]
+  site_feedback                                         site_feedback[]
   uploaded_files_uploaded_files_owner_user_idTousers    uploaded_files[]      @relation("uploaded_files_owner_user_idTousers")
   uploaded_files_uploaded_files_uploader_user_idTousers uploaded_files[]      @relation("uploaded_files_uploader_user_idTousers")
   user_activity_logs                                    user_activity_logs[]
@@ -596,6 +597,24 @@ model system_settings {
   created_at    DateTime @default(now()) @db.Timestamptz(6)
   updated_at    DateTime @default(now()) @db.Timestamptz(6)
   users         User?    @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
+}
+
+model site_feedback {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String?  @db.Uuid
+  rating     Int?
+  category   String?  @db.VarChar(80)
+  message    String
+  page_url   String?  @db.VarChar(1000)
+  status     String   @default("NEW") @db.VarChar(30)
+  admin_note String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  users      User?    @relation(fields: [user_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_site_feedback_created_at")
+  @@index([status], map: "idx_site_feedback_status")
+  @@index([user_id], map: "idx_site_feedback_user_id")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

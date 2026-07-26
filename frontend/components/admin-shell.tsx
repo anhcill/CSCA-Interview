@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Award, BarChart3, BookOpen, Bot, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, Home, Link as LinkIcon, Menu, School, Settings, ShieldCheck, User, X } from "lucide-react";
+import { Activity, Award, BarChart3, BookOpen, Bot, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, Home, Link as LinkIcon, Menu, MessageSquareText, School, Settings, ShieldCheck, User, X } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { AccessibilityToolbar } from "@/components/accessibility-toolbar";
@@ -23,6 +23,7 @@ const adminNavItems = [
   { href: "/admin/mappings", icon: LinkIcon, label: "Mappings" },
   { href: "/admin/ai-models", icon: Bot, label: "Model AI" },
   { href: "/admin/audit", icon: ClipboardList, label: "Audit logs" },
+  { href: "/admin/feedback", icon: MessageSquareText, label: "Góp ý test" },
   { href: "/admin/settings", icon: Settings, label: "Cài đặt" }
 ] as const;
 const adminRoles: AuthUser["role"][] = ["ADMIN", "SUPER_ADMIN"];

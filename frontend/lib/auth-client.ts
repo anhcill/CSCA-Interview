@@ -1,6 +1,7 @@
 import { ApiError, apiGet, apiPost, clearApiCache } from "./api";
 
 export const authSessionChangedEvent = "ai-phongvan-auth-session-changed";
+const loginWelcomePendingKey = "moly:login-welcome-pending";
 
 export type AuthUser = {
   id: string;
@@ -39,6 +40,18 @@ export function saveAuthSession(data: AuthResponse) {
   currentUser = data.user;
   scheduleRefresh();
   notifyAuthSessionChanged();
+}
+
+export function markLoginWelcomePending() {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(loginWelcomePendingKey, "true");
+}
+
+export function consumeLoginWelcomePending() {
+  if (typeof window === "undefined") return false;
+  const pending = sessionStorage.getItem(loginWelcomePendingKey) === "true";
+  if (pending) sessionStorage.removeItem(loginWelcomePendingKey);
+  return pending;
 }
 
 export function getAuthToken() {

@@ -26,12 +26,18 @@ export function SystemLoading({
       aria-live="polite"
       role="status"
     >
-      <div className="moly-loading-dots" aria-hidden="true" />
-      <div className="moly-loading-glow moly-loading-glow-left" aria-hidden="true" />
-      <div className="moly-loading-glow moly-loading-glow-right" aria-hidden="true" />
+      <div className="moly-loading-sun" aria-hidden="true" />
+      <div className="moly-loading-landscape" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
 
       <div className="moly-loading-content">
-        <p className="moly-loading-brand">MOLY</p>
+        <p className="moly-loading-brand">
+          <strong>MOLY</strong>
+          <span>留学中国</span>
+        </p>
 
         <div
           className={`moly-loading-ring ${normalizedProgress === null ? "is-indeterminate" : ""}`}
@@ -62,11 +68,6 @@ export function SystemLoading({
           <span style={normalizedProgress === null ? undefined : { width: `${normalizedProgress}%` }} />
         </div>
 
-        <div className="moly-loading-steps" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </div>
       </div>
     </div>
   );

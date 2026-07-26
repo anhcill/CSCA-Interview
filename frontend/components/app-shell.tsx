@@ -1,24 +1,16 @@
 "use client";
 
-import { BarChart3, ClipboardList, CreditCard, GraduationCap, ShieldCheck, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AdminShell } from "@/components/admin-shell";
 import { MarketingFrame } from "@/components/home/marketing-frame";
+import { getUserNavigationItems } from "@/components/navigation/user-navigation";
 import { PageAccessDeniedState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
-import { UserNavbar } from "@/components/user-navbar";
+import { UserAppShell } from "@/components/user-app-shell";
 import { ensureAuthSession, fetchCurrentUser, getAuthToken, getStoredUser, type AuthUser } from "@/lib/auth-client";
 import { getStoredLocale, localeChangedEvent, type Locale } from "@/lib/i18n";
 
-const navItems = [
-  { href: "/dashboard", icon: BarChart3, labelKey: "dashboard" },
-  { href: "/interview/setup", icon: GraduationCap, labelKey: "interview" },
-  { href: "/interview/history", icon: ClipboardList, labelKey: "history" },
-  { href: "/payment", icon: CreditCard, labelKey: "payment" },
-  { href: "/profile", icon: User, labelKey: "profile" }
-] as const;
-const adminNavItem = { href: "/admin", icon: ShieldCheck, label: "Admin" } as const;
 const adminPrefetchPaths = [
   "/admin",
   "/admin/analytics",
@@ -30,7 +22,7 @@ const adminPrefetchPaths = [
 ];
 
 const publicPaths = new Set(["/", "/403-forbidden", "/features", "/guide", "/login", "/payment", "/pricing", "/privacy", "/register", "/terms"]);
-const optionalAuthPaths = new Set(["/payment"]);
+const optionalAuthPaths = new Set(["/guide", "/payment"]);
 const fullScreenPaths = new Set(["/interview"]);
 const adminRoles: AuthUser["role"][] = ["ADMIN", "SUPER_ADMIN"];
 type AuthStatus = "checking" | "authenticated" | "error" | "forbidden" | "public" | "unauthenticated";
@@ -48,7 +40,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isOptionalAuthPath = optionalAuthPaths.has(activePathname);
   const isAdminPath = activePathname.startsWith("/admin");
   const canAccessAdmin = currentUser ? adminRoles.includes(currentUser.role) : false;
-  const visibleNavItems = useMemo(() => canAccessAdmin ? [...navItems, adminNavItem] : [...navItems], [canAccessAdmin]);
   const shouldUseShell = mounted && authStatus === "authenticated" && (!isPublicPath || isOptionalAuthPath) && !fullScreenPaths.has(activePathname);
 
   useEffect(() => {
@@ -139,9 +130,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!mounted || authStatus !== "authenticated") return;
 
-    visibleNavItems.forEach((item) => router.prefetch(item.href));
+    getUserNavigationItems(locale).forEach((item) => router.prefetch(item.href));
     if (canAccessAdmin) adminPrefetchPaths.forEach((path) => router.prefetch(path));
-  }, [authStatus, canAccessAdmin, mounted, router, visibleNavItems]);
+  }, [authStatus, canAccessAdmin, locale, mounted, router]);
 
   useEffect(() => {
     if (!mounted || authStatus !== "forbidden" || !isAdminPath) return;
@@ -177,7 +168,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         description="Tài khoản hiện tại không có quyền mở khu vực quản trị."
         action={(
           <Link href="/dashboard" className="focus-ring inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-black text-white">
-            Về dashboard
+            Về tổng quan
           </Link>
         )}
       />
@@ -197,11 +188,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <UserNavbar currentUser={currentUser} locale={locale} />
-      <div key={activePathname} className="animate-[fade-in_180ms_ease-out]">
-        {children}
-      </div>
-    </div>
+    <UserAppShell currentUser={currentUser} locale={locale} activePathname={activePathname}>
+      {children}
+    </UserAppShell>
   );
 }

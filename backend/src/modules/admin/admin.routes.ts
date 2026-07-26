@@ -188,6 +188,10 @@ const settingSchema = z.object({
   description: z.string().trim().max(2000).optional().nullable(),
   settingValue: z.any()
 });
+const siteFeedbackUpdateSchema = z.object({
+  adminNote: z.string().trim().max(5000).optional().nullable(),
+  status: z.enum(["NEW", "REVIEWED", "RESOLVED"])
+});
 const aiProviderSchema = z.enum(["9router", "deepseek", "openai", "openrouter"]);
 const aiModelRouteTestSchema = z.object({
   baseUrl: z.string().trim().url("Base URL không hợp lệ").optional().nullable(),
@@ -882,6 +886,74 @@ adminRouter.get("/settings", async (_req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Không thể tải settings" });
+  }
+});
+
+adminRouter.get("/site-feedback", async (req, res) => {
+  try {
+    const { limit, page, skip } = parsePagination({
+      limit: req.query.limit ?? req.query.pageSize,
+      page: req.query.page
+    });
+    const status = typeof req.query.status === "string" && ["NEW", "REVIEWED", "RESOLVED"].includes(req.query.status)
+      ? req.query.status
+      : undefined;
+    const where = status ? { status } : {};
+    const [rows, total] = await Promise.all([
+      prisma.site_feedback.findMany({
+        include: { users: { select: { email: true, fullName: true, id: true } } },
+        orderBy: { created_at: "desc" },
+        skip,
+        take: limit,
+        where
+      }),
+      prisma.site_feedback.count({ where })
+    ]);
+
+    res.json(paginatedResponse(rows, total, page, limit));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Không thể tải góp ý" });
+  }
+});
+
+adminRouter.put("/site-feedback/:id", async (req, res) => {
+  const parsed = siteFeedbackUpdateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ errors: parsed.error.flatten().fieldErrors, message: "Trạng thái góp ý không hợp lệ" });
+    return;
+  }
+
+  const admin = getAdmin(res);
+  try {
+    const before = await prisma.site_feedback.findUnique({ where: { id: req.params.id } });
+    if (!before) {
+      res.status(404).json({ message: "Không tìm thấy góp ý" });
+      return;
+    }
+
+    const feedback = await prisma.site_feedback.update({
+      data: {
+        admin_note: parsed.data.adminNote || null,
+        status: parsed.data.status,
+        updated_at: new Date()
+      },
+      where: { id: req.params.id }
+    });
+
+    await writeAdminAuditLog(req, {
+      action: "SITE_FEEDBACK_UPDATE",
+      adminUserId: admin.id,
+      afterData: feedback,
+      beforeData: before,
+      entityId: feedback.id,
+      entityType: "site_feedback"
+    });
+
+    res.json({ feedback, message: "Đã cập nhật góp ý" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Không thể cập nhật góp ý" });
   }
 });
 

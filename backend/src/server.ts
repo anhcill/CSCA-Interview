@@ -26,6 +26,7 @@ import { speechRouter } from "./modules/speech/speech.routes.js";
 import { gamificationRouter } from "./modules/gamification/gamification.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { paymentsRouter } from "./modules/payments/payments.routes.js";
+import { siteExperienceRouter } from "./modules/site-experience/site-experience.routes.js";
 import { wsInterviewHandler } from "./modules/realtime/ws-interview.handler.js";
 
 const app = express();
@@ -354,6 +355,7 @@ app.use("/api/gamification", wrapAsyncRouter(gamificationRouter));
 app.use("/api/interviews", cachePrivate(30_000) as any, wrapAsyncRouter(interviewsRouter));
 app.use("/api/notifications", wrapAsyncRouter(notificationsRouter));
 app.use("/api/payments", wrapAsyncRouter(paymentsRouter));
+app.use("/api/site-experience", cachePrivate(15_000) as any, wrapAsyncRouter(siteExperienceRouter));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use("/api/speech", speechLimiter as any, wrapAsyncRouter(speechRouter));
 

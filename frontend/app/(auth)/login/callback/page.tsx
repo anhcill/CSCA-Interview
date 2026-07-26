@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
-import { saveAuthSession, type AuthUser } from "@/lib/auth-client";
+import { markLoginWelcomePending, saveAuthSession, type AuthUser } from "@/lib/auth-client";
 import { InlineSystemLoading, SystemLoading } from "@/components/ui/system-loading";
 
 function GoogleCallbackContent() {
@@ -32,6 +32,7 @@ function GoogleCallbackContent() {
           token: token as string,
           user: data.user
         });
+        if (data.user.role === "USER") markLoginWelcomePending();
 
         const isAdmin = data.user.role === "ADMIN" || data.user.role === "SUPER_ADMIN";
         if (isAdmin) {
