@@ -3,7 +3,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { detailFeatures, featurePageGroups, interviewPreview } from "@/components/home/home-data";
 import { homeIcons } from "@/components/home/home-icons";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
-import { createPageMetadata } from "@/lib/seo";
+import { createPageMetadata, getBreadcrumbStructuredData } from "@/lib/seo";
 
 export const metadata = createPageMetadata({
   title: "Tính năng | AI Phỏng Vấn Du Học",
@@ -14,6 +14,17 @@ export const metadata = createPageMetadata({
 export default function FeaturesPage() {
   return (
     <MarketingFrame>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            getBreadcrumbStructuredData([
+              { name: "Trang chủ", path: "/" },
+              { name: "Tính năng", path: "/features" }
+            ])
+          ).replace(/</g, "\\u003c")
+        }}
+      />
       <MarketingIntro
         eyebrow="Tính năng"
         title="Mọi phần trong buổi luyện đều bám theo hồ sơ apply thật"

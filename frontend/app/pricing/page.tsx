@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { faqs, pricing, pricingNotes } from "@/components/home/home-data";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
-import { createPageMetadata } from "@/lib/seo";
+import { createPageMetadata, getFAQStructuredData, getBreadcrumbStructuredData } from "@/lib/seo";
 
 export const metadata = createPageMetadata({
   title: "Gói sử dụng | AI Phỏng Vấn Du Học",
@@ -13,6 +13,23 @@ export const metadata = createPageMetadata({
 export default function PricingPage() {
   return (
     <MarketingFrame>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(getFAQStructuredData(faqs)).replace(/</g, "\\u003c")
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            getBreadcrumbStructuredData([
+              { name: "Trang chủ", path: "/" },
+              { name: "Gói sử dụng", path: "/pricing" }
+            ])
+          ).replace(/</g, "\\u003c")
+        }}
+      />
       <MarketingIntro
         eyebrow="Gói sử dụng"
         title="Chọn cách luyện phù hợp với giai đoạn apply hiện tại"

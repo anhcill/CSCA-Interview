@@ -12,6 +12,7 @@ import {
   steps
 } from "./home-data";
 import { homeIcons } from "./home-icons";
+import { getFAQStructuredData } from "@/lib/seo";
 
 export function StatsSection() {
   return (
@@ -282,6 +283,12 @@ export function PricingSection() {
 export function FaqSection() {
   return (
     <section className="border-y border-[#dde5ef] bg-white py-16">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(getFAQStructuredData(faqs)).replace(/</g, "\\u003c")
+        }}
+      />
       <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.85fr_1.15fr]">
         <div>
           <p className="text-sm font-black uppercase text-[#b91c1c]">FAQ</p>

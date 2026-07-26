@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { guidePageStages, scholarshipFocus, steps } from "@/components/home/home-data";
 import { MarketingFrame, MarketingIntro } from "@/components/home/marketing-frame";
-import { createPageMetadata } from "@/lib/seo";
+import { createPageMetadata, getHowToStructuredData, getBreadcrumbStructuredData } from "@/lib/seo";
 
 export const metadata = createPageMetadata({
   title: "Quy trình luyện | AI Phỏng Vấn Du Học",
@@ -13,6 +13,29 @@ export const metadata = createPageMetadata({
 export default function GuidePage() {
   return (
     <MarketingFrame>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            getHowToStructuredData(
+              "Luyện phỏng vấn học bổng Trung Quốc",
+              "Quy trình luyện phỏng vấn học bổng Trung Quốc từ hồ sơ apply đến báo cáo sau buổi luyện.",
+              steps
+            )
+          ).replace(/</g, "\\u003c")
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(
+            getBreadcrumbStructuredData([
+              { name: "Trang chủ", path: "/" },
+              { name: "Quy trình luyện", path: "/guide" }
+            ])
+          ).replace(/</g, "\\u003c")
+        }}
+      />
       <MarketingIntro
         eyebrow="Quy trình luyện"
         title="Từ hồ sơ apply đến câu trả lời có thể dùng trong phỏng vấn"

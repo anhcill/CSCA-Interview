@@ -29,7 +29,21 @@ const keywords = [
   "học bổng CSC",
   "AI phỏng vấn",
   "Chinese scholarship interview",
-  "Moly Interview"
+  "Moly Interview",
+  "luyện phỏng vấn CSC",
+  "học bổng chính phủ Trung Quốc",
+  "CSC scholarship interview practice",
+  "中国政府奖学金面试",
+  "phỏng vấn du học Trung Quốc AI",
+  "mô phỏng phỏng vấn học bổng",
+  "Chinese government scholarship",
+  "interview preparation AI",
+  "phỏng vấn tuyển sinh đại học Trung Quốc",
+  "mock interview du học",
+  "luyện phỏng vấn trực tuyến",
+  "scholarship interview tips",
+  "phỏng vấn học bổng toàn phần",
+  "AI面试练习"
 ];
 
 function normalizeSiteUrl(value: string | undefined) {
@@ -97,7 +111,13 @@ export function createPageMetadata({
     keywords,
     category: "education",
     alternates: {
-      canonical: path
+      canonical: path,
+      languages: {
+        "vi-VN": path,
+        "en-US": path,
+        "zh-CN": path,
+        "x-default": path
+      }
     },
     openGraph: {
       type: "website",
@@ -175,4 +195,53 @@ export function getStructuredData() {
       }
     }
   ];
+}
+
+export function getFAQStructuredData(faqs: ReadonlyArray<{ question: string; answer: string }>) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((faq) => ({
+      "@type": "Question",
+      name: faq.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: faq.answer
+      }
+    }))
+  };
+}
+
+export function getHowToStructuredData(
+  name: string,
+  description: string,
+  steps: ReadonlyArray<{ title: string; description: string }>
+) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    name,
+    description,
+    step: steps.map((s, i) => ({
+      "@type": "HowToStep",
+      position: i + 1,
+      name: s.title,
+      text: s.description
+    }))
+  };
+}
+
+export function getBreadcrumbStructuredData(
+  items: ReadonlyArray<{ name: string; path: string }>
+) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: item.name,
+      item: absoluteUrl(item.path)
+    }))
+  };
 }

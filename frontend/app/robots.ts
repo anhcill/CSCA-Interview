@@ -7,6 +7,38 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
+        userAgent: "Googlebot",
+        allow: ["/"],
+        disallow: [
+          "/admin/",
+          "/dashboard/",
+          "/interview/",
+          "/notifications/",
+          "/profile/",
+          "/login",
+          "/register",
+          "/api/",
+          "/_next/",
+          "/403-forbidden"
+        ]
+      },
+      {
+        userAgent: "Bingbot",
+        allow: ["/"],
+        disallow: [
+          "/admin/",
+          "/dashboard/",
+          "/interview/",
+          "/notifications/",
+          "/profile/",
+          "/login",
+          "/register",
+          "/api/",
+          "/_next/",
+          "/403-forbidden"
+        ]
+      },
+      {
         userAgent: "*",
         allow: ["/"],
         disallow: [
@@ -17,7 +49,9 @@ export default function robots(): MetadataRoute.Robots {
           "/profile/",
           "/login",
           "/register",
-          "/api/"
+          "/api/",
+          "/_next/",
+          "/403-forbidden"
         ]
       }
     ],
