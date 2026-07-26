@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, MessageSquareText, Send, Sparkles, Star, X } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { consumeLoginWelcomePending, getAuthToken } from "@/lib/auth-client";
 
@@ -20,11 +20,12 @@ export function UserTestExperience() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [category, setCategory] = useState(categories[0]);
-  const [message, setMessage] = useState("");
+  const [messageLength, setMessageLength] = useState(0);
   const [rating, setRating] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const messageRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -49,7 +50,8 @@ export function UserTestExperience() {
 
   async function submitFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (message.trim().length < 5) {
+    const message = messageRef.current?.value.trim() ?? "";
+    if (message.length < 5) {
       setError("Đại ca mô tả thêm một chút để đội ngũ xử lý chính xác nhé.");
       return;
     }
@@ -64,7 +66,8 @@ export function UserTestExperience() {
         rating
       }, { token: getAuthToken() });
       setSubmitted(true);
-      setMessage("");
+      if (messageRef.current) messageRef.current.value = "";
+      setMessageLength(0);
       setRating(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chưa thể gửi góp ý lúc này.");
@@ -157,15 +160,16 @@ export function UserTestExperience() {
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-black">Góp ý của bạn</span>
                   <textarea
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
+                    ref={messageRef}
+                    onInput={(event) => setMessageLength(event.currentTarget.value.length)}
+                    onKeyDown={(event) => event.stopPropagation()}
                     maxLength={5000}
                     rows={5}
                     placeholder="Ví dụ: câu hỏi chưa sát ngành, AI ngắt mic sớm..."
                     className="focus-ring min-h-32 w-full resize-y rounded-xl border border-border bg-background px-3 py-3 text-sm font-semibold leading-6 placeholder:font-medium"
                     required
                   />
-                  <span className="mt-1 block text-right text-xs font-bold text-muted-foreground">{message.length}/5000</span>
+                  <span className="mt-1 block text-right text-xs font-bold text-muted-foreground">{messageLength}/5000</span>
                 </label>
 
                 {error ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
