@@ -65,12 +65,15 @@ function GpaNumberField({
       <input
         className="focus-ring min-h-11 rounded-lg border border-border bg-background px-3 text-sm font-bold text-foreground"
         inputMode="decimal"
-        max={max}
-        min={0}
-        onChange={(event) => onChange(event.target.value)}
+        maxLength={5}
+        onChange={(event) => {
+          const nextValue = event.target.value.replace(",", ".");
+          if (!/^\d{0,2}(?:\.\d{0,2})?$/.test(nextValue)) return;
+          if (nextValue && Number(nextValue) > max) return;
+          onChange(nextValue);
+        }}
         placeholder={placeholder}
-        step="0.01"
-        type="number"
+        type="text"
         value={value}
       />
     </label>

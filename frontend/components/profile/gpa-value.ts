@@ -1,4 +1,4 @@
-const bachelorGpaPattern = /Lớp 10:\s*([\d.,]+);\s*Lớp 11:\s*([\d.,]+);\s*Lớp 12:\s*([\d.,]+)/i;
+const bachelorGpaPattern = /Lớp 10:\s*([\d.,]*);\s*Lớp 11:\s*([\d.,]*);\s*Lớp 12:\s*([\d.,]*)/i;
 
 export function parseBachelorGpa(value: string) {
   const match = value.match(bachelorGpaPattern);
