@@ -2,7 +2,12 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { env, openAiTtsVoiceOptions } from "../../config/env.js";
 import { requireAuth } from "../auth/auth.middleware.js";
-import { MissingOpenAiKeyError, synthesizeSpeech, transcribeAudio } from "./speech.service.js";
+import {
+  isServerSpeechAvailable,
+  MissingSpeechProviderError,
+  synthesizeSpeech,
+  transcribeAudio
+} from "./speech.service.js";
 import {
   assessPronunciation,
   isPronunciationAvailable,
@@ -48,12 +53,12 @@ speechRouter.post("/transcribe", async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error("[SPEECH] Transcribe error:", err);
-    if (err instanceof MissingOpenAiKeyError) {
+    if (err instanceof MissingSpeechProviderError) {
       res.status(503).json({ message: err.message });
       return;
     }
     const rawMessage = err instanceof Error ? err.message : "Lỗi xử lý giọng nói";
-    res.status(500).json({ message: toPublicTranscriptionErrorMessage(rawMessage) });
+    res.status(502).json({ message: toPublicTranscriptionErrorMessage(rawMessage) });
   }
 });
 
@@ -83,7 +88,7 @@ speechRouter.post("/synthesize", async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error("[SPEECH] Synthesize error:", err);
-    if (err instanceof MissingOpenAiKeyError) {
+    if (err instanceof MissingSpeechProviderError) {
       res.status(503).json({ message: err.message });
       return;
     }
@@ -134,8 +139,8 @@ speechRouter.post("/pronunciation", async (req: Request, res: Response) => {
 
 speechRouter.get("/status", (_req: Request, res: Response) => {
   res.json({
-    transcribe: true, // always available if OpenAI key set (checked at call time)
-    synthesize: true,
+    transcribe: isServerSpeechAvailable(),
+    synthesize: isServerSpeechAvailable(),
     pronunciationAssessment: isPronunciationAvailable()
   });
 });

@@ -1,9 +1,9 @@
 import dotenv from "dotenv";
+import { resolveSpeechProviderConfig } from "../modules/speech/speech-provider-config.js";
 
 dotenv.config();
 
 const isProd = process.env.NODE_ENV === "production";
-const usesOpenAiNamespace = process.env.OPENAI_BASE_URL?.includes("beeknoee");
 
 export const openAiTtsVoiceOptions = [
   "alloy",
@@ -27,10 +27,6 @@ export type AiModelCostEntry = {
 };
 
 export type AiModelCosts = Record<string, AiModelCostEntry>;
-
-function defaultOpenAiProviderModel(model: string) {
-  return usesOpenAiNamespace ? `openai/${model}` : model;
-}
 
 function optionalOpenAiTtsVoice(value: string | undefined): OpenAiTtsVoice {
   return openAiTtsVoiceOptions.includes(value as OpenAiTtsVoice) ? (value as OpenAiTtsVoice) : "nova";
@@ -150,6 +146,7 @@ function parseFrontendUrls() {
 }
 
 const frontendUrls = parseFrontendUrls();
+const speechProvider = resolveSpeechProviderConfig(process.env);
 
 export const env = {
   databaseUrl: process.env.DATABASE_URL,
@@ -163,8 +160,10 @@ export const env = {
   openAiInputCostPer1M: optionalNumber(process.env.OPENAI_INPUT_COST_PER_1M),
   openAiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
   openAiOutputCostPer1M: optionalNumber(process.env.OPENAI_OUTPUT_COST_PER_1M),
-  openAiSttModel: process.env.OPENAI_STT_MODEL?.trim() || defaultOpenAiProviderModel("gpt-4o-transcribe"),
-  openAiTtsModel: process.env.OPENAI_TTS_MODEL?.trim() || defaultOpenAiProviderModel("gpt-4o-mini-tts"),
+  speechApiKey: speechProvider.apiKey,
+  speechBaseUrl: speechProvider.baseUrl,
+  speechSttModel: speechProvider.sttModel,
+  speechTtsModel: speechProvider.ttsModel,
   openAiTtsVoice: optionalOpenAiTtsVoice(process.env.OPENAI_TTS_VOICE),
   backendPublicUrl: process.env.BACKEND_PUBLIC_URL,
   bankAccountName: process.env.BANK_ACCOUNT_NAME,

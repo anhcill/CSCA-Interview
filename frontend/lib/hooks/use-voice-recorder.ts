@@ -7,6 +7,7 @@ import {
   shouldStopAfterSilence,
   type VoiceRecorderState
 } from "./voice-recorder-machine";
+import { selectVoiceRecorderTransport } from "./voice-recorder-capabilities";
 
 export type { VoiceRecorderState } from "./voice-recorder-machine";
 
@@ -311,9 +312,18 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     const canUseMediaRecorder = typeof navigator !== "undefined"
       && Boolean(navigator.mediaDevices?.getUserMedia)
       && typeof MediaRecorder !== "undefined";
-    const SpeechRecognition = canUseMediaRecorder ? null : getSpeechRecognitionConstructor();
-    if (SpeechRecognition) {
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    const transport = selectVoiceRecorderTransport({
+      hasBrowserRecognition: Boolean(SpeechRecognition),
+      hasMediaRecorder: canUseMediaRecorder
+    });
+    if (transport === "browser" && SpeechRecognition) {
       startBrowserRecognition(SpeechRecognition, requestId);
+      return;
+    }
+    if (transport === "unsupported") {
+      moveToState("IDLE", true);
+      onError?.("Trình duyệt này không hỗ trợ nhận dạng giọng nói. Hãy dùng Chrome hoặc Edge.");
       return;
     }
 

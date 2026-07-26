@@ -101,7 +101,7 @@ async function collectHealthStatus() {
       model: env.openAiApiKey ? env.openAiModel : null,
       reason: env.openAiApiKey
         ? null
-        : "OPENAI_API_KEY missing; interview text uses deterministic fallback and server speech endpoints return 503.",
+        : "OPENAI_API_KEY missing; interview text uses deterministic fallback.",
       status: ai,
       mode: env.openAiApiKey ? "openai" : "fallback"
     },

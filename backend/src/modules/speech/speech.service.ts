@@ -7,23 +7,27 @@ import { env, type OpenAiTtsVoice } from "../../config/env.js";
 import { logAiUsage } from "../ai/ai-usage.service.js";
 import { bindClientMethod } from "./client-method.js";
 
-const openai = env.openAiApiKey
+const speechClient = env.speechApiKey
   ? new OpenAI({
-      apiKey: env.openAiApiKey,
-      ...(env.openAiBaseUrl ? { baseURL: env.openAiBaseUrl } : {})
+      apiKey: env.speechApiKey,
+      ...(env.speechBaseUrl ? { baseURL: env.speechBaseUrl } : {})
     })
   : null;
 
-export class MissingOpenAiKeyError extends Error {
+export class MissingSpeechProviderError extends Error {
   constructor() {
-    super("OPENAI_API_KEY chưa được cấu hình. Tính năng AI speech trên server đang tắt; phỏng vấn text vẫn dùng fallback local.");
-    this.name = "MissingOpenAiKeyError";
+    super("Dịch vụ nhận dạng giọng nói trên server chưa được cấu hình. Hãy dùng Chrome hoặc Edge để nhận dạng trực tiếp trên trình duyệt.");
+    this.name = "MissingSpeechProviderError";
   }
 }
 
-function requireOpenAi() {
-  if (!openai) throw new MissingOpenAiKeyError();
-  return openai;
+function requireSpeechClient() {
+  if (!speechClient) throw new MissingSpeechProviderError();
+  return speechClient;
+}
+
+export function isServerSpeechAvailable() {
+  return Boolean(speechClient);
 }
 
 // ---------------------------------------------------------------------------
@@ -143,12 +147,12 @@ export async function transcribeAudio(
   language?: string,
   options: SpeechUsageOptions = {}
 ): Promise<TranscribeResult> {
-  const client = requireOpenAi();
+  const client = requireSpeechClient();
 
   // Write base64 to temp file (OpenAI transcription API needs a file)
   const ext = mimeType.includes("wav") ? "wav" : mimeType.includes("mp3") ? "mp3" : "webm";
   const tmpFile = path.join(os.tmpdir(), `speech_${Date.now()}.${ext}`);
-  const transcriptionModel = env.openAiSttModel;
+  const transcriptionModel = env.speechSttModel;
   let audioBytes: number | null = null;
 
   try {
@@ -255,7 +259,7 @@ export async function synthesizeSpeech(
   speed: number = 1.0,
   options: SpeechUsageOptions = {}
 ): Promise<SynthesizeResult> {
-  const client = requireOpenAi();
+  const client = requireSpeechClient();
 
   if (!text.trim()) {
     throw new Error("Text không được để trống");
@@ -265,7 +269,7 @@ export async function synthesizeSpeech(
   const trimmedText = text.slice(0, 4096);
 
   const startedAt = Date.now();
-  const ttsModel = env.openAiTtsModel;
+  const ttsModel = env.speechTtsModel;
   const normalizedSpeed = Math.max(0.25, Math.min(4.0, speed));
   const ttsSupportsSpeed = supportsTtsSpeed(ttsModel);
 
