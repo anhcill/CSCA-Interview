@@ -5,6 +5,7 @@ import { ai_task_type } from "@prisma/client";
 import OpenAI from "openai";
 import { env, type OpenAiTtsVoice } from "../../config/env.js";
 import { logAiUsage } from "../ai/ai-usage.service.js";
+import { bindClientMethod } from "./client-method.js";
 
 const openai = env.openAiApiKey
   ? new OpenAI({
@@ -162,7 +163,10 @@ export async function transcribeAudio(
     fs.writeFileSync(tmpFile, buffer);
 
     const startedAt = Date.now();
-    const createTranscription = client.audio.transcriptions.create as unknown as (body: Record<string, unknown>) => Promise<VerboseTranscriptionResponse>;
+    const createTranscription = bindClientMethod(
+      client.audio.transcriptions,
+      client.audio.transcriptions.create
+    ) as unknown as (body: Record<string, unknown>) => Promise<VerboseTranscriptionResponse>;
     const transcriptionInput: Record<string, unknown> = {
       file: fs.createReadStream(tmpFile),
       model: transcriptionModel,

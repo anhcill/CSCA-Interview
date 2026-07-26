@@ -8,6 +8,7 @@ import {
   isPronunciationAvailable,
   MissingAzureSpeechKeyError
 } from "./pronunciation-assessment.service.js";
+import { toPublicTranscriptionErrorMessage } from "./speech-error.js";
 
 export const speechRouter = Router();
 
@@ -52,10 +53,7 @@ speechRouter.post("/transcribe", async (req: Request, res: Response) => {
       return;
     }
     const rawMessage = err instanceof Error ? err.message : "Lỗi xử lý giọng nói";
-    const message = rawMessage.includes("<!DOCTYPE") || rawMessage.includes("404")
-      ? "Provider AI hiện không hỗ trợ nhận dạng giọng nói. Hãy dùng Chrome/Edge để nhận dạng trực tiếp trên trình duyệt."
-      : rawMessage;
-    res.status(500).json({ message });
+    res.status(500).json({ message: toPublicTranscriptionErrorMessage(rawMessage) });
   }
 });
 

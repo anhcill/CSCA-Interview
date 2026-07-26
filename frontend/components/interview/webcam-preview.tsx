@@ -2,57 +2,28 @@
 
 import { Camera, CameraOff } from "lucide-react";
 import type { RefObject } from "react";
-import { VisualMetricsOverlay, type VisualMetrics, type VisualMetricsStatus } from "./visual-metrics-panel";
 
 type WebcamPreviewProps = {
   activeSubtitle?: string;
   isCameraOn: boolean;
-  metrics: VisualMetrics;
-  metricsStatus?: VisualMetricsStatus;
   onToggleCamera: () => void;
   questionText: string;
   videoRef: RefObject<HTMLVideoElement | null>;
 };
 
-export function WebcamPreview({ activeSubtitle, isCameraOn, metrics, metricsStatus, onToggleCamera, questionText, videoRef }: WebcamPreviewProps) {
+export function WebcamPreview({ activeSubtitle, isCameraOn, onToggleCamera, questionText, videoRef }: WebcamPreviewProps) {
   return (
-    <div className="relative flex-1 overflow-hidden rounded-3xl border border-[#E8E3DF] bg-[#E8E3DF] shadow-sm lg:min-h-0">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className={`h-full min-h-[360px] w-full object-cover transition-opacity duration-500 ${isCameraOn ? "opacity-100" : "absolute opacity-0"}`}
-      />
-
-      {!isCameraOn ? <CameraPlaceholder /> : null}
-
-      {isCameraOn ? (
-        <div className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#2B231F]/40 px-3 py-1.5 text-[10px] font-extrabold tracking-wider text-white backdrop-blur-md">
-          <span className="h-2 w-2 rounded-full bg-[#FF453A] animate-pulse" />
-          <span>LIVE</span>
-        </div>
-      ) : null}
-
-      <button
-        type="button"
-        onClick={onToggleCamera}
-        className="absolute right-4 top-4 rounded-full border border-white/10 bg-[#2B231F]/40 p-2 text-white shadow-md backdrop-blur-md transition hover:bg-[#2B231F]/60"
-        title={isCameraOn ? "Tắt camera" : "Bật camera"}
-        aria-label={isCameraOn ? "Tắt camera" : "Bật camera"}
-      >
-        {isCameraOn ? <CameraOff size={15} /> : <Camera size={15} />}
-      </button>
-
-      {isCameraOn ? <VisualMetricsOverlay metrics={metrics} status={metricsStatus} /> : null}
-
-      <div className="absolute bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#2B231F]/80 p-4 text-white shadow-lg backdrop-blur-md">
+    <section
+      className="grid gap-4 rounded-3xl border border-[#E8E3DF] bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_280px] md:items-stretch xl:grid-cols-[minmax(0,1fr)_320px]"
+      aria-label="Câu hỏi hiện tại và camera"
+    >
+      <div className="flex min-h-[164px] items-center justify-between gap-4 rounded-2xl bg-[#2B231F] p-5 text-white shadow-inner sm:p-6">
         <div className="min-w-0 flex-1">
-          <p className="mb-1 text-[10px] font-extrabold uppercase tracking-wider text-sky-300">AI Interviewer đang nói...</p>
-          <p className="text-sm font-extrabold leading-relaxed text-white">{questionText}</p>
-          {activeSubtitle ? <p className="mt-1 text-xs font-semibold text-slate-300">{activeSubtitle}</p> : null}
+          <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-sky-300">AI Interviewer đang hỏi</p>
+          <p className="text-base font-extrabold leading-7 text-white sm:text-lg">{questionText}</p>
+          {activeSubtitle ? <p className="mt-2 text-xs font-semibold leading-5 text-slate-300">{activeSubtitle}</p> : null}
         </div>
-        <div className="flex h-5 shrink-0 items-end gap-0.5" aria-hidden="true">
+        <div className="flex h-7 shrink-0 items-end gap-1" aria-hidden="true">
           <WaveBar height="70%" delay="0.1s" />
           <WaveBar height="100%" delay="0.3s" />
           <WaveBar height="40%" delay="0.5s" />
@@ -60,18 +31,47 @@ export function WebcamPreview({ activeSubtitle, isCameraOn, metrics, metricsStat
           <WaveBar height="50%" delay="0.4s" />
         </div>
       </div>
-    </div>
+
+      <div className="relative aspect-video w-full max-w-sm justify-self-end overflow-hidden rounded-2xl border border-[#D9D1CC] bg-[#E8E3DF] shadow-sm md:max-w-none">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`h-full w-full object-cover transition-opacity duration-300 ${isCameraOn ? "opacity-100" : "absolute opacity-0"}`}
+        />
+
+        {!isCameraOn ? <CameraPlaceholder /> : null}
+
+        {isCameraOn ? (
+          <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#2B231F]/55 px-2.5 py-1 text-[9px] font-extrabold tracking-wider text-white backdrop-blur-md">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#FF453A]" />
+            <span>LIVE</span>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={onToggleCamera}
+          className="absolute right-2.5 top-2.5 rounded-full border border-white/10 bg-[#2B231F]/55 p-2 text-white shadow-md backdrop-blur-md transition hover:bg-[#2B231F]/75"
+          title={isCameraOn ? "Tắt camera" : "Bật camera"}
+          aria-label={isCameraOn ? "Tắt camera" : "Bật camera"}
+        >
+          {isCameraOn ? <CameraOff size={14} /> : <Camera size={14} />}
+        </button>
+      </div>
+    </section>
   );
 }
 
 function CameraPlaceholder() {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#FDF8F5] to-[#E8E3DF] px-6 text-center text-[#8C837E]">
-      <div className="mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-[#E3DCD8] shadow-inner">
-        <CameraOff size={38} className="text-[#8C837E]" />
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#FDF8F5] to-[#E8E3DF] px-4 text-center text-[#8C837E]">
+      <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-[#E3DCD8] shadow-inner">
+        <CameraOff size={24} className="text-[#8C837E]" />
       </div>
-      <p className="text-sm font-extrabold text-[#2B231F]">Camera đang tắt</p>
-      <p className="mt-1 text-xs text-[#8C837E]">Bật camera để hệ thống kiểm tra khuôn mặt và ánh sáng.</p>
+      <p className="text-xs font-extrabold text-[#2B231F]">Camera đang tắt</p>
+      <p className="mt-1 text-[10px] text-[#8C837E]">Bật camera để phân tích giao tiếp.</p>
     </div>
   );
 }

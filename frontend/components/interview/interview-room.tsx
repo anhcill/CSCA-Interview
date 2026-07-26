@@ -1113,8 +1113,6 @@ export function InterviewRoom() {
             <WebcamPreview
               activeSubtitle={activeSubtitle ?? undefined}
               isCameraOn={isCameraOn}
-              metrics={visualMetrics}
-              metricsStatus={visualMetricsStatus}
               onToggleCamera={toggleCamera}
               questionText={displayedQuestion || activeQuestion.questionText}
               videoRef={faceAnalysis.videoRef}
