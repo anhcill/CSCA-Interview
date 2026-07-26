@@ -10,8 +10,8 @@ const BellIcon = ({ size = 19, className = "" }: { size?: number; className?: st
 );
 import Link from "next/link";
 import { useCallback, useEffect, useState, useRef } from "react";
-import { apiGet, apiPut } from "@/lib/api";
-import { getAuthToken } from "@/lib/auth-client";
+import { ApiError, apiGet, apiPut } from "@/lib/api";
+import { clearAuthSession, getAuthToken } from "@/lib/auth-client";
 
 interface NotificationItem {
   id: string;
@@ -27,30 +27,48 @@ export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const unauthorizedRef = useRef(false);
 
   const token = getAuthToken();
 
+  const handleRequestError = useCallback((error: unknown, context: string) => {
+    if (error instanceof ApiError && error.status === 401) {
+      unauthorizedRef.current = true;
+      setUnreadCount(0);
+      setNotifications([]);
+      setIsOpen(false);
+      clearAuthSession();
+      return;
+    }
+
+    console.error(context, error);
+  }, []);
+
   const fetchUnreadCount = useCallback(async () => {
-    if (!token) return;
+    if (!token || unauthorizedRef.current) return;
     try {
       const data = await apiGet<{ count: number }>("/api/notifications/unread-count", { token });
       setUnreadCount(data.count);
     } catch (error) {
-      console.error("Error fetching unread count:", error);
+      handleRequestError(error, "Không thể tải số thông báo chưa đọc:");
     }
-  }, [token]);
+  }, [handleRequestError, token]);
 
   const fetchRecentNotifications = useCallback(async () => {
-    if (!token) return;
+    if (!token || unauthorizedRef.current) return;
     setIsLoading(true);
     try {
       const data = await apiGet<{ items: NotificationItem[] }>("/api/notifications?limit=5", { token });
       setNotifications(data.items || []);
     } catch (error) {
-      console.error("Error fetching recent notifications:", error);
+      handleRequestError(error, "Không thể tải thông báo gần đây:");
     } finally {
       setIsLoading(false);
     }
+  }, [handleRequestError, token]);
+
+  useEffect(() => {
+    unauthorizedRef.current = false;
   }, [token]);
 
   useEffect(() => {
@@ -84,7 +102,7 @@ export function NotificationBell() {
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     } catch (error) {
-      console.error("Error marking all read:", error);
+      handleRequestError(error, "Không thể đánh dấu tất cả thông báo đã đọc:");
     }
   };
 
@@ -97,7 +115,7 @@ export function NotificationBell() {
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
       );
     } catch (error) {
-      console.error("Error marking notification read:", error);
+      handleRequestError(error, "Không thể đánh dấu thông báo đã đọc:");
     }
   };
 
