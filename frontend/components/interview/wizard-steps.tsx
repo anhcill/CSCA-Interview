@@ -74,7 +74,7 @@ export function ProfileWizardStep({
   readyCount: number;
   readyItems: ReadyItem[];
 }) {
-  const { majors, scholarships } = useApplicationOptions();
+  const { majors, scholarships } = useApplicationOptions(form.schoolId);
   const eligibleMajors = majors.filter((major) => major.degreeLevel === (profile?.degreeLevel ?? "BACHELOR"));
   const majorValue = getSelectedMajorId(form, eligibleMajors);
   const scholarshipValue = getSelectedScholarshipId(form, scholarships);
@@ -120,6 +120,10 @@ export function ProfileWizardStep({
               label="Trường apply"
               value={form.targetSchool}
               onChange={(value, school) => {
+                if ((school?.id ?? "") !== form.schoolId) {
+                  onChange("majorId", "");
+                  onChange("targetMajor", "");
+                }
                 onChange("targetSchool", value);
                 onChange("schoolId", school?.id ?? "");
               }}
@@ -127,7 +131,7 @@ export function ProfileWizardStep({
             <OptionSelect
               label="Ngành apply"
               value={majorValue}
-              placeholder="Chọn ngành"
+              placeholder={form.schoolId ? "Chọn ngành" : "Chọn trường trước"}
               options={eligibleMajors.map((major) => [major.id, `${major.name} (${formatDegreeLabel(major.degreeLevel)})${major.nameZh ? ` · ${major.nameZh}` : ""}`] as SelectOption)}
               onChange={(value) => {
                 const major = eligibleMajors.find((item) => item.id === value);
@@ -182,7 +186,7 @@ export function TargetWizardStep({
   profile: UserProfileDto | null;
   scholarshipLabel: string;
 }) {
-  const { majors, scholarships } = useApplicationOptions();
+  const { majors, scholarships } = useApplicationOptions(form.schoolId);
   const eligibleMajors = majors.filter((major) => major.degreeLevel === (profile?.degreeLevel ?? "BACHELOR"));
   const majorValue = getSelectedMajorId(form, eligibleMajors);
   const scholarshipValue = getSelectedScholarshipId(form, scholarships);
@@ -197,7 +201,7 @@ export function TargetWizardStep({
         <OptionSelect
           label="Chuyên ngành"
           value={majorValue}
-          placeholder="Chọn ngành"
+          placeholder={form.schoolId ? "Chọn ngành" : "Chọn trường trước"}
           options={eligibleMajors.map((major) => [major.id, `${major.name} (${formatDegreeLabel(major.degreeLevel)})${major.nameZh ? ` · ${major.nameZh}` : ""}`] as SelectOption)}
           onChange={(value) => {
             const major = eligibleMajors.find((item) => item.id === value);
@@ -453,7 +457,7 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function useApplicationOptions() {
+function useApplicationOptions(schoolId: string) {
   const [majors, setMajors] = useState<MajorOption[]>([]);
   const [scholarships, setScholarships] = useState<ScholarshipOption[]>([]);
 
@@ -463,7 +467,9 @@ function useApplicationOptions() {
     async function loadOptions() {
       try {
         const [majorResponse, scholarshipResponse] = await Promise.all([
-          apiGet<LookupResponse<MajorOption>>("/api/majors?active=all&limit=200", { cacheMs: 5 * 60_000 }),
+          schoolId
+            ? apiGet<LookupResponse<MajorOption>>(`/api/majors?schoolId=${encodeURIComponent(schoolId)}&limit=200`, { cacheMs: 60_000 })
+            : Promise.resolve({ data: [] } as LookupResponse<MajorOption>),
           apiGet<LookupResponse<ScholarshipOption>>("/api/scholarships?active=all&limit=100", { cacheMs: 5 * 60_000 })
         ]);
 
@@ -482,13 +488,17 @@ function useApplicationOptions() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [schoolId]);
 
   return { majors, scholarships };
 }
 
 function getSelectedMajorId(form: WizardSetupForm, majors: MajorOption[]) {
-  return form.majorId || majors.find((major) => major.name === form.targetMajor)?.id || "";
+  return (
+    majors.some((major) => major.id === form.majorId)
+      ? form.majorId
+      : majors.find((major) => major.name === form.targetMajor)?.id
+  ) || "";
 }
 
 function getSelectedScholarshipId(form: WizardSetupForm, scholarships: ScholarshipOption[]) {

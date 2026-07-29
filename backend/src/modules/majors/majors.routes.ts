@@ -101,7 +101,7 @@ function cleanNullableText(input: Partial<MajorInput>, key: MajorTextKey): strin
 // GET /api/majors
 majorsRouter.get("/", async (req, res) => {
   try {
-    const { search, degreeLevel, active } = req.query;
+    const { search, degreeLevel, schoolId, active } = req.query;
     const requester = await getOptionalAuthenticatedUser(req);
     const canReadInactive = requester?.role === "ADMIN" || requester?.role === "SUPER_ADMIN";
     const where: any = {};
@@ -110,8 +110,15 @@ majorsRouter.get("/", async (req, res) => {
     if (active !== "all" || !canReadInactive) where.isActive = true;
     if (search) where.name = { contains: String(search), mode: "insensitive" };
     if (degreeLevel) where.degreeLevel = String(degreeLevel);
+    if (schoolId) {
+      where.school_majors = {
+        some: {
+          school_id: String(schoolId)
+        }
+      };
+    }
 
-    if (!search && !degreeLevel && active !== "all") {
+    if (!search && !degreeLevel && !schoolId && active !== "all") {
       const cachedMajors = await getCachedMajors();
       const majors = cachedMajors.slice(skip, skip + limit);
       res.json(paginatedResponse(majors, cachedMajors.length, page, limit));

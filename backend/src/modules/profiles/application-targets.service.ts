@@ -19,7 +19,7 @@ type ResolveApplicationTargetsInput = {
 };
 
 export async function resolveApplicationTargets(input: ResolveApplicationTargetsInput) {
-  const [major, school, scholarship] = await Promise.all([
+  const [major, school, scholarship, schoolMajor] = await Promise.all([
     input.majorId
       ? prisma.major.findFirst({
           where: { id: input.majorId, isActive: true },
@@ -37,6 +37,15 @@ export async function resolveApplicationTargets(input: ResolveApplicationTargets
           where: { id: input.scholarshipId, isActive: true },
           select: { id: true, name: true }
         })
+      : null,
+    input.schoolId && input.majorId
+      ? prisma.school_majors.findFirst({
+          where: {
+            major_id: input.majorId,
+            school_id: input.schoolId
+          },
+          select: { id: true }
+        })
       : null
   ]);
 
@@ -48,6 +57,9 @@ export async function resolveApplicationTargets(input: ResolveApplicationTargets
   }
   if (input.schoolId && !school) {
     throw new InvalidApplicationTargetError("Trường đã chọn không tồn tại hoặc đã ngừng sử dụng.");
+  }
+  if (input.schoolId && input.majorId && !schoolMajor) {
+    throw new InvalidApplicationTargetError("Ngành đã chọn không thuộc trường này. Vui lòng chọn lại đúng ngành do trường đào tạo.");
   }
   if (input.scholarshipId && !scholarship) {
     throw new InvalidApplicationTargetError("Học bổng đã chọn không tồn tại hoặc đã ngừng sử dụng.");

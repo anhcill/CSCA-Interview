@@ -31,6 +31,9 @@ describe("resolveApplicationTargets", () => {
       id: baseInput.scholarshipId,
       name: "CSC"
     } as any);
+    vi.mocked(prisma.school_majors.findFirst).mockResolvedValue({
+      id: "44444444-4444-4444-8444-444444444444"
+    } as any);
 
     await expect(resolveApplicationTargets(baseInput)).resolves.toEqual({
       majorId: baseInput.majorId,
@@ -56,9 +59,33 @@ describe("resolveApplicationTargets", () => {
       id: baseInput.scholarshipId,
       name: "CSC"
     } as any);
+    vi.mocked(prisma.school_majors.findFirst).mockResolvedValue({
+      id: "44444444-4444-4444-8444-444444444444"
+    } as any);
 
     await expect(resolveApplicationTargets(baseInput)).rejects.toEqual(
       new InvalidApplicationTargetError("Ngành đã chọn không thuộc hệ đào tạo đang apply.")
+    );
+  });
+
+  it("rejects a major that is not offered by the selected school", async () => {
+    vi.mocked(prisma.major.findFirst).mockResolvedValue({
+      degreeLevel: DegreeLevel.BACHELOR,
+      id: baseInput.majorId,
+      name: "Thương mại điện tử"
+    } as any);
+    vi.mocked(prisma.school.findFirst).mockResolvedValue({
+      id: baseInput.schoolId,
+      name: "Đại học Mục tiêu"
+    } as any);
+    vi.mocked(prisma.scholarship.findFirst).mockResolvedValue({
+      id: baseInput.scholarshipId,
+      name: "CSC"
+    } as any);
+    vi.mocked(prisma.school_majors.findFirst).mockResolvedValue(null);
+
+    await expect(resolveApplicationTargets(baseInput)).rejects.toEqual(
+      new InvalidApplicationTargetError("Ngành đã chọn không thuộc trường này. Vui lòng chọn lại đúng ngành do trường đào tạo.")
     );
   });
 

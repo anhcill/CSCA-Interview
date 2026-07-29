@@ -4,6 +4,7 @@ import { Link as LinkIcon, Mic, Square, Trash2, Upload, Volume2, X } from "lucid
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { MasterSheetImporter } from "@/components/admin/master-sheet-importer";
+import { QuestionBatchManager } from "@/components/admin/question-batch-manager";
 import { QuestionsImporter } from "@/components/admin/questions-importer";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -13,6 +14,13 @@ import { getAuthToken } from "@/lib/auth-client";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 
 type Question = {
+  assignments?: Array<{
+    id: string;
+    major: { id: string; name: string };
+    majorId: string;
+    school: { id: string; name: string };
+    schoolId: string;
+  }>;
   category?: string | null;
   commonMistakes?: string | null;
   degreeLevel?: string | null;
@@ -34,7 +42,12 @@ type Question = {
 };
 
 type ListResponse = { data: Question[]; total: number; page: number; totalPages: number };
-type SelectItem = { id: string; name: string };
+type SelectItem = {
+  degreeLevel?: "BACHELOR" | "MASTER";
+  id: string;
+  name: string;
+  nameZh?: string | null;
+};
 type LookupResponse = { data: SelectItem[] };
 
 type AudioSource = "AI_TTS" | "HUMAN_RECORDED" | "USER_RECORDING";
@@ -103,8 +116,11 @@ export default function AdminQuestionsPage() {
   const [filterDiff, setFilterDiff] = useState("");
   const [filterLang, setFilterLang] = useState("");
   const [filterSchool, setFilterSchool] = useState("");
+  const [filterMajor, setFilterMajor] = useState("");
   const [schools, setSchools] = useState<SelectItem[]>([]);
   const [majors, setMajors] = useState<SelectItem[]>([]);
+  const [formMajors, setFormMajors] = useState<SelectItem[]>([]);
+  const [filterMajors, setFilterMajors] = useState<SelectItem[]>([]);
   const [scholarships, setScholarships] = useState<SelectItem[]>([]);
   const [audioQuestion, setAudioQuestion] = useState<Question | null>(null);
   const [audios, setAudios] = useState<QuestionAudio[]>([]);
@@ -131,6 +147,7 @@ export default function AdminQuestionsPage() {
       if (filterDiff) url += `&difficulty=${filterDiff}`;
       if (filterLang) url += `&language=${filterLang}`;
       if (filterSchool) url += `&schoolId=${filterSchool}`;
+      if (filterMajor) url += `&majorId=${filterMajor}`;
       const res = await apiGet<ListResponse>(url, { cacheMs: 0, token });
       setQuestions(res.data);
       setTotal(res.total);
@@ -140,7 +157,7 @@ export default function AdminQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterCat, filterDiff, filterLang, filterSchool, page, token]);
+  }, [debouncedSearch, filterCat, filterDiff, filterLang, filterMajor, filterSchool, page, token]);
 
   const loadAudios = useCallback(async (questionId: string) => {
     setAudioLoading(true);
@@ -160,7 +177,7 @@ export default function AdminQuestionsPage() {
       try {
         const [nextSchools, nextMajors, nextScholarships] = await Promise.all([
           apiGet<LookupResponse>("/api/schools?limit=500", { cacheMs: 5 * 60_000 }),
-          apiGet<LookupResponse>("/api/majors?limit=100", { cacheMs: 5 * 60_000 }),
+          apiGet<LookupResponse>("/api/majors?active=all&limit=500", { cacheMs: 5 * 60_000, token }),
           apiGet<LookupResponse>("/api/scholarships?limit=100", { cacheMs: 5 * 60_000 })
         ]);
         setSchools(nextSchools.data);
@@ -172,7 +189,50 @@ export default function AdminQuestionsPage() {
     }
 
     void loadLookups();
-  }, []);
+  }, [token]);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!form.schoolId) {
+      setFormMajors([]);
+      return;
+    }
+    apiGet<LookupResponse>(
+      `/api/majors?schoolId=${encodeURIComponent(form.schoolId)}&active=all&limit=300`,
+      { cacheMs: 0, token }
+    )
+      .then((response) => {
+        if (!ignore) setFormMajors(response.data);
+      })
+      .catch(() => {
+        if (!ignore) setFormMajors([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [form.schoolId, token]);
+
+  useEffect(() => {
+    let ignore = false;
+    setFilterMajor("");
+    if (!filterSchool) {
+      setFilterMajors([]);
+      return;
+    }
+    apiGet<LookupResponse>(
+      `/api/majors?schoolId=${encodeURIComponent(filterSchool)}&active=all&limit=300`,
+      { cacheMs: 0, token }
+    )
+      .then((response) => {
+        if (!ignore) setFilterMajors(response.data);
+      })
+      .catch(() => {
+        if (!ignore) setFilterMajors([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [filterSchool, token]);
 
   useEffect(() => {
     void load();
@@ -512,7 +572,7 @@ export default function AdminQuestionsPage() {
         <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
           <label className="block">
             <span className="text-sm font-bold text-indigo-900">1. Chọn trường áp dụng</span>
-            <select className="mt-2 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2" value={form.schoolId} onChange={(event) => setForm({ ...form, schoolId: event.target.value })}>
+            <select className="mt-2 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2" value={form.schoolId} onChange={(event) => setForm({ ...form, majorId: "", schoolId: event.target.value })}>
               <option value="">Câu hỏi chung cho mọi trường</option>
               {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
             </select>
@@ -542,9 +602,9 @@ export default function AdminQuestionsPage() {
           </select>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <select className="rounded-lg border px-3 py-2" value={form.majorId} onChange={(event) => setForm({ ...form, majorId: event.target.value })}>
-            <option value="">-- Ngành --</option>
-            {majors.map((major) => <option key={major.id} value={major.id}>{major.name}</option>)}
+          <select className="rounded-lg border px-3 py-2 disabled:opacity-60" value={form.majorId} onChange={(event) => setForm({ ...form, majorId: event.target.value })} disabled={!form.schoolId}>
+            <option value="">{form.schoolId ? "-- Ngành thuộc trường --" : "-- Chọn trường trước --"}</option>
+            {formMajors.map((major) => <option key={major.id} value={major.id}>{major.name}</option>)}
           </select>
           <select className="rounded-lg border px-3 py-2" value={form.scholarshipId} onChange={(event) => setForm({ ...form, scholarshipId: event.target.value })}>
             <option value="">-- Học bổng --</option>
@@ -709,6 +769,11 @@ export default function AdminQuestionsPage() {
           {question.language ? <span className="rounded bg-slate-100 px-2 py-0.5">{languageLabel[question.language] ?? question.language}</span> : null}
           {question.school ? <span className="rounded bg-purple-50 px-2 py-0.5 text-purple-700">{question.school.name}</span> : null}
           {question.major ? <span className="rounded bg-teal-50 px-2 py-0.5 text-teal-700">{question.major.name}</span> : null}
+          {question.assignments && question.assignments.length > 1 ? (
+            <span className="rounded bg-indigo-50 px-2 py-0.5 font-bold text-indigo-700">
+              Dùng tại {question.assignments.length} trường–ngành
+            </span>
+          ) : null}
           {question.scholarship ? <span className="rounded bg-orange-50 px-2 py-0.5 text-orange-700">{question.scholarship.name}</span> : null}
           {hasScoringRubric(question.scoringRubric) ? <span className="rounded bg-sky-50 px-2 py-0.5 text-sky-700">Rubric AI</span> : null}
           <span className={`rounded-full px-2 py-0.5 ${question.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
@@ -748,6 +813,8 @@ export default function AdminQuestionsPage() {
 
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
 
+      <QuestionBatchManager majors={majors} onSaved={load} schools={schools} token={token} />
+
       <MasterSheetImporter token={token} onImported={load} />
       <QuestionsImporter token={token} onImported={load} />
 
@@ -756,7 +823,7 @@ export default function AdminQuestionsPage() {
           <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
             <label className="block">
               <span className="text-sm font-bold text-indigo-900">1. Chọn trường áp dụng</span>
-              <select className="mt-2 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2" value={form.schoolId} onChange={(event) => setForm({ ...form, schoolId: event.target.value })}>
+              <select className="mt-2 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2" value={form.schoolId} onChange={(event) => setForm({ ...form, majorId: "", schoolId: event.target.value })}>
                 <option value="">Câu hỏi chung cho mọi trường</option>
                 {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
               </select>
@@ -786,9 +853,9 @@ export default function AdminQuestionsPage() {
             </select>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <select className="rounded-lg border px-3 py-2" value={form.majorId} onChange={(event) => setForm({ ...form, majorId: event.target.value })}>
-              <option value="">-- Ngành --</option>
-              {majors.map((major) => <option key={major.id} value={major.id}>{major.name}</option>)}
+            <select className="rounded-lg border px-3 py-2 disabled:opacity-60" value={form.majorId} onChange={(event) => setForm({ ...form, majorId: event.target.value })} disabled={!form.schoolId}>
+              <option value="">{form.schoolId ? "-- Ngành thuộc trường --" : "-- Chọn trường trước --"}</option>
+              {formMajors.map((major) => <option key={major.id} value={major.id}>{major.name}</option>)}
             </select>
             <select className="rounded-lg border px-3 py-2" value={form.scholarshipId} onChange={(event) => setForm({ ...form, scholarshipId: event.target.value })}>
               <option value="">-- Học bổng --</option>
@@ -814,6 +881,10 @@ export default function AdminQuestionsPage() {
         <select className="rounded-lg border px-3 py-2" value={filterSchool} onChange={(event) => { setFilterSchool(event.target.value); setPage(1); }}>
           <option value="">Tất cả trường</option>
           {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
+        </select>
+        <select className="rounded-lg border px-3 py-2 disabled:opacity-60" value={filterMajor} onChange={(event) => { setFilterMajor(event.target.value); setPage(1); }} disabled={!filterSchool}>
+          <option value="">{filterSchool ? "Tất cả ngành của trường" : "Chọn trường trước"}</option>
+          {filterMajors.map((major) => <option key={major.id} value={major.id}>{major.name}</option>)}
         </select>
         <select className="rounded-lg border px-3 py-2" value={filterCat} onChange={(event) => { setFilterCat(event.target.value); setPage(1); }}>
           <option value="">Tất cả danh mục</option>

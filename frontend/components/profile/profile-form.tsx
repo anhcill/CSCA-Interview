@@ -119,7 +119,11 @@ export function ProfileForm() {
   const currentOtherLanguagesRef = useRef("");
   const otherLanguagesSaveRequestRef = useRef(0);
   const eligibleMajors = majors.filter((major) => major.degreeLevel === form.degreeLevel);
-  const selectedMajorId = form.majorId || eligibleMajors.find((major) => major.name === form.targetMajor)?.id || "";
+  const selectedMajorId = (
+    eligibleMajors.some((major) => major.id === form.majorId)
+      ? form.majorId
+      : eligibleMajors.find((major) => major.name === form.targetMajor)?.id
+  ) || "";
   const selectedScholarshipId = form.scholarshipId || scholarships.find((item) => item.name === form.scholarshipType)?.id || "";
 
   const handleDrag = (e: React.DragEvent) => {
@@ -326,23 +330,39 @@ export function ProfileForm() {
   useEffect(() => {
     let ignore = false;
 
-    async function loadApplicationOptions() {
+    async function loadMajors() {
+      if (!form.schoolId) {
+        setMajors([]);
+        return;
+      }
       try {
-        const [majorResponse, scholarshipResponse] = await Promise.all([
-          apiGet<LookupResponse<MajorOption>>("/api/majors?limit=500", { cacheMs: 5 * 60_000 }),
-          apiGet<LookupResponse<ScholarshipOption>>("/api/scholarships?limit=200", { cacheMs: 5 * 60_000 })
-        ]);
+        const majorResponse = await apiGet<LookupResponse<MajorOption>>(
+          `/api/majors?schoolId=${encodeURIComponent(form.schoolId)}&limit=500`,
+          { cacheMs: 60_000 }
+        );
         if (ignore) return;
         setMajors(majorResponse.data);
-        setScholarships(scholarshipResponse.data);
       } catch {
         if (ignore) return;
         setMajors([]);
-        setScholarships([]);
       }
     }
 
-    void loadApplicationOptions();
+    void loadMajors();
+    return () => {
+      ignore = true;
+    };
+  }, [form.schoolId]);
+
+  useEffect(() => {
+    let ignore = false;
+    apiGet<LookupResponse<ScholarshipOption>>("/api/scholarships?limit=200", { cacheMs: 5 * 60_000 })
+      .then((response) => {
+        if (!ignore) setScholarships(response.data);
+      })
+      .catch(() => {
+        if (!ignore) setScholarships([]);
+      });
     return () => {
       ignore = true;
     };
@@ -494,7 +514,9 @@ export function ProfileForm() {
                   onChange={(value, school) => {
                     setForm((current) => ({
                       ...current,
+                      majorId: (school?.id ?? "") === current.schoolId ? current.majorId : "",
                       schoolId: school?.id ?? "",
+                      targetMajor: (school?.id ?? "") === current.schoolId ? current.targetMajor : "",
                       targetSchool: value
                     }));
                   }}
@@ -511,7 +533,11 @@ export function ProfileForm() {
                     }));
                   }}
                   options={[
-                    ["", form.targetMajor && !selectedMajorId ? `Ngoài danh mục: ${form.targetMajor}` : "Chọn ngành"],
+                    ["", form.schoolId
+                      ? form.targetMajor && !selectedMajorId
+                        ? `Ngành không thuộc trường đã chọn: ${form.targetMajor}`
+                        : "Chọn ngành"
+                      : "Chọn trường trước"],
                     ...eligibleMajors.map((major) => [
                       major.id,
                       `${major.name}${major.nameZh ? ` · ${major.nameZh}` : ""}`

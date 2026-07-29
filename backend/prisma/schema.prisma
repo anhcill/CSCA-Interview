@@ -132,32 +132,33 @@ model UserProfile {
 }
 
 model School {
-  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                String                @unique @db.VarChar(255)
-  nameZh              String?               @map("name_zh") @db.VarChar(255)
-  nameEn              String?               @map("name_en") @db.VarChar(255)
-  city                String?               @db.VarChar(120)
-  province            String?               @db.VarChar(120)
-  websiteUrl          String?               @map("website_url")
-  description         String?
-  ranking             Int?
-  rankingType         String?               @map("ranking_type") @db.VarChar(120)
-  strongMajors        String?               @map("strong_majors")
-  researchAreas       String?               @map("research_areas")
-  admissionRequirements String?             @map("admission_requirements")
-  interviewTips       String?               @map("interview_tips")
-  programLanguage     String?               @map("program_language") @db.VarChar(120)
-  campusInfo          String?               @map("campus_info")
-  notableAlumni       String?               @map("notable_alumni")
-  achievements        String?
-  isActive            Boolean               @default(true) @map("is_active")
-  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  questions           Question[]
-  school_majors       school_majors[]
-  school_scholarships school_scholarships[]
-  userProfiles        UserProfile[]
-  interviewSessions   InterviewSession[]
+  id                    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String                @unique @db.VarChar(255)
+  nameZh                String?               @map("name_zh") @db.VarChar(255)
+  nameEn                String?               @map("name_en") @db.VarChar(255)
+  city                  String?               @db.VarChar(120)
+  province              String?               @db.VarChar(120)
+  websiteUrl            String?               @map("website_url")
+  description           String?
+  ranking               Int?
+  rankingType           String?               @map("ranking_type") @db.VarChar(120)
+  strongMajors          String?               @map("strong_majors")
+  researchAreas         String?               @map("research_areas")
+  admissionRequirements String?               @map("admission_requirements")
+  interviewTips         String?               @map("interview_tips")
+  programLanguage       String?               @map("program_language") @db.VarChar(120)
+  campusInfo            String?               @map("campus_info")
+  notableAlumni         String?               @map("notable_alumni")
+  achievements          String?
+  isActive              Boolean               @default(true) @map("is_active")
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questions             Question[]
+  questionAssignments   QuestionAssignment[]
+  school_majors         school_majors[]
+  school_scholarships   school_scholarships[]
+  userProfiles          UserProfile[]
+  interviewSessions     InterviewSession[]
 
   @@index([city], map: "idx_schools_city")
   @@index([isActive], map: "idx_schools_is_active")
@@ -166,24 +167,25 @@ model School {
 }
 
 model Major {
-  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name          String          @db.VarChar(255)
-  nameZh        String?         @map("name_zh") @db.VarChar(255)
-  nameEn        String?         @map("name_en") @db.VarChar(255)
-  degreeLevel   DegreeLevel     @map("degree_level")
-  description   String?
-  requirements  String?
-  researchAreas String?         @map("research_areas")
-  researchLabs  String?         @map("research_labs")
-  careerOutcomes String?        @map("career_outcomes")
-  interviewFocus String?        @map("interview_focus")
-  isActive      Boolean         @default(true) @map("is_active")
-  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  questions     Question[]
-  school_majors school_majors[]
-  userProfiles  UserProfile[]
-  interviewSessions InterviewSession[]
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String               @db.VarChar(255)
+  nameZh              String?              @map("name_zh") @db.VarChar(255)
+  nameEn              String?              @map("name_en") @db.VarChar(255)
+  degreeLevel         DegreeLevel          @map("degree_level")
+  description         String?
+  requirements        String?
+  researchAreas       String?              @map("research_areas")
+  researchLabs        String?              @map("research_labs")
+  careerOutcomes      String?              @map("career_outcomes")
+  interviewFocus      String?              @map("interview_focus")
+  isActive            Boolean              @default(true) @map("is_active")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questions           Question[]
+  questionAssignments QuestionAssignment[]
+  school_majors       school_majors[]
+  userProfiles        UserProfile[]
+  interviewSessions   InterviewSession[]
 
   @@unique([name, degreeLevel])
   @@index([degreeLevel], map: "idx_majors_degree_level")
@@ -192,24 +194,24 @@ model Major {
 }
 
 model Scholarship {
-  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                String                @unique @db.VarChar(255)
-  code                String?               @db.VarChar(80)
-  description         String?
-  requirements        String?
-  deadline            String?               @db.VarChar(255)
-  coverage            String?
-  studyPlanRequirements String?             @map("study_plan_requirements")
-  interviewFormat     String?               @map("interview_format")
-  commonInterviewQuestions Json?            @map("common_interview_questions")
-  tips                String?
-  isActive            Boolean               @default(true) @map("is_active")
-  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  questions           Question[]
-  school_scholarships school_scholarships[]
-  userProfiles        UserProfile[]
-  interviewSessions   InterviewSession[]
+  id                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                     String                @unique @db.VarChar(255)
+  code                     String?               @db.VarChar(80)
+  description              String?
+  requirements             String?
+  deadline                 String?               @db.VarChar(255)
+  coverage                 String?
+  studyPlanRequirements    String?               @map("study_plan_requirements")
+  interviewFormat          String?               @map("interview_format")
+  commonInterviewQuestions Json?                 @map("common_interview_questions")
+  tips                     String?
+  isActive                 Boolean               @default(true) @map("is_active")
+  createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questions                Question[]
+  school_scholarships      school_scholarships[]
+  userProfiles             UserProfile[]
+  interviewSessions        InterviewSession[]
 
   @@index([isActive], map: "idx_scholarships_is_active")
   @@map("scholarships")
@@ -240,6 +242,7 @@ model Question {
   deletedAt            DateTime?                  @map("deleted_at") @db.Timestamptz(6)
   sessionQuestions     InterviewSessionQuestion[]
   question_audios      question_audios[]
+  assignments          QuestionAssignment[]
   question_tag_links   question_tag_links[]
   major                Major?                     @relation(fields: [majorId], references: [id])
   scholarship          Scholarship?               @relation(fields: [scholarshipId], references: [id])
@@ -255,6 +258,23 @@ model Question {
   @@index([scholarshipId], map: "idx_questions_scholarship_id")
   @@index([schoolId], map: "idx_questions_school_id")
   @@map("questions")
+}
+
+model QuestionAssignment {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  majorId    String   @map("major_id") @db.Uuid
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  major      Major    @relation(fields: [majorId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, schoolId, majorId])
+  @@index([schoolId, majorId], map: "idx_question_assignments_target")
+  @@index([questionId], map: "idx_question_assignments_question_id")
+  @@map("question_assignments")
 }
 
 model InterviewSession {

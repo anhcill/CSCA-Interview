@@ -6,6 +6,7 @@ import { prisma } from "../../db/prisma.js";
 import { writeAdminAuditLog } from "../admin/audit.service.js";
 import { getOptionalAuthenticatedUser, requireAuth, requireRole, type AuthenticatedUser } from "../auth/auth.middleware.js";
 import { getR2PlaybackUrl, MissingR2ConfigError, uploadQuestionAudioToR2 } from "../storage/r2.service.js";
+import { createQuestionBatch, syncQuestionTarget } from "./question-batch.service.js";
 
 export const questionsRouter = Router();
 
@@ -35,6 +36,17 @@ const questionSchema = z.object({
   commonMistakes: z.string().trim().max(5000).optional().nullable(),
   scoringRubric: scoringRubricSchema,
   isActive: z.boolean().optional()
+});
+
+const bulkQuestionSchema = z.object({
+  schoolId: z.string().uuid("Trường không hợp lệ"),
+  majorId: z.string().uuid("Ngành không hợp lệ"),
+  questions: z.array(
+    questionSchema.omit({ majorId: true, schoolId: true })
+  ).max(200, "Mỗi lần chỉ được nhập tối đa 200 câu hỏi").default([]),
+  reuseQuestionIds: z.array(z.string().uuid()).max(300, "Mỗi lần chỉ được dùng lại tối đa 300 câu hỏi").default([])
+}).refine((data) => data.questions.length > 0 || data.reuseQuestionIds.length > 0, {
+  message: "Cần nhập câu hỏi mới hoặc chọn câu hỏi dùng lại"
 });
 
 const csvImportSchema = z.object({
@@ -71,7 +83,7 @@ const audioExtensionByMime: Record<string, string> = {
 // GET /api/questions - list with filters
 questionsRouter.get("/", async (req, res) => {
   try {
-    const { search, category, difficulty, language, degreeLevel, schoolId, majorId, scholarshipId, active, page, limit } = req.query;
+    const { search, category, difficulty, language, degreeLevel, schoolId, majorId, scholarshipId, scope, active, page, limit } = req.query;
     const requester = await getOptionalAuthenticatedUser(req);
     const canReadAdminFields = requester?.role === "ADMIN" || requester?.role === "SUPER_ADMIN";
     const where: any = {};
@@ -83,8 +95,38 @@ questionsRouter.get("/", async (req, res) => {
     if (difficulty) where.difficulty = String(difficulty);
     if (language) where.language = String(language);
     if (degreeLevel) where.degreeLevel = String(degreeLevel);
-    if (schoolId) where.schoolId = String(schoolId);
-    if (majorId) where.majorId = String(majorId);
+    if (scope === "global") {
+      where.schoolId = null;
+      where.majorId = null;
+      where.assignments = { none: {} };
+    } else if (schoolId && majorId) {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          OR: [
+            { majorId: String(majorId), schoolId: String(schoolId) },
+            {
+              assignments: {
+                some: {
+                  majorId: String(majorId),
+                  schoolId: String(schoolId)
+                }
+              }
+            }
+          ]
+        }
+      ];
+    } else if (schoolId) {
+      where.OR = [
+        { schoolId: String(schoolId) },
+        { assignments: { some: { schoolId: String(schoolId) } } }
+      ];
+    } else if (majorId) {
+      where.OR = [
+        { majorId: String(majorId) },
+        { assignments: { some: { majorId: String(majorId) } } }
+      ];
+    }
     if (scholarshipId) where.scholarshipId = String(scholarshipId);
 
     const currentPage = Math.max(Number(page) || 1, 1);
@@ -105,7 +147,18 @@ questionsRouter.get("/", async (req, res) => {
       schoolId: true,
       school: { select: { id: true, name: true } },
       major: { select: { id: true, name: true } },
-      scholarship: { select: { id: true, name: true } }
+      scholarship: { select: { id: true, name: true } },
+      assignments: canReadAdminFields
+        ? {
+            select: {
+              id: true,
+              major: { select: { id: true, name: true } },
+              majorId: true,
+              school: { select: { id: true, name: true } },
+              schoolId: true
+            }
+          }
+        : false
     } satisfies Prisma.QuestionSelect;
     const select = canReadAdminFields
       ? {
@@ -247,7 +300,7 @@ export async function importQuestionsFromCsv(req: Parameters<typeof writeAdminAu
     const majorName = getCsvValue(row, "majorName", "major", "major_name");
     const scholarshipName = getCsvValue(row, "scholarshipName", "scholarship", "scholarship_name");
 
-    created.push(await prisma.question.create({
+    const createdQuestion = await prisma.question.create({
       data: {
         category,
         commonMistakes: getCsvValue(row, "commonMistakes", "common_mistakes") || null,
@@ -265,7 +318,14 @@ export async function importQuestionsFromCsv(req: Parameters<typeof writeAdminAu
         schoolId: schoolName ? schoolMap.get(normalizeName(schoolName)) ?? null : null,
         suggestedAnswerLogic: getCsvValue(row, "suggestedAnswerLogic", "suggested_answer_logic") || null
       }
-    }));
+    });
+    await syncQuestionTarget({
+      majorId: createdQuestion.majorId,
+      questionId: createdQuestion.id,
+      schoolId: createdQuestion.schoolId,
+      userId: user.id
+    });
+    created.push(createdQuestion);
   }
 
   await writeAdminAuditLog(req, {
@@ -604,6 +664,51 @@ async function toQuestionAudioDto<T extends { file_url: string }>(audio: T) {
   };
 }
 
+questionsRouter.post("/bulk", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+  const parsed = bulkQuestionSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      message: "Dữ liệu nhập hàng loạt không hợp lệ",
+      errors: parsed.error.flatten()
+    });
+    return;
+  }
+
+  try {
+    const user = res.locals.user as AuthenticatedUser;
+    const result = await createQuestionBatch({
+      majorId: parsed.data.majorId,
+      questions: parsed.data.questions,
+      reuseQuestionIds: parsed.data.reuseQuestionIds,
+      schoolId: parsed.data.schoolId,
+      userId: user.id
+    });
+
+    await writeAdminAuditLog(req, {
+      action: "QUESTION_BULK_CREATE",
+      adminUserId: user.id,
+      afterData: {
+        ...result,
+        majorId: parsed.data.majorId,
+        schoolId: parsed.data.schoolId
+      },
+      entityType: "question"
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === "SCHOOL_NOT_FOUND") {
+      res.status(404).json({ message: "Không tìm thấy trường đã chọn" });
+      return;
+    }
+    if (error instanceof Error && error.message === "MAJOR_NOT_FOUND") {
+      res.status(404).json({ message: "Không tìm thấy ngành đã chọn" });
+      return;
+    }
+    console.error(error);
+    res.status(500).json({ message: "Không thể lưu bộ câu hỏi" });
+  }
+});
+
 // POST /api/questions (admin)
 questionsRouter.post("/", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
   const parsed = questionSchema.safeParse(req.body);
@@ -633,6 +738,12 @@ questionsRouter.post("/", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), asyn
         scoringRubric: data.scoringRubric ?? null,
         createdBy: user.id,
       },
+    });
+    await syncQuestionTarget({
+      majorId: q.majorId,
+      questionId: q.id,
+      schoolId: q.schoolId,
+      userId: user.id
     });
     await writeAdminAuditLog(req, {
       action: "QUESTION_CREATE",
@@ -669,6 +780,12 @@ questionsRouter.put("/:id", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), as
         scholarshipId: data.scholarshipId !== undefined ? (data.scholarshipId || null) : undefined,
         updatedBy: user.id,
       },
+    });
+    await syncQuestionTarget({
+      majorId: q.majorId,
+      questionId: q.id,
+      schoolId: q.schoolId,
+      userId: user.id
     });
     await writeAdminAuditLog(req, {
       action: "QUESTION_UPDATE",

@@ -2145,13 +2145,20 @@ async function findBankQuestions(input: {
   }
 
   where.AND = [
-    scopeQuestionField("schoolId", school?.id ?? null),
-    scopeQuestionField("majorId", major?.id ?? null),
+    scopeQuestionTarget(school?.id ?? null, major?.id ?? null),
     scopeQuestionField("scholarshipId", scholarship?.id ?? null)
   ];
 
   const questions = await prisma.question.findMany({
     where,
+    include: {
+      assignments: {
+        select: {
+          majorId: true,
+          schoolId: true
+        }
+      }
+    },
     orderBy: { createdAt: "desc" },
     take: 50
   });
@@ -2168,11 +2175,53 @@ function scopeQuestionField(field: "majorId" | "scholarshipId" | "schoolId", id:
     : { [field]: null };
 }
 
+function scopeQuestionTarget(schoolId: string | null, majorId: string | null): Prisma.QuestionWhereInput {
+  if (!schoolId || !majorId) {
+    return {
+      AND: [
+        scopeQuestionField("schoolId", schoolId),
+        scopeQuestionField("majorId", majorId)
+      ]
+    };
+  }
+
+  return {
+    OR: [
+      {
+        AND: [
+          scopeQuestionField("schoolId", schoolId),
+          scopeQuestionField("majorId", majorId)
+        ]
+      },
+      {
+        assignments: {
+          some: {
+            majorId,
+            schoolId
+          }
+        }
+      }
+    ]
+  };
+}
+
 function questionTargetScore(
-  question: { majorId: string | null; scholarshipId: string | null; schoolId: string | null },
+  question: {
+    assignments?: Array<{ majorId: string; schoolId: string }>;
+    majorId: string | null;
+    scholarshipId: string | null;
+    schoolId: string | null;
+  },
   target: { majorId?: string; scholarshipId?: string; schoolId?: string }
 ) {
   let score = 0;
+  if (
+    target.schoolId
+    && target.majorId
+    && question.assignments?.some((assignment) => (
+      assignment.schoolId === target.schoolId && assignment.majorId === target.majorId
+    ))
+  ) score += 8;
   if (target.schoolId && question.schoolId === target.schoolId) score += 5;
   if (target.majorId && question.majorId === target.majorId) score += 3;
   if (target.scholarshipId && question.scholarshipId === target.scholarshipId) score += 2;

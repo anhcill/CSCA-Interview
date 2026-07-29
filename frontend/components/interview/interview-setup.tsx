@@ -480,7 +480,9 @@ export function InterviewSetup() {
                 onSchoolChange={(value, school) => {
                   setForm((current) => ({
                     ...current,
+                    majorId: (school?.id ?? "") === current.schoolId ? current.majorId : "",
                     schoolId: school?.id ?? "",
+                    targetMajor: (school?.id ?? "") === current.schoolId ? current.targetMajor : "",
                     targetSchool: value
                   }));
                 }}

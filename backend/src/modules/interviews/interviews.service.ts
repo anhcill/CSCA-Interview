@@ -220,13 +220,20 @@ export async function findBankQuestions(input: BankQuestionLookupInput | Languag
   }
 
   where.AND = [
-    scopeQuestionField("schoolId", school?.id ?? null),
-    scopeQuestionField("majorId", major?.id ?? null),
+    scopeQuestionTarget(school?.id ?? null, major?.id ?? null),
     scopeQuestionField("scholarshipId", scholarship?.id ?? null)
   ];
 
   const questions = await prisma.question.findMany({
     where,
+    include: {
+      assignments: {
+        select: {
+          majorId: true,
+          schoolId: true
+        }
+      }
+    },
     orderBy: { createdAt: "desc" },
     take: 50
   });
@@ -241,7 +248,8 @@ export async function findBankQuestions(input: BankQuestionLookupInput | Languag
 
   return questions
     .filter((question) => {
-      if (!major || question.majorId === major.id) return true;
+      const isAssignedToMajor = question.assignments.some((assignment) => assignment.majorId === major?.id);
+      if (!major || question.majorId === major.id || isAssignedToMajor) return true;
       const normalizedQuestion = normalizeSearchText(question.questionText);
       return !unrelatedMajorAliases.some((alias) => {
         const normalizedAlias = normalizeSearchText(alias);
@@ -268,11 +276,54 @@ function scopeQuestionField(field: "majorId" | "scholarshipId" | "schoolId", id:
     : { [field]: null };
 }
 
+function scopeQuestionTarget(schoolId: string | null, majorId: string | null): Prisma.QuestionWhereInput {
+  if (!schoolId || !majorId) {
+    return {
+      AND: [
+        scopeQuestionField("schoolId", schoolId),
+        scopeQuestionField("majorId", majorId)
+      ]
+    };
+  }
+
+  return {
+    OR: [
+      {
+        AND: [
+          scopeQuestionField("schoolId", schoolId),
+          scopeQuestionField("majorId", majorId)
+        ]
+      },
+      {
+        assignments: {
+          some: {
+            majorId,
+            schoolId
+          }
+        }
+      }
+    ]
+  };
+}
+
 function questionTargetScore(
-  question: { degreeLevel: DegreeLevel | null; majorId: string | null; scholarshipId: string | null; schoolId: string | null },
+  question: {
+    assignments?: Array<{ majorId: string; schoolId: string }>;
+    degreeLevel: DegreeLevel | null;
+    majorId: string | null;
+    scholarshipId: string | null;
+    schoolId: string | null;
+  },
   target: { degreeLevel?: DegreeLevel | null; majorId?: string; scholarshipId?: string; schoolId?: string }
 ) {
   let score = 0;
+  if (
+    target.schoolId
+    && target.majorId
+    && question.assignments?.some((assignment) => (
+      assignment.schoolId === target.schoolId && assignment.majorId === target.majorId
+    ))
+  ) score += 8;
   if (target.schoolId && question.schoolId === target.schoolId) score += 5;
   if (target.majorId && question.majorId === target.majorId) score += 3;
   if (target.scholarshipId && question.scholarshipId === target.scholarshipId) score += 2;
