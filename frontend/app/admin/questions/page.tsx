@@ -2,6 +2,7 @@
 
 import { Link as LinkIcon, Mic, Square, Trash2, Upload, Volume2, X } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { MasterSheetImporter } from "@/components/admin/master-sheet-importer";
 import { QuestionBatchManager } from "@/components/admin/question-batch-manager";
@@ -101,6 +102,7 @@ const diffLabel: Record<string, string> = { EASY: "Dễ", HARD: "Khó", MEDIUM: 
 const languageLabel: Record<string, string> = { EN: "Tiếng Anh", VI: "Tiếng Việt", ZH: "Tiếng Trung" };
 
 export default function AdminQuestionsPage() {
+  const searchParams = useSearchParams();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -813,7 +815,13 @@ export default function AdminQuestionsPage() {
 
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
 
-      <QuestionBatchManager majors={majors} onSaved={load} schools={schools} token={token} />
+      <QuestionBatchManager
+        initialSchoolId={searchParams.get("schoolId") ?? ""}
+        majors={majors}
+        onSaved={load}
+        schools={schools}
+        token={token}
+      />
 
       <MasterSheetImporter token={token} onImported={load} />
       <QuestionsImporter token={token} onImported={load} />

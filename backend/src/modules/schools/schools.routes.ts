@@ -1,5 +1,5 @@
 import { Router } from "express";
-import type { Prisma } from "@prisma/client";
+import { DegreeLevel, type Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getCachedJson, setCachedJson } from "../../cache/cache.service.js";
 import { prisma } from "../../db/prisma.js";
@@ -90,6 +90,16 @@ const schoolSchema = z.object({
   notableAlumni: z.string().trim().max(10000).optional().nullable(),
   achievements: z.string().trim().max(10000).optional().nullable(),
   isActive: z.boolean().optional()
+});
+
+const schoolWithMajorsSchema = z.object({
+  majors: z.array(z.object({
+    degreeLevel: z.nativeEnum(DegreeLevel),
+    name: z.string().trim().min(1).max(500),
+    nameEn: z.string().trim().max(500).optional().nullable(),
+    nameZh: z.string().trim().max(500).optional().nullable()
+  })).min(1, "Cần nhập ít nhất một ngành").max(300),
+  school: schoolSchema
 });
 
 type SchoolInput = z.infer<typeof schoolSchema>;
@@ -238,6 +248,106 @@ schoolsRouter.get("/:id", async (req, res) => {
 });
 
 // POST /api/schools (admin)
+schoolsRouter.post("/with-majors", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+  const parsed = schoolWithMajorsSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      message: "Thông tin trường và ngành không hợp lệ",
+      errors: parsed.error.flatten()
+    });
+    return;
+  }
+
+  try {
+    const user = res.locals.user as AuthenticatedUser;
+    const uniqueMajors = [...new Map(parsed.data.majors.map((major) => [
+      `${major.degreeLevel}:${major.name.toLocaleLowerCase("vi")}`,
+      major
+    ])).values()];
+
+    const result = await prisma.$transaction(async (tx) => {
+      const school = await tx.school.create({
+        data: {
+          ...cleanSchoolData(parsed.data.school),
+          isActive: parsed.data.school.isActive ?? true,
+          name: parsed.data.school.name
+        }
+      });
+      let createdMajors = 0;
+      const linkedMajors = [];
+
+      for (const majorInput of uniqueMajors) {
+        const existing = await tx.major.findUnique({
+          where: {
+            name_degreeLevel: {
+              degreeLevel: majorInput.degreeLevel,
+              name: majorInput.name
+            }
+          },
+          select: { id: true }
+        });
+        const major = existing
+          ? await tx.major.update({
+              where: { id: existing.id },
+              data: {
+                isActive: true,
+                nameEn: majorInput.nameEn?.trim() || undefined,
+                nameZh: majorInput.nameZh?.trim() || undefined
+              },
+              select: { degreeLevel: true, id: true, name: true }
+            })
+          : await tx.major.create({
+              data: {
+                degreeLevel: majorInput.degreeLevel,
+                isActive: true,
+                name: majorInput.name,
+                nameEn: majorInput.nameEn?.trim() || null,
+                nameZh: majorInput.nameZh?.trim() || null
+              },
+              select: { degreeLevel: true, id: true, name: true }
+            });
+        if (!existing) createdMajors += 1;
+
+        await tx.school_majors.create({
+          data: {
+            admission_season_id: null,
+            major_id: major.id,
+            note: "Tạo cùng trường bằng luồng nhập nhanh",
+            school_id: school.id
+          }
+        });
+        linkedMajors.push(major);
+      }
+
+      return {
+        createdMajors,
+        linkedMajors,
+        school
+      };
+    });
+
+    await writeAdminAuditLog(req, {
+      action: "SCHOOL_WITH_MAJORS_CREATE",
+      adminUserId: user.id,
+      afterData: {
+        createdMajors: result.createdMajors,
+        linkedMajorIds: result.linkedMajors.map((major) => major.id),
+        school: result.school
+      },
+      entityId: result.school.id,
+      entityType: "school"
+    });
+    res.status(201).json(result);
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      res.status(409).json({ message: "Trường này đã tồn tại" });
+      return;
+    }
+    console.error(error);
+    res.status(500).json({ message: "Không thể tạo trường cùng danh sách ngành" });
+  }
+});
+
 schoolsRouter.post("/", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
   const parsed = schoolSchema.safeParse(req.body);
   if (!parsed.success) {

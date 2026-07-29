@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-client";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { parseMajorLines } from "@/components/admin/major-lines";
 
 type School = {
   achievements?: string | null;
@@ -30,6 +31,11 @@ type School = {
 
 type SchoolForm = Omit<School, "id" | "isActive" | "ranking"> & { ranking: string };
 type ListResponse = { data: School[]; total: number; totalPages: number };
+type SchoolWithMajorsResponse = {
+  createdMajors: number;
+  linkedMajors: Array<{ id: string; name: string }>;
+  school: School;
+};
 
 const empty: SchoolForm = {
   achievements: "",
@@ -57,6 +63,9 @@ export default function AdminSchoolsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState<SchoolWithMajorsResponse | null>(null);
+  const [bachelorMajors, setBachelorMajors] = useState("");
+  const [masterMajors, setMasterMajors] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -81,12 +90,34 @@ export default function AdminSchoolsPage() {
     event.preventDefault();
     setLoading(true);
     setError("");
+    setSuccess(null);
     try {
-      const payload = { ...form, ranking: form.ranking ? Number(form.ranking) : null };
+      const majors = [
+        ...parseMajorLines(bachelorMajors, "BACHELOR"),
+        ...parseMajorLines(masterMajors, "MASTER")
+      ];
+      const payload = {
+        ...form,
+        ranking: form.ranking ? Number(form.ranking) : null,
+        strongMajors: form.strongMajors || majors.map((major) => major.name).join(", ")
+      };
       if (editId) await apiPut(`/api/schools/${editId}`, payload, { token });
-      else await apiPost("/api/schools", payload, { token });
+      else {
+        if (!majors.length) {
+          setError("Vui lòng nhập ít nhất một ngành của trường.");
+          return;
+        }
+        const result = await apiPost<SchoolWithMajorsResponse>(
+          "/api/schools/with-majors",
+          { majors, school: payload },
+          { token }
+        );
+        setSuccess(result);
+      }
       setForm(empty);
+      setBachelorMajors("");
       setEditId(null);
+      setMasterMajors("");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu trường");
@@ -96,6 +127,7 @@ export default function AdminSchoolsPage() {
   }
 
   function startEdit(school: School) {
+    setSuccess(null);
     setEditId(school.id);
     setForm({
       achievements: school.achievements || "",
@@ -148,6 +180,22 @@ export default function AdminSchoolsPage() {
       </div>
 
       {error ? <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {success ? (
+        <div className="mb-5 flex flex-col justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900 sm:flex-row sm:items-center">
+          <div>
+            <p className="font-black">Đã tạo {success.school.name}</p>
+            <p className="mt-1 text-sm font-semibold">
+              Đã liên kết {success.linkedMajors.length} ngành, trong đó có {success.createdMajors} ngành mới.
+            </p>
+          </div>
+          <Link
+            href={`/admin/questions?schoolId=${success.school.id}`}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-emerald-700 px-4 text-sm font-black text-white hover:bg-emerald-800"
+          >
+            Nhập câu hỏi cho trường này
+          </Link>
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="mb-8 grid gap-3 rounded border bg-white p-5 md:grid-cols-3">
         <TextField label="Tên trường *" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
@@ -168,9 +216,38 @@ export default function AdminSchoolsPage() {
         <TextArea label="Cựu sinh viên nổi bật" value={form.notableAlumni || ""} onChange={(value) => setForm({ ...form, notableAlumni: value })} />
         <TextArea label="Thành tích/điểm nổi bật" value={form.achievements || ""} onChange={(value) => setForm({ ...form, achievements: value })} />
 
+        {!editId ? (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 md:col-span-3">
+            <h2 className="text-base font-black text-indigo-950">Ngành đào tạo của trường</h2>
+            <p className="mt-1 text-sm font-semibold text-indigo-800">
+              Mỗi dòng là một ngành. Có thể nhập: Tên Việt | Tên Trung | Tên Anh. Ngành đã tồn tại sẽ được dùng lại, ngành mới sẽ tự tạo.
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-sm font-black text-indigo-950">Hệ Đại học *</span>
+                <textarea
+                  className="min-h-40 w-full rounded-lg border border-indigo-200 bg-white px-3 py-3 text-sm leading-6"
+                  value={bachelorMajors}
+                  onChange={(event) => setBachelorMajors(event.target.value)}
+                  placeholder={"Thương mại điện tử | 电子商务 | E-commerce\nKhoa học máy tính | 计算机科学 | Computer Science"}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-sm font-black text-indigo-950">Hệ Thạc sĩ</span>
+                <textarea
+                  className="min-h-40 w-full rounded-lg border border-indigo-200 bg-white px-3 py-3 text-sm leading-6"
+                  value={masterMajors}
+                  onChange={(event) => setMasterMajors(event.target.value)}
+                  placeholder={"Quản trị kinh doanh | 工商管理 | Business Administration\nTrí tuệ nhân tạo | 人工智能 | Artificial Intelligence"}
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex items-end gap-2">
           <button type="submit" disabled={loading} className="rounded bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50">
-            {editId ? "Cập nhật" : "Thêm mới"}
+            {loading ? "Đang lưu..." : editId ? "Cập nhật" : "Tạo trường và liên kết ngành"}
           </button>
           {editId ? <button type="button" onClick={() => { setEditId(null); setForm(empty); }} className="rounded border px-4 py-2 hover:bg-slate-50">Hủy</button> : null}
         </div>
@@ -207,6 +284,7 @@ export default function AdminSchoolsPage() {
                 <td className="flex gap-2 px-3 py-2">
                   <button type="button" onClick={() => void handleToggle(school)} className="text-xs text-emerald-700 hover:underline">{school.isActive ? "Tắt" : "Bật"}</button>
                   <button type="button" onClick={() => startEdit(school)} className="text-xs text-indigo-600 hover:underline">Sửa</button>
+                  <Link href={`/admin/questions?schoolId=${school.id}`} className="text-xs font-bold text-blue-700 hover:underline">Câu hỏi</Link>
                   <button type="button" onClick={() => void handleDelete(school.id)} className="text-xs text-red-600 hover:underline">Xóa</button>
                 </td>
               </tr>

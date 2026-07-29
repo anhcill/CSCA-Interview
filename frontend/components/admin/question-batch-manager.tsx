@@ -44,17 +44,19 @@ const categories = [
 ];
 
 export function QuestionBatchManager({
+  initialSchoolId = "",
   majors,
   onSaved,
   schools,
   token
 }: {
+  initialSchoolId?: string;
   majors: SelectItem[];
   onSaved: () => Promise<void> | void;
   schools: SelectItem[];
   token: string | null;
 }) {
-  const [targetSchoolId, setTargetSchoolId] = useState("");
+  const [targetSchoolId, setTargetSchoolId] = useState(initialSchoolId);
   const [targetMajorId, setTargetMajorId] = useState("");
   const [newQuestionText, setNewQuestionText] = useState("");
   const [category, setCategory] = useState("OTHER");
