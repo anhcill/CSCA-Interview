@@ -92,14 +92,23 @@ const schoolSchema = z.object({
   isActive: z.boolean().optional()
 });
 
+const majorCreateSchema = z.object({
+  degreeLevel: z.nativeEnum(DegreeLevel),
+  name: z.string().trim().min(1).max(500),
+  nameEn: z.string().trim().max(500).optional().nullable(),
+  nameZh: z.string().trim().max(500).optional().nullable()
+});
+
 const schoolWithMajorsSchema = z.object({
-  majors: z.array(z.object({
-    degreeLevel: z.nativeEnum(DegreeLevel),
-    name: z.string().trim().min(1).max(500),
-    nameEn: z.string().trim().max(500).optional().nullable(),
-    nameZh: z.string().trim().max(500).optional().nullable()
-  })).min(1, "Cần nhập ít nhất một ngành").max(300),
+  majors: z.array(majorCreateSchema).min(1, "Cần nhập ít nhất một ngành").max(300),
   school: schoolSchema
+});
+
+const schoolMajorsSyncSchema = z.object({
+  majors: z.array(z.union([
+    z.object({ id: z.string().uuid() }),
+    majorCreateSchema
+  ])).max(300)
 });
 
 type SchoolInput = z.infer<typeof schoolSchema>;
@@ -228,6 +237,173 @@ function schoolSearchFields(school: SchoolListItem) {
     school.achievements
   ];
 }
+
+schoolsRouter.get("/:id/majors", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+  try {
+    const school = await prisma.school.findUnique({
+      where: { id: req.params.id },
+      select: { id: true }
+    });
+    if (!school) {
+      res.status(404).json({ message: "Không tìm thấy trường" });
+      return;
+    }
+
+    const links = await prisma.school_majors.findMany({
+      where: {
+        admission_season_id: null,
+        school_id: school.id
+      },
+      include: {
+        majors: {
+          select: {
+            degreeLevel: true,
+            id: true,
+            isActive: true,
+            name: true,
+            nameEn: true,
+            nameZh: true
+          }
+        }
+      },
+      orderBy: [
+        { majors: { degreeLevel: "asc" } },
+        { majors: { name: "asc" } }
+      ]
+    });
+    res.json({
+      data: links.map((link) => ({
+        linkId: link.id,
+        ...link.majors
+      }))
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Không thể tải ngành của trường" });
+  }
+});
+
+schoolsRouter.put("/:id/majors", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+  const parsed = schoolMajorsSyncSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      message: "Danh sách ngành không hợp lệ",
+      errors: parsed.error.flatten()
+    });
+    return;
+  }
+
+  try {
+    const user = res.locals.user as AuthenticatedUser;
+    const result = await prisma.$transaction(async (tx) => {
+      const school = await tx.school.findUnique({
+        where: { id: req.params.id },
+        select: { id: true, name: true }
+      });
+      if (!school) throw new Error("SCHOOL_NOT_FOUND");
+
+      const desiredMajorIds: string[] = [];
+      let createdMajors = 0;
+      for (const input of parsed.data.majors) {
+        if ("id" in input) {
+          const existing = await tx.major.findUnique({
+            where: { id: input.id },
+            select: { id: true }
+          });
+          if (existing) desiredMajorIds.push(existing.id);
+          continue;
+        }
+
+        const existing = await tx.major.findUnique({
+          where: {
+            name_degreeLevel: {
+              degreeLevel: input.degreeLevel,
+              name: input.name
+            }
+          },
+          select: { id: true }
+        });
+        const major = existing
+          ? await tx.major.update({
+              where: { id: existing.id },
+              data: {
+                isActive: true,
+                nameEn: input.nameEn?.trim() || undefined,
+                nameZh: input.nameZh?.trim() || undefined
+              },
+              select: { id: true }
+            })
+          : await tx.major.create({
+              data: {
+                degreeLevel: input.degreeLevel,
+                isActive: true,
+                name: input.name,
+                nameEn: input.nameEn?.trim() || null,
+                nameZh: input.nameZh?.trim() || null
+              },
+              select: { id: true }
+            });
+        if (!existing) createdMajors += 1;
+        desiredMajorIds.push(major.id);
+      }
+
+      const uniqueMajorIds = [...new Set(desiredMajorIds)];
+      const removed = await tx.school_majors.deleteMany({
+        where: {
+          admission_season_id: null,
+          school_id: school.id,
+          ...(uniqueMajorIds.length ? { major_id: { notIn: uniqueMajorIds } } : {})
+        }
+      });
+      const existingLinks = uniqueMajorIds.length
+        ? await tx.school_majors.findMany({
+            where: {
+              admission_season_id: null,
+              major_id: { in: uniqueMajorIds },
+              school_id: school.id
+            },
+            select: { major_id: true }
+          })
+        : [];
+      const existingIds = new Set(existingLinks.map((link) => link.major_id));
+      const idsToAdd = uniqueMajorIds.filter((id) => !existingIds.has(id));
+      for (const majorId of idsToAdd) {
+        await tx.school_majors.create({
+          data: {
+            admission_season_id: null,
+            major_id: majorId,
+            note: "Đồng bộ từ màn sửa trường",
+            school_id: school.id
+          }
+        });
+      }
+
+      return {
+        addedLinks: idsToAdd.length,
+        createdMajors,
+        linkedMajors: uniqueMajorIds.length,
+        removedLinks: removed.count,
+        school
+      };
+    });
+
+    await writeAdminAuditLog(req, {
+      action: "SCHOOL_MAJORS_SYNC",
+      adminUserId: user.id,
+      afterData: result,
+      entityId: result.school.id,
+      entityType: "school"
+    });
+    res.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === "SCHOOL_NOT_FOUND") {
+      res.status(404).json({ message: "Không tìm thấy trường" });
+      return;
+    }
+    console.error(error);
+    res.status(500).json({ message: "Không thể cập nhật ngành của trường" });
+  }
+});
 
 // GET /api/schools/:id
 schoolsRouter.get("/:id", async (req, res) => {
