@@ -6,6 +6,7 @@ import { prisma } from "../../db/prisma.js";
 import { writeAdminAuditLog } from "../admin/audit.service.js";
 import { getOptionalAuthenticatedUser, requireAuth, requireRole, type AuthenticatedUser } from "../auth/auth.middleware.js";
 import { paginatedResponse, parsePagination } from "../../utils/pagination.js";
+import { rankSearchCandidate } from "../../utils/search-normalize.js";
 
 export const majorsRouter = Router();
 
@@ -106,9 +107,9 @@ majorsRouter.get("/", async (req, res) => {
     const canReadInactive = requester?.role === "ADMIN" || requester?.role === "SUPER_ADMIN";
     const where: any = {};
     const { limit, page, skip } = parsePagination(req.query);
+    const searchText = String(search ?? "").trim();
 
     if (active !== "all" || !canReadInactive) where.isActive = true;
-    if (search) where.name = { contains: String(search), mode: "insensitive" };
     if (degreeLevel) where.degreeLevel = String(degreeLevel);
     if (schoolId) {
       where.school_majors = {
@@ -118,10 +119,35 @@ majorsRouter.get("/", async (req, res) => {
       };
     }
 
-    if (!search && !degreeLevel && !schoolId && active !== "all") {
+    if (!searchText && !degreeLevel && !schoolId && active !== "all") {
       const cachedMajors = await getCachedMajors();
       const majors = cachedMajors.slice(skip, skip + limit);
       res.json(paginatedResponse(majors, cachedMajors.length, page, limit));
+      return;
+    }
+
+    if (searchText) {
+      const candidates = await prisma.major.findMany({
+        where,
+        orderBy: { name: "asc" },
+        select: majorListSelect,
+        take: 2000
+      });
+      const ranked = candidates
+        .map((major) => ({
+          ...major,
+          _rank: rankSearchCandidate(searchText, [
+            major.name,
+            major.nameEn,
+            major.nameZh,
+            major.researchAreas,
+            major.interviewFocus
+          ])
+        }))
+        .filter((major) => major._rank > 0)
+        .sort((left, right) => right._rank - left._rank || left.name.localeCompare(right.name));
+      const majors = ranked.slice(skip, skip + limit).map(({ _rank, ...major }) => major);
+      res.json(paginatedResponse(majors, ranked.length, page, limit));
       return;
     }
 

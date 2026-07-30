@@ -7,6 +7,10 @@ import { writeAdminAuditLog } from "../admin/audit.service.js";
 import { getOptionalAuthenticatedUser, requireAuth, requireRole, type AuthenticatedUser } from "../auth/auth.middleware.js";
 import { paginatedResponse, parsePagination } from "../../utils/pagination.js";
 import { rankSearchCandidate } from "../../utils/search-normalize.js";
+import {
+  MajorReferenceNotFoundError,
+  resolveMajorReferences
+} from "./school-major.service.js";
 
 export const schoolsRouter = Router();
 
@@ -99,16 +103,18 @@ const majorCreateSchema = z.object({
   nameZh: z.string().trim().max(500).optional().nullable()
 });
 
+const majorReferenceSchema = z.union([
+  z.object({ id: z.string().uuid() }),
+  majorCreateSchema
+]);
+
 const schoolWithMajorsSchema = z.object({
-  majors: z.array(majorCreateSchema).min(1, "Cần nhập ít nhất một ngành").max(300),
+  majors: z.array(majorReferenceSchema).min(1, "Cần nhập ít nhất một ngành").max(300),
   school: schoolSchema
 });
 
 const schoolMajorsSyncSchema = z.object({
-  majors: z.array(z.union([
-    z.object({ id: z.string().uuid() }),
-    majorCreateSchema
-  ])).max(300)
+  majors: z.array(majorReferenceSchema).max(300)
 });
 
 type SchoolInput = z.infer<typeof schoolSchema>;
@@ -302,52 +308,8 @@ schoolsRouter.put("/:id/majors", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"
       });
       if (!school) throw new Error("SCHOOL_NOT_FOUND");
 
-      const desiredMajorIds: string[] = [];
-      let createdMajors = 0;
-      for (const input of parsed.data.majors) {
-        if ("id" in input) {
-          const existing = await tx.major.findUnique({
-            where: { id: input.id },
-            select: { id: true }
-          });
-          if (existing) desiredMajorIds.push(existing.id);
-          continue;
-        }
-
-        const existing = await tx.major.findUnique({
-          where: {
-            name_degreeLevel: {
-              degreeLevel: input.degreeLevel,
-              name: input.name
-            }
-          },
-          select: { id: true }
-        });
-        const major = existing
-          ? await tx.major.update({
-              where: { id: existing.id },
-              data: {
-                isActive: true,
-                nameEn: input.nameEn?.trim() || undefined,
-                nameZh: input.nameZh?.trim() || undefined
-              },
-              select: { id: true }
-            })
-          : await tx.major.create({
-              data: {
-                degreeLevel: input.degreeLevel,
-                isActive: true,
-                name: input.name,
-                nameEn: input.nameEn?.trim() || null,
-                nameZh: input.nameZh?.trim() || null
-              },
-              select: { id: true }
-            });
-        if (!existing) createdMajors += 1;
-        desiredMajorIds.push(major.id);
-      }
-
-      const uniqueMajorIds = [...new Set(desiredMajorIds)];
+      const resolved = await resolveMajorReferences(tx, parsed.data.majors);
+      const uniqueMajorIds = resolved.majors.map((major) => major.id);
       const removed = await tx.school_majors.deleteMany({
         where: {
           admission_season_id: null,
@@ -380,7 +342,7 @@ schoolsRouter.put("/:id/majors", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"
 
       return {
         addedLinks: idsToAdd.length,
-        createdMajors,
+        createdMajors: resolved.createdMajors,
         linkedMajors: uniqueMajorIds.length,
         removedLinks: removed.count,
         school
@@ -398,6 +360,10 @@ schoolsRouter.put("/:id/majors", requireAuth, requireRole("ADMIN", "SUPER_ADMIN"
   } catch (error) {
     if (error instanceof Error && error.message === "SCHOOL_NOT_FOUND") {
       res.status(404).json({ message: "Không tìm thấy trường" });
+      return;
+    }
+    if (error instanceof MajorReferenceNotFoundError) {
+      res.status(400).json({ message: "Có ngành đã chọn không còn tồn tại. Vui lòng tải lại danh sách." });
       return;
     }
     console.error(error);
@@ -436,11 +402,6 @@ schoolsRouter.post("/with-majors", requireAuth, requireRole("ADMIN", "SUPER_ADMI
 
   try {
     const user = res.locals.user as AuthenticatedUser;
-    const uniqueMajors = [...new Map(parsed.data.majors.map((major) => [
-      `${major.degreeLevel}:${major.name.toLocaleLowerCase("vi")}`,
-      major
-    ])).values()];
-
     const result = await prisma.$transaction(async (tx) => {
       const school = await tx.school.create({
         data: {
@@ -449,41 +410,8 @@ schoolsRouter.post("/with-majors", requireAuth, requireRole("ADMIN", "SUPER_ADMI
           name: parsed.data.school.name
         }
       });
-      let createdMajors = 0;
-      const linkedMajors = [];
-
-      for (const majorInput of uniqueMajors) {
-        const existing = await tx.major.findUnique({
-          where: {
-            name_degreeLevel: {
-              degreeLevel: majorInput.degreeLevel,
-              name: majorInput.name
-            }
-          },
-          select: { id: true }
-        });
-        const major = existing
-          ? await tx.major.update({
-              where: { id: existing.id },
-              data: {
-                isActive: true,
-                nameEn: majorInput.nameEn?.trim() || undefined,
-                nameZh: majorInput.nameZh?.trim() || undefined
-              },
-              select: { degreeLevel: true, id: true, name: true }
-            })
-          : await tx.major.create({
-              data: {
-                degreeLevel: majorInput.degreeLevel,
-                isActive: true,
-                name: majorInput.name,
-                nameEn: majorInput.nameEn?.trim() || null,
-                nameZh: majorInput.nameZh?.trim() || null
-              },
-              select: { degreeLevel: true, id: true, name: true }
-            });
-        if (!existing) createdMajors += 1;
-
+      const resolved = await resolveMajorReferences(tx, parsed.data.majors);
+      for (const major of resolved.majors) {
         await tx.school_majors.create({
           data: {
             admission_season_id: null,
@@ -492,12 +420,11 @@ schoolsRouter.post("/with-majors", requireAuth, requireRole("ADMIN", "SUPER_ADMI
             school_id: school.id
           }
         });
-        linkedMajors.push(major);
       }
 
       return {
-        createdMajors,
-        linkedMajors,
+        createdMajors: resolved.createdMajors,
+        linkedMajors: resolved.majors,
         school
       };
     });
@@ -515,6 +442,10 @@ schoolsRouter.post("/with-majors", requireAuth, requireRole("ADMIN", "SUPER_ADMI
     });
     res.status(201).json(result);
   } catch (error: any) {
+    if (error instanceof MajorReferenceNotFoundError) {
+      res.status(400).json({ message: "Có ngành đã chọn không còn tồn tại. Vui lòng tải lại danh sách." });
+      return;
+    }
     if (error.code === "P2002") {
       res.status(409).json({ message: "Trường này đã tồn tại" });
       return;

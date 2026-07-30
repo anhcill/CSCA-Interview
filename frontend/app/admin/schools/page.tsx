@@ -44,6 +44,10 @@ type LinkedMajor = {
   nameZh?: string | null;
 };
 type SchoolMajorsResponse = { data: LinkedMajor[] };
+type MajorCatalogResponse = {
+  data: LinkedMajor[];
+  total: number;
+};
 type SchoolMajorsSyncResponse = {
   addedLinks: number;
   createdMajors: number;
@@ -92,10 +96,16 @@ export default function AdminSchoolsPage() {
   const [linkedMajors, setLinkedMajors] = useState<LinkedMajor[]>([]);
   const [loadingMajors, setLoadingMajors] = useState(false);
   const [majorLoadError, setMajorLoadError] = useState("");
+  const [majorCatalog, setMajorCatalog] = useState<LinkedMajor[]>([]);
+  const [majorCatalogError, setMajorCatalogError] = useState("");
+  const [majorDegreeFilter, setMajorDegreeFilter] = useState<"" | "BACHELOR" | "MASTER">("");
+  const [majorSearch, setMajorSearch] = useState("");
+  const [loadingMajorCatalog, setLoadingMajorCatalog] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedMajorSearch = useDebouncedValue(majorSearch, 250);
   const token = getAuthToken();
 
   const load = useCallback(async () => {
@@ -112,6 +122,36 @@ export default function AdminSchoolsPage() {
     void load();
   }, [load]);
 
+  const loadMajorCatalog = useCallback(async () => {
+    setLoadingMajorCatalog(true);
+    setMajorCatalogError("");
+    try {
+      const query = new URLSearchParams({
+        limit: "50",
+        page: "1"
+      });
+      if (debouncedMajorSearch) query.set("search", debouncedMajorSearch);
+      if (majorDegreeFilter) query.set("degreeLevel", majorDegreeFilter);
+      const response = await apiGet<MajorCatalogResponse>(`/api/majors?${query.toString()}`, { token });
+      setMajorCatalog(response.data);
+    } catch (err) {
+      setMajorCatalog([]);
+      setMajorCatalogError(err instanceof Error ? err.message : "Không thể tải kho ngành dùng chung");
+    } finally {
+      setLoadingMajorCatalog(false);
+    }
+  }, [debouncedMajorSearch, majorDegreeFilter, token]);
+
+  useEffect(() => {
+    void loadMajorCatalog();
+  }, [loadMajorCatalog]);
+
+  function addExistingMajor(major: LinkedMajor) {
+    setLinkedMajors((current) => (
+      current.some((item) => item.id === major.id) ? current : [...current, major]
+    ));
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -125,7 +165,10 @@ export default function AdminSchoolsPage() {
       const payload = {
         ...form,
         ranking: form.ranking ? Number(form.ranking) : null,
-        strongMajors: form.strongMajors || majors.map((major) => major.name).join(", ")
+        strongMajors: form.strongMajors || [
+          ...linkedMajors.map((major) => major.name),
+          ...majors.map((major) => major.name)
+        ].join(", ")
       };
       if (editId) {
         await apiPut(`/api/schools/${editId}`, payload, { token });
@@ -148,13 +191,19 @@ export default function AdminSchoolsPage() {
           schoolName: syncResult.school.name
         });
       } else {
-        if (!majors.length) {
+        if (!majors.length && !linkedMajors.length) {
           setError("Vui lòng nhập ít nhất một ngành của trường.");
           return;
         }
         const result = await apiPost<SchoolWithMajorsResponse>(
           "/api/schools/with-majors",
-          { majors, school: payload },
+          {
+            majors: [
+              ...linkedMajors.map((major) => ({ id: major.id })),
+              ...majors
+            ],
+            school: payload
+          },
           { token }
         );
         setSuccess({
@@ -169,6 +218,7 @@ export default function AdminSchoolsPage() {
       setEditId(null);
       setLinkedMajors([]);
       setMasterMajors("");
+      setMajorSearch("");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu trường");
@@ -289,10 +339,10 @@ export default function AdminSchoolsPage() {
             <p className="mt-1 text-sm font-semibold text-indigo-800">
               Mỗi dòng là một ngành. Có thể nhập: Tên Việt | Tên Trung | Tên Anh. Ngành đã tồn tại sẽ được dùng lại, ngành mới sẽ tự tạo.
             </p>
-            {editId ? (
+            {editId || linkedMajors.length ? (
               <div className="mt-4">
                 <p className="text-sm font-black text-indigo-950">
-                  Ngành hiện tại {loadingMajors ? "· Đang tải..." : `· ${linkedMajors.length} ngành`}
+                  {editId ? "Ngành hiện tại" : "Ngành đã chọn"} {loadingMajors ? "· Đang tải..." : `· ${linkedMajors.length} ngành`}
                 </p>
                 {majorLoadError ? (
                   <p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
@@ -326,6 +376,65 @@ export default function AdminSchoolsPage() {
                 </div>
               </div>
             ) : null}
+            <div className="mt-4 rounded-xl border border-sky-200 bg-white p-4">
+              <h3 className="text-sm font-black text-slate-950">Chọn ngành có sẵn từ trường khác</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-600">
+                Ngành được dùng chung trong toàn hệ thống. Chọn lại ngành có sẵn sẽ không tạo bản ghi trùng.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_180px]">
+                <input
+                  type="search"
+                  value={majorSearch}
+                  onChange={(event) => setMajorSearch(event.target.value)}
+                  className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm"
+                  placeholder="Tìm theo tên Việt, Trung hoặc Anh..."
+                />
+                <select
+                  value={majorDegreeFilter}
+                  onChange={(event) => setMajorDegreeFilter(event.target.value as "" | "BACHELOR" | "MASTER")}
+                  className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold"
+                >
+                  <option value="">Tất cả hệ</option>
+                  <option value="BACHELOR">Đại học</option>
+                  <option value="MASTER">Thạc sĩ</option>
+                </select>
+              </div>
+              {majorCatalogError ? (
+                <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{majorCatalogError}</p>
+              ) : (
+                <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {majorCatalog
+                    .filter((major) => !linkedMajors.some((linked) => linked.id === major.id))
+                    .map((major) => (
+                      <div key={major.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2">
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-black text-slate-900">{major.name}</span>
+                          <span className="block truncate text-xs font-semibold text-slate-500">
+                            {major.degreeLevel === "MASTER" ? "Thạc sĩ" : "Đại học"}
+                            {major.nameZh ? ` · ${major.nameZh}` : ""}
+                            {major.nameEn ? ` · ${major.nameEn}` : ""}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => addExistingMajor(major)}
+                          className="shrink-0 rounded-lg bg-sky-600 px-3 py-2 text-xs font-black text-white hover:bg-sky-700"
+                        >
+                          Thêm
+                        </button>
+                      </div>
+                    ))}
+                  {loadingMajorCatalog ? (
+                    <p className="py-3 text-center text-sm font-bold text-slate-500">Đang tìm ngành...</p>
+                  ) : null}
+                  {!loadingMajorCatalog && !majorCatalog.some((major) => !linkedMajors.some((linked) => linked.id === major.id)) ? (
+                    <p className="py-3 text-center text-sm font-semibold text-slate-500">
+                      Không còn ngành phù hợp. Đại ca có thể nhập ngành mới bên dưới.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label>
                 <span className="mb-1 block text-sm font-black text-indigo-950">
@@ -356,7 +465,7 @@ export default function AdminSchoolsPage() {
           <button type="submit" disabled={loading || loadingMajors || Boolean(majorLoadError)} className="rounded bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50">
             {loading ? "Đang lưu..." : loadingMajors ? "Đang tải ngành..." : editId ? "Cập nhật" : "Tạo trường và liên kết ngành"}
           </button>
-          {editId ? <button type="button" onClick={() => { setEditId(null); setForm(empty); setLinkedMajors([]); setBachelorMajors(""); setMasterMajors(""); setMajorLoadError(""); }} className="rounded border px-4 py-2 hover:bg-slate-50">Hủy</button> : null}
+          {editId ? <button type="button" onClick={() => { setEditId(null); setForm(empty); setLinkedMajors([]); setBachelorMajors(""); setMasterMajors(""); setMajorLoadError(""); setMajorSearch(""); }} className="rounded border px-4 py-2 hover:bg-slate-50">Hủy</button> : null}
         </div>
       </form>
 

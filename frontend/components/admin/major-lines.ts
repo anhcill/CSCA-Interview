@@ -1,5 +1,17 @@
 export type MajorDegreeLevel = "BACHELOR" | "MASTER";
 
+export function normalizeMajorName(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("vi")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function parseMajorLines(value: string, degreeLevel: MajorDegreeLevel) {
   const seen = new Set<string>();
   return value
@@ -16,7 +28,7 @@ export function parseMajorLines(value: string, degreeLevel: MajorDegreeLevel) {
       };
     })
     .filter((major) => {
-      const key = `${major.degreeLevel}:${major.name.toLocaleLowerCase("vi")}`;
+      const key = `${major.degreeLevel}:${normalizeMajorName(major.name)}`;
       if (!major.name || seen.has(key)) return false;
       seen.add(key);
       return true;

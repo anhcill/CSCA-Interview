@@ -16,4 +16,13 @@ describe("parseMajorLines", () => {
   it("bỏ số thứ tự, dòng trống và ngành trùng", () => {
     expect(parseMajorLines("1. Kinh tế quốc tế\n- Kinh tế quốc tế\n\nKhoa học máy tính", "MASTER")).toHaveLength(2);
   });
+
+  it("chống trùng khi khác hoa thường, dấu hoặc khoảng trắng", () => {
+    expect(
+      parseMajorLines(
+        "Thương mại điện tử\n THUONG   MAI DIEN TU \nthương mại điện tử",
+        "BACHELOR"
+      )
+    ).toHaveLength(1);
+  });
 });
