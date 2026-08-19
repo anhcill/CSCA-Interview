@@ -28,6 +28,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { paymentsRouter } from "./modules/payments/payments.routes.js";
 import { siteExperienceRouter } from "./modules/site-experience/site-experience.routes.js";
 import { wsInterviewHandler } from "./modules/realtime/ws-interview.handler.js";
+import { integrationsRouter } from "./modules/integrations/integrations.routes.js";
 
 const app = express();
 app.set("trust proxy", env.isProd ? 1 : false);
@@ -342,6 +343,7 @@ app.get("/api/realtime/stream", (req, res) => {
 // --- Routes ---
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use("/api/auth", authLimiter as any, cachePrivate(30_000) as any, wrapAsyncRouter(authRouter));
+app.use("/api/integrations/v1", wrapAsyncRouter(integrationsRouter));
 app.use("/api/admin", cachePrivate(30_000) as any, wrapAsyncRouter(adminRouter));
 app.use("/api/profiles", cachePrivate(30_000) as any, wrapAsyncRouter(profilesRouter));
 app.use("/api/questions", cachePrivate(30_000) as any, wrapAsyncRouter(questionsRouter));
